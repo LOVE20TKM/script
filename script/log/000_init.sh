@@ -45,6 +45,9 @@ cast_logs(){
   local retry_count=0
   local total_ranges=0
 
+  # Extract event name from event signature for display
+  local display_event_name=$(echo "$event_name" | cut -d'(' -f1)
+
   # make sure output_file not exists
   if [ -f "$output_file" ]; then
     echo "Output file $output_file already exists"
@@ -53,7 +56,7 @@ cast_logs(){
 
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "📊 Fetching event logs: $event_name"
+  echo "📊 Fetching event logs: $display_event_name"
   echo "📍 Contract: $contract_address"
   echo "📦 Block range: $from_block → $to_block"
 
