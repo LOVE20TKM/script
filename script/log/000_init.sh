@@ -294,21 +294,246 @@ cast_logs(){
 }
 
 
+# Convert event logs to CSV format using cast abi-decode
+convert_to_csv(){
+  local input_file=${1}
+  local event_signature=${2}
+  local output_file_name=${3}
+  local output_file="$output_dir/$output_file_name"
+  local csv_file="$output_dir/$output_file_name.csv"
+
+  # Check if input file exists
+  if [ ! -f "$input_file" ]; then
+    echo "❌ Input file not found: $input_file"
+    return 1
+  fi
+
+  # Check if CSV file already exists
+  if [ -f "$csv_file" ]; then
+    echo "❌ CSV file already exists: $csv_file"
+    return 1
+  fi
+
+  echo "==========================================================="
+  echo "📊 Event Log CSV Converter"
+  echo "==========================================================="
+  echo "📁 Input file: $input_file"
+  echo "🎯 Event signature: $event_signature"
+  echo "💾 Output CSV: $csv_file"
+  echo "==========================================================="
+
+  # Parse event signature
+  local event_name=$(echo "$event_signature" | cut -d'(' -f1)
+  local params_part=$(echo "$event_signature" | sed 's/.*(\(.*\)).*/\1/')
+  
+  # Create temporary directory
+  local temp_dir=$(mktemp -d)
+  
+  # Parse parameters manually to avoid array issues
+  echo "$params_part" | sed 's/,/\n/g' > "$temp_dir/params.txt"
+  
+  # Count parameters
+  local param_count=$(wc -l < "$temp_dir/params.txt" | tr -d ' ')
+  echo "📋 Found $param_count parameters"
+  
+  # Create CSV header
+  local csv_header="blockNumber,transactionHash,transactionIndex,logIndex,address"
+  
+  # Process each parameter for header
+  local line_num=1
+  while [ $line_num -le $param_count ]; do
+    local param=$(sed -n "${line_num}p" "$temp_dir/params.txt" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    if [ -n "$param" ]; then
+      # Remove indexed keyword
+      param=$(echo "$param" | sed 's/indexed[[:space:]]*//')
+      # Extract parameter name (second word)
+      local param_name=$(echo "$param" | awk '{print $2}')
+      csv_header="$csv_header,$param_name"
+    fi
+    line_num=$((line_num + 1))
+  done
+  
+  echo "$csv_header" > "$csv_file"
+  echo "📋 CSV header created"
+
+  # Process event logs
+  echo "🔄 Processing event logs..."
+  
+  # Split input file into individual log entries
+  grep -n "^- address:" "$input_file" | cut -d: -f1 > "$temp_dir/log_starts.tmp"
+  local line_count=$(wc -l < "$input_file" | tr -d ' ')
+  echo $((line_count + 1)) >> "$temp_dir/log_starts.tmp"
+  
+  local entry_count=0
+  local prev_start=0
+  
+  while IFS= read -r start_line; do
+    if [ $prev_start -gt 0 ]; then
+      local end_line=$((start_line - 1))
+      sed -n "${prev_start},${end_line}p" "$input_file" > "$temp_dir/log_$entry_count.yaml"
+      entry_count=$((entry_count + 1))
+    fi
+    prev_start=$start_line
+  done < "$temp_dir/log_starts.tmp"
+  
+  echo "📊 Found $entry_count event log entries to process"
+
+  # Process each log entry
+  local success_count=0
+  local error_count=0
+  
+  for i in $(seq 0 $((entry_count - 1))); do
+    local log_file="$temp_dir/log_$i.yaml"
+    
+    if [ -f "$log_file" ]; then
+      # Extract basic fields
+      local address=$(grep "address:" "$log_file" | head -1 | sed 's/.*address: *//' | tr -d ' ')
+      local block_number=$(grep "blockNumber:" "$log_file" | sed 's/.*blockNumber: *//' | tr -d ' ')
+      local tx_hash=$(grep "transactionHash:" "$log_file" | sed 's/.*transactionHash: *//' | tr -d ' ')
+      local tx_index=$(grep "transactionIndex:" "$log_file" | sed 's/.*transactionIndex: *//' | tr -d ' ')
+      local log_index=$(grep "logIndex:" "$log_file" | sed 's/.*logIndex: *//' | tr -d ' ')
+      local data=$(grep "data:" "$log_file" | sed 's/.*data: *//' | tr -d ' ')
+      
+      # Extract topics (skip first one which is event signature)
+      grep "0x" "$log_file" | grep -v "address\|data\|Hash" | sed 's/^[[:space:]]*//' | tail -n +2 > "$temp_dir/topics_$i.tmp"
+      
+      # Build CSV row
+      local csv_row="$block_number,$tx_hash,$tx_index,$log_index,$address"
+      
+      # Process parameters in order
+      local topic_index=1
+      local non_indexed_data=""
+      local non_indexed_types=""
+      
+      # First pass: collect non-indexed types for decoding
+      local line_num=1
+      while [ $line_num -le $param_count ]; do
+        local param=$(sed -n "${line_num}p" "$temp_dir/params.txt" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        if [ -n "$param" ]; then
+          if ! echo "$param" | grep -q "indexed"; then
+            # Non-indexed parameter
+            local param_type=$(echo "$param" | awk '{print $1}')
+            if [ -n "$non_indexed_types" ]; then
+              non_indexed_types="$non_indexed_types,$param_type"
+            else
+              non_indexed_types="$param_type"
+            fi
+          fi
+        fi
+        line_num=$((line_num + 1))
+      done
+      
+      # Decode non-indexed data if exists
+      if [ -n "$data" ] && [ "$data" != "0x" ] && [ -n "$non_indexed_types" ]; then
+        cast abi-decode --input "decode($non_indexed_types)" "$data" 2>/dev/null > "$temp_dir/decoded_$i.tmp"
+      fi
+      
+      # Second pass: build CSV row with values
+      local line_num=1
+      local non_indexed_index=1
+      while [ $line_num -le $param_count ]; do
+        local param=$(sed -n "${line_num}p" "$temp_dir/params.txt" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        local value=""
+        
+        if [ -n "$param" ]; then
+          if echo "$param" | grep -q "indexed"; then
+            # Indexed parameter - get from topics
+            if [ -f "$temp_dir/topics_$i.tmp" ]; then
+              local topic=$(sed -n "${topic_index}p" "$temp_dir/topics_$i.tmp")
+              if [ -n "$topic" ]; then
+                local param_type=$(echo "$param" | sed 's/indexed[[:space:]]*//' | awk '{print $1}')
+                if [ "$param_type" = "address" ]; then
+                  value="0x${topic:26}"  # Remove padding
+                else
+                  value="$topic"
+                fi
+              fi
+              topic_index=$((topic_index + 1))
+            fi
+          else
+            # Non-indexed parameter - get from decoded data
+            if [ -f "$temp_dir/decoded_$i.tmp" ]; then
+              value=$(sed -n "${non_indexed_index}p" "$temp_dir/decoded_$i.tmp" | sed 's/^"//;s/"$//')
+              non_indexed_index=$((non_indexed_index + 1))
+            fi
+          fi
+        fi
+        
+        # Escape CSV value
+        local escaped_value=$(echo "$value" | sed 's/"/\\"/g')
+        if echo "$escaped_value" | grep -q ","; then
+          escaped_value="\"$escaped_value\""
+        fi
+        csv_row="$csv_row,$escaped_value"
+        
+        line_num=$((line_num + 1))
+      done
+      
+      # Write row to CSV
+      echo "$csv_row" >> "$csv_file"
+      success_count=$((success_count + 1))
+    fi
+    
+    # Progress indicator
+    if [ $((i % 10)) -eq 0 ] || [ $i -eq $((entry_count - 1)) ]; then
+      local progress=$((i * 100 / entry_count))
+      printf "\r🔄 Progress: %3d%% (%d/%d)" $progress $i $entry_count
+    fi
+  done
+  
+  echo ""
+  echo "==========================================================="
+  echo "📊 Conversion Summary"
+  echo "==========================================================="
+  echo "📄 Total logs processed: $entry_count"
+  echo "✅ Successfully converted: $success_count"
+  
+  if [ -f "$csv_file" ]; then
+    local csv_lines=$(wc -l < "$csv_file" | tr -d ' ')
+    local csv_size=$(wc -c < "$csv_file" | tr -d ' ')
+    local csv_size_kb=$((csv_size / 1024))
+    echo "💾 CSV file: $csv_file"
+    echo "📊 CSV rows: $((csv_lines - 1)) (excluding header)"
+    echo "📦 File size: ${csv_size_kb}KB"
+  fi
+  
+  echo "✨ Conversion completed successfully!"
+  echo "==========================================================="
+
+  # Cleanup
+  rm -rf "$temp_dir"
+  
+  return 0
+}
+
 # launch
 event_launch_DeployToken(){
   local from_block=${1}
   local to_block=${2}
-  cast_logs $launchAddress "DeployToken(address tokenAddress, string tokenSymbol, address parentTokenAddress, address deployer)" $from_block $to_block "launch_DeployToken.event"
+  cast_logs $launchAddress "DeployToken(address indexed tokenAddress, string tokenSymbol, address indexed parentTokenAddress, address indexed deployer)" $from_block $to_block "launch_DeployToken.event"
 }
 
 event_launch_Contribute(){
   local from_block=${1}
   local to_block=${2}
-  cast_logs $launchAddress "Contribute(address tokenAddress, address contributor, uint256 amount, uint256 totalContributed, uint256 participantCount)" $from_block $to_block "launch_Contribute.event"
+  cast_logs $launchAddress "Contribute(address indexed tokenAddress, address indexed contributor, uint256 amount, uint256 totalContributed, uint256 participantCount)" $from_block $to_block "launch_Contribute.event"
 }
 
 event_launch_Withdraw(){
   local from_block=${1}
   local to_block=${2}
-  cast_logs $launchAddress "Withdraw(address tokenAddress, address contributor, uint256 amount)" $from_block $to_block "launch_Withdraw.event"
+  cast_logs $launchAddress "Withdraw(address indexed tokenAddress, address indexed contributor, uint256 amount)" $from_block $to_block "launch_Withdraw.event"
+}
+
+
+convert_launch_DeployToken(){
+  convert_to_csv "./output/$network/launch_DeployToken.event" "DeployToken(address indexed tokenAddress, string tokenSymbol, address indexed parentTokenAddress, address indexed deployer)" "launch_DeployToken"
+}
+
+convert_launch_Contribute(){
+  convert_to_csv "./output/$network/launch_Contribute.event" "Contribute(address indexed tokenAddress, address indexed contributor, uint256 amount, uint256 totalContributed, uint256 participantCount)" "launch_Contribute"
+}
+
+convert_launch_Withdraw(){
+  convert_to_csv "./output/$network/launch_Withdraw.event" "Withdraw(address indexed tokenAddress, address indexed contributor, uint256 amount)" "launch_Withdraw"
 }
