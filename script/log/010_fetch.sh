@@ -1,5 +1,12 @@
 # 抓取所有事件日志
 
+# 清除历史文件
+if [ -d "$output_dir" ]; then
+  echo "📁 Clearing directory: $output_dir"
+  rm -rf $output_dir/*
+  echo "✅ Directory cleared"
+fi
+
 # launch - 项目启动和众筹
 fetch_event_logs "launch" "DeployToken"
 fetch_event_logs "launch" "Contribute"

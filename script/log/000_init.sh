@@ -291,14 +291,16 @@ convert_to_csv(){
     return 1
   fi
 
+  # Parse event signature to get event name
+  local event_name=$(echo "$event_signature" | cut -d'(' -f1)
+
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "📊 Converting to CSV: $event_signature"
+  echo "📊 Converting to CSV: $event_name"
   echo "📁 Input: $input_file"
   echo "💾 Output: $csv_file"
 
   # Parse event signature
-  local event_name=$(echo "$event_signature" | cut -d'(' -f1)
   local params_part=$(echo "$event_signature" | sed 's/.*(\(.*\)).*/\1/')
   
   # Create temporary directory
