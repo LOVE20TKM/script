@@ -427,12 +427,19 @@ convert_to_csv(){
         local value=""
         
         if [ -n "$param" ]; then
+          # Extract parameter type for both indexed and non-indexed parameters
+          local param_type=""
+          if echo "$param" | grep -q "indexed"; then
+            param_type=$(echo "$param" | sed 's/indexed[[:space:]]*//' | awk '{print $1}')
+          else
+            param_type=$(echo "$param" | awk '{print $1}')
+          fi
+          
           if echo "$param" | grep -q "indexed"; then
             # Indexed parameter - get from topics
             if [ -f "$temp_dir/topics_$i.tmp" ]; then
               local topic=$(sed -n "${topic_index}p" "$temp_dir/topics_$i.tmp")
               if [ -n "$topic" ]; then
-                local param_type=$(echo "$param" | sed 's/indexed[[:space:]]*//' | awk '{print $1}')
                 if [ "$param_type" = "address" ]; then
                   value="0x${topic:26}"  # Remove padding
                 else
@@ -447,6 +454,11 @@ convert_to_csv(){
               value=$(sed -n "${non_indexed_index}p" "$temp_dir/decoded_$i.tmp" | sed 's/^"//;s/"$//')
               non_indexed_index=$((non_indexed_index + 1))
             fi
+          fi
+          
+          # Remove scientific notation suffix only for uint256 type
+          if [ -n "$value" ] && [ "$param_type" = "uint256" ] && echo "$value" | grep -q " \[.*e.*\]"; then
+            value=$(echo "$value" | sed 's/ \[.*e.*\]$//')
           fi
         fi
         
