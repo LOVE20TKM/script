@@ -11,11 +11,13 @@ fi
 source ../network/$network/address.params 
 source ../network/$network/network.params
 
+output_dir="./output/$network"
+
 # Create output directory if it doesn't exist
-if [ ! -d "./output" ]; then
+if [ ! -d "$output_dir" ]; then
   echo "📁 Creating output directory..."
-  mkdir -p ./output
-  echo "✅ Output directory created: ./output"
+  mkdir -p "$output_dir"
+  echo "✅ Output directory created: $output_dir"
 fi
 
 cast_logs(){
@@ -23,8 +25,9 @@ cast_logs(){
   local event_name=${2}
   local from_block=${3}
   local to_block=${4}
-  local output_file=${5}
+  local output_file_name=${5}
 
+  local output_file="$output_dir/$output_file_name"
   local current_from_block=$from_block
   local pids=()
   local temp_dir=$(mktemp -d)
@@ -295,17 +298,17 @@ cast_logs(){
 event_launch_DeployToken(){
   local from_block=${1}
   local to_block=${2}
-  cast_logs $launchAddress "DeployToken(address tokenAddress, string tokenSymbol, address parentTokenAddress, address deployer)" $from_block $to_block "./output/launch_DeployToken.event"
+  cast_logs $launchAddress "DeployToken(address tokenAddress, string tokenSymbol, address parentTokenAddress, address deployer)" $from_block $to_block "launch_DeployToken.event"
 }
 
 event_launch_Contribute(){
   local from_block=${1}
   local to_block=${2}
-  cast_logs $launchAddress "Contribute(address tokenAddress, address contributor, uint256 amount, uint256 totalContributed, uint256 participantCount)" $from_block $to_block "./output/launch_Contribute.event"
+  cast_logs $launchAddress "Contribute(address tokenAddress, address contributor, uint256 amount, uint256 totalContributed, uint256 participantCount)" $from_block $to_block "launch_Contribute.event"
 }
 
 event_launch_Withdraw(){
   local from_block=${1}
   local to_block=${2}
-  cast_logs $launchAddress "Withdraw(address tokenAddress, address contributor, uint256 amount)" $from_block $to_block "./output/launch_Withdraw.event"
+  cast_logs $launchAddress "Withdraw(address tokenAddress, address contributor, uint256 amount)" $from_block $to_block "launch_Withdraw.event"
 }
