@@ -51,13 +51,11 @@ cast_logs(){
     return 1
   fi
 
-  echo "==========================================================="
-  echo "📊 Event Log Fetcher"
-  echo "==========================================================="
-  echo "🎯 Contract: $contract_address"
-  echo "🔄 Event: $event_name"
-  echo "📦 Block Range: $from_block → $to_block"
-  echo "==========================================================="
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "📊 Fetching event logs: $event_name"
+  echo "📍 Contract: $contract_address"
+  echo "📦 Block range: $from_block → $to_block"
 
   # Calculate total ranges
   local temp_from=$from_block
@@ -65,9 +63,7 @@ cast_logs(){
     total_ranges=$((total_ranges + 1))
     temp_from=$((temp_from + maxBlocksPerRequest))
   done
-  echo "📋 Total block ranges to process: $total_ranges"
-  echo "⚙️  Max concurrent jobs: $maxConcurrentJobs"
-  echo "🔄 Max retries per range: $maxRetries"
+  echo "⚙️  Processing $total_ranges ranges..."
   echo ""
 
   # Function to fetch logs for a specific block range with retry mechanism
@@ -180,11 +176,6 @@ cast_logs(){
   printf "\r🔄 Processing: 100%% (%d/%d) | Completed!                    \n" $total_ranges $total_ranges
 
   # Analyze results
-  echo ""
-  echo "==========================================================="
-  echo "📊 Processing Summary"
-  echo "==========================================================="
-  
   if [ -f "$temp_dir/status.log" ]; then
     success_count=$(grep -c "^SUCCESS:" "$temp_dir/status.log" 2>/dev/null | tr -d '\n' || echo "0")
     failure_count=$(grep -c "^FAILURE:" "$temp_dir/status.log" 2>/dev/null | tr -d '\n' || echo "0")
@@ -205,30 +196,19 @@ cast_logs(){
       temp_from=$((temp_to + 1))
     done
     
-    echo "📦 Total ranges processed: $total_ranges"
-    echo "✅ Successful ranges: $success_count"
-    echo "❌ Failed ranges: $failure_count"
-    echo "📄 Total event logs found: $total_logs"
-    
-    if [ $total_ranges -gt 0 ]; then
-      local success_rate=$((success_count * 100 / total_ranges))
-      echo "📈 Success rate: $success_rate%"
-    fi
-    
+    # Only show failure details if there are failures
     if [ $failure_count -gt 0 ]; then
       echo ""
-      echo "❌ Failed Ranges Details:"
-      echo "-----------------------------------------------------------"
+      echo "⚠️  Warning: $failure_count of $total_ranges ranges failed"
+      echo "Failed ranges details:"
       grep "^FAILURE:" "$temp_dir/status.log" | while IFS=':' read -r log_status range_id start_block end_block attempts; do
-        echo "   Range $range_id: blocks $start_block-$end_block (failed after $attempts attempts)"
+        echo "  Range $range_id: blocks $start_block-$end_block (failed after $attempts attempts)"
       done
+      echo ""
     fi
   else
     success_count=$total_ranges
     failure_count=0
-    echo "📦 Total ranges processed: $total_ranges"
-    echo "✅ All ranges processed successfully"
-    echo "❌ Failed ranges: 0"
   fi
 
   # Create output file if specified, even if no logs found
@@ -239,8 +219,6 @@ cast_logs(){
   fi
 
   # Output results in order to file if specified, otherwise to stdout
-  echo ""
-  echo "🔄 Collecting and saving results..."
   local total_log_count=0
   current_from_block=$from_block
   while [ $current_from_block -le $to_block ]; do
@@ -266,31 +244,21 @@ cast_logs(){
 
   # Final summary
   echo ""
-  echo "==========================================================="
-  echo "🎉 Execution Completed!"
-  echo "==========================================================="
-  echo "📄 Total event logs collected: $total_log_count"
+  echo "✅ Found $total_log_count event logs"
   
   if [ -n "$output_file" ]; then
     if [ -f "$output_file" ]; then
       local file_size=$(wc -c < "$output_file" | tr -d '\n')
       local file_size_kb=$((file_size / 1024))
-      echo "💾 Output file: $output_file (${file_size_kb}KB)"
+      echo "💾 Saved to: $output_file (${file_size_kb}KB)"
     else
-      echo "💾 Output file: $output_file (empty)"
+      echo "💾 Saved to: $output_file (empty)"
     fi
-  else
-    echo "💾 Output: stdout"
   fi
   
   if [ $failure_count -gt 0 ]; then
-    echo ""
-    echo "⚠️  Warning: $failure_count ranges failed after retries"
-    echo "   💡 Tip: Check network connectivity or try running again"
-  else
-    echo "✨ All ranges processed successfully!"
+    echo "⚠️  Note: Some ranges failed - check network connectivity"
   fi
-  echo "==========================================================="
 
   # Cleanup
   rm -rf "$temp_dir"
@@ -323,13 +291,11 @@ convert_to_csv(){
     return 1
   fi
 
-  echo "==========================================================="
-  echo "📊 Event Log CSV Converter"
-  echo "==========================================================="
-  echo "📁 Input file: $input_file"
-  echo "🎯 Event signature: $event_signature"
-  echo "💾 Output CSV: $csv_file"
-  echo "==========================================================="
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "📊 Converting to CSV: $event_signature"
+  echo "📁 Input: $input_file"
+  echo "💾 Output: $csv_file"
 
   # Parse event signature
   local event_name=$(echo "$event_signature" | cut -d'(' -f1)
@@ -343,7 +309,7 @@ convert_to_csv(){
   
   # Count parameters
   local param_count=$(wc -l < "$temp_dir/params.txt" | tr -d ' ')
-  echo "📋 Found $param_count parameters"
+  echo "📋 Processing $param_count parameters..."
   
   # Create CSV header
   local csv_header="blockNumber,transactionHash,transactionIndex,logIndex,address"
@@ -363,7 +329,6 @@ convert_to_csv(){
   done
   
   echo "$csv_header" > "$csv_file"
-  echo "📋 CSV header created"
 
   # Process event logs
   echo "🔄 Processing event logs..."
@@ -384,8 +349,6 @@ convert_to_csv(){
     fi
     prev_start=$start_line
   done < "$temp_dir/log_starts.tmp"
-  
-  echo "📊 Found $entry_count event log entries to process"
 
   # Process each log entry
   local success_count=0
@@ -491,23 +454,14 @@ convert_to_csv(){
   done
   
   echo ""
-  echo "==========================================================="
-  echo "📊 Conversion Summary"
-  echo "==========================================================="
-  echo "📄 Total logs processed: $entry_count"
-  echo "✅ Successfully converted: $success_count"
+  echo "✅ Converted $success_count logs to CSV"
   
   if [ -f "$csv_file" ]; then
     local csv_lines=$(wc -l < "$csv_file" | tr -d ' ')
     local csv_size=$(wc -c < "$csv_file" | tr -d ' ')
     local csv_size_kb=$((csv_size / 1024))
-    echo "💾 CSV file: $csv_file"
-    echo "📊 CSV rows: $((csv_lines - 1)) (excluding header)"
-    echo "📦 File size: ${csv_size_kb}KB"
+    echo "💾 File: $csv_file (${csv_size_kb}KB, $((csv_lines - 1)) rows)"
   fi
-  
-  echo "✨ Conversion completed successfully!"
-  echo "==========================================================="
 
   # Cleanup
   rm -rf "$temp_dir"
