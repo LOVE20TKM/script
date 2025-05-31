@@ -36,7 +36,7 @@ cast_logs(){
   local to_block=${4}
   local output_file_name=${5}
 
-  local output_file="$output_dir/$output_file_name"
+  local output_file="$output_dir/$output_file_name.event"
   local current_from_block=$from_block
   local pids=()
   local temp_dir=$(mktemp -d)
@@ -113,8 +113,7 @@ cast_logs(){
             running_jobs=$maxConcurrentJobs
           fi
           
-          printf "\r🔄 Processing: %3d%% (%d/%d) | Jobs: %d" \
-            $progress $completed $total_ranges $running_jobs
+          echo "🔄 Processing: ${progress}% ($completed/$total_ranges) | Jobs: $running_jobs"
           
           last_completed=$completed
         fi
@@ -176,7 +175,7 @@ cast_logs(){
   set -m
 
   # Final progress update
-  printf "\r🔄 Processing: 100%% (%d/%d) | Completed!                    \n" $total_ranges $total_ranges
+  echo "🔄 Processing: 100% ($total_ranges/$total_ranges) | Completed!"
 
   # Analyze results
   if [ -f "$temp_dir/status.log" ]; then
@@ -335,9 +334,6 @@ convert_to_csv(){
   
   echo "$csv_header" > "$csv_file"
 
-  # Process event logs
-  echo "🔄 Processing event logs..."
-  
   # Split input file into individual log entries
   grep -n "^- address:" "$input_file" | cut -d: -f1 > "$temp_dir/log_starts.tmp"
   local line_count=$(wc -l < "$input_file" | tr -d ' ')
@@ -358,6 +354,24 @@ convert_to_csv(){
   # Process each log entry
   local success_count=0
   local error_count=0
+  
+  # Check if entry_count is 0 to avoid division by zero
+  if [ $entry_count -eq 0 ]; then
+    echo ""
+    echo "⚠️  No event logs found in the input file"
+    echo "✅ Converted 0 logs to CSV"
+    
+    if [ -f "$csv_file" ]; then
+      local csv_lines=$(wc -l < "$csv_file" | tr -d ' ')
+      local csv_size=$(wc -c < "$csv_file" | tr -d ' ')
+      local csv_size_kb=$((csv_size / 1024))
+      echo "💾 File: $csv_file (${csv_size_kb}KB, $((csv_lines - 1)) rows)"
+    fi
+
+    # Cleanup
+    rm -rf "$temp_dir"
+    return 0
+  fi
   
   for i in $(seq 0 $((entry_count - 1))); do
     local log_file="$temp_dir/log_$i.yaml"
@@ -450,15 +464,8 @@ convert_to_csv(){
       echo "$csv_row" >> "$csv_file"
       success_count=$((success_count + 1))
     fi
-    
-    # Progress indicator
-    if [ $((i % 10)) -eq 0 ] || [ $i -eq $((entry_count - 1)) ]; then
-      local progress=$((i * 100 / entry_count))
-      printf "\r🔄 Progress: %3d%% (%d/%d)" $progress $i $entry_count
-    fi
   done
   
-  echo ""
   echo "✅ Converted $success_count logs to CSV"
   
   if [ -f "$csv_file" ]; then
@@ -642,15 +649,6 @@ contract_address(){
     "random")
       echo $randomAddress
       ;;
-    "token")
-      echo $tokenAddress
-      ;;
-    "stToken")
-      echo $stTokenAddress
-      ;;
-    "slToken")
-      echo $slTokenAddress
-      ;;
     *)
       echo "❌ Error: Unknown contract name: $contract_name"
       return 1
@@ -665,7 +663,7 @@ fetch_event_logs(){
   local contract_address=$(contract_address $contract_name)
   local event_signature=$(event_signature $contract_name $event_name)
 
-  cast_logs $contract_address $event_signature $from_block $to_block "$contract_name.$event_name.event"
+  cast_logs $contract_address $event_signature $from_block $to_block "$contract_name.$event_name"
 }
 
 convert_event_logs(){
@@ -673,7 +671,7 @@ convert_event_logs(){
   local event_name=${2}
 
   local event_signature=$(event_signature $contract_name $event_name)
-  convert_to_csv "./output/$network/$contract_name.$event_name.event" "$event_signature" "$contract_name.$event_name.csv"
+  convert_to_csv "./output/$network/$contract_name.$event_name.event" "$event_signature" "$contract_name.$event_name"
 }
 
 
