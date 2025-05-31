@@ -506,6 +506,133 @@ convert_to_csv(){
   return 0
 }
 
+# 例如：contract_name=launch, event_name=DeployToken, 则返回ILOVE20Launch里的事件签名： DeployToken(address indexed tokenAddress, string tokenSymbol, address indexed parentTokenAddress, address indexed deployer)
+event_signature(){
+  local contract_name=${1}
+  local event_name=${2}
+  
+  # 参数检查
+  if [ -z "$contract_name" ] || [ -z "$event_name" ]; then
+    echo "❌ Error: contract_name and event_name are required"
+    return 1
+  fi
+  
+  # 构建接口文件路径
+  local interface_file=""
+  case "$contract_name" in
+    "launch")
+      interface_file="../../src/interfaces/ILOVE20Launch.sol"
+      ;;
+    "submit")
+      interface_file="../../src/interfaces/ILOVE20Submit.sol"
+      ;;
+    "vote")
+      interface_file="../../src/interfaces/ILOVE20Vote.sol"
+      ;;
+    "verify")
+      interface_file="../../src/interfaces/ILOVE20Verify.sol"
+      ;;
+    "stake")
+      interface_file="../../src/interfaces/ILOVE20Stake.sol"
+      ;;
+    "mint")
+      interface_file="../../src/interfaces/ILOVE20Mint.sol"
+      ;;
+    "join")
+      interface_file="../../src/interfaces/ILOVE20Join.sol"
+      ;;
+    "token")
+      interface_file="../../src/interfaces/ILOVE20Token.sol"
+      ;;
+    "tokenFactory")
+      interface_file="../../src/interfaces/ILOVE20TokenFactory.sol"
+      ;;
+    "slToken")
+      interface_file="../../src/interfaces/ILOVE20SLToken.sol"
+      ;;
+    "stToken")
+      interface_file="../../src/interfaces/ILOVE20STToken.sol"
+      ;;
+    "random")
+      interface_file="../../src/interfaces/ILOVE20Random.sol"
+      ;;
+    *)
+      echo "❌ Error: Unknown contract name: $contract_name"
+      return 1
+      ;;
+  esac
+  
+  # 检查文件是否存在
+  if [ ! -f "$interface_file" ]; then
+    echo "❌ Error: Interface file not found: $interface_file"
+    return 1
+  fi
+  
+  # 提取事件签名
+  # 首先找到事件定义行，然后提取完整的事件签名（可能跨多行）
+  local event_signature=""
+  local in_event_block=false
+  local event_line=""
+  local paren_count=0
+  
+  while IFS= read -r line; do
+    # 移除行首的空白字符
+    line=$(echo "$line" | sed 's/^ *//')
+    
+    # 检查是否找到目标事件的开始
+    if echo "$line" | grep -q "^event *$event_name *(" && [ "$in_event_block" = false ]; then
+      in_event_block=true
+      event_line="$line"
+      # 计算左括号数量
+      paren_count=$(echo "$line" | tr -cd '(' | wc -c | tr -d ' ')
+      # 计算右括号数量并减去
+      paren_count=$((paren_count - $(echo "$line" | tr -cd ')' | wc -c | tr -d ' ')))
+      
+      # 如果在同一行找到了完整的事件定义
+      if [ $paren_count -eq 0 ] && echo "$line" | grep -q ");"; then
+        event_signature="$line"
+        break
+      fi
+    elif [ "$in_event_block" = true ]; then
+      # 继续读取事件定义的后续行
+      # 如果当前行不为空，则添加到事件行中
+      if [ -n "$line" ]; then
+        if [ -n "$event_line" ]; then
+          event_line="$event_line $line"
+        else
+          event_line="$line"
+        fi
+      fi
+      # 计算括号平衡
+      paren_count=$((paren_count + $(echo "$line" | tr -cd '(' | wc -c | tr -d ' ') - $(echo "$line" | tr -cd ')' | wc -c | tr -d ' ')))
+      
+      # 如果找到了事件结束标志
+      if [ $paren_count -eq 0 ] && echo "$line" | grep -q ");"; then
+        event_signature="$event_line"
+        break
+      fi
+    fi
+  done < "$interface_file"
+  
+  # 清理事件签名
+  if [ -n "$event_signature" ]; then
+    # 移除 "event " 前缀和结尾的分号
+    event_signature=$(echo "$event_signature" | sed 's/^event *//' | sed 's/; *$//')
+    # 规范化空白字符，将多个空格替换为单个空格
+    event_signature=$(echo "$event_signature" | sed 's/  */ /g' | sed 's/^ *//;s/ *$//')
+    # 移除括号内外的多余空格
+    event_signature=$(echo "$event_signature" | sed 's/( */(/g' | sed 's/ *)/)/g')
+    # 移除参数之间的多余空格，规范化逗号后的空格
+    event_signature=$(echo "$event_signature" | sed 's/, */, /g')
+    
+    echo "$event_signature"
+    return 0
+  else
+    echo "❌ Error: Event '$event_name' not found in $interface_file"
+    return 1
+  fi
+}
+
 
 # launch
 fetch_launch_DeployToken(){
