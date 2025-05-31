@@ -1,9 +1,15 @@
+from_block=3130181
+to_block=3501132
+
+tokenAddress=$firstTokenAddress
+stTokenAddress=$(cast call $tokenAddress "stAddress()" --rpc-url $RPC_URL)
+slTokenAddress=$(cast call $tokenAddress "slAddress()" --rpc-url $RPC_URL)
+
 maxBlocksPerRequest=4000
 maxRetries=3
 maxConcurrentJobs=10
 
-from_block=3130181
-to_block=3501132
+
 
 network=$1
 if [ -z "$network" ]; then
@@ -676,6 +682,15 @@ contract_address(){
       ;;
     "random")
       echo $randomAddress
+      ;;
+    "token")
+      echo $tokenAddress
+      ;;
+    "stToken")
+      echo $stTokenAddress
+      ;;
+    "slToken")
+      echo $slTokenAddress
       ;;
     *)
       echo "❌ Error: Unknown contract name: $contract_name"
