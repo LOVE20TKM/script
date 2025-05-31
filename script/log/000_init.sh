@@ -460,6 +460,12 @@ convert_to_csv(){
           if [ -n "$value" ] && [ "$param_type" = "uint256" ] && echo "$value" | grep -q " \[.*e.*\]"; then
             value=$(echo "$value" | sed 's/ \[.*e.*\]$//')
           fi
+          
+          # Convert hexadecimal to decimal for uint256 type
+          if [ -n "$value" ] && [ "$param_type" = "uint256" ] && echo "$value" | grep -q "^0x"; then
+            # Convert hex to decimal using bash arithmetic expansion
+            value=$(echo $((value)))
+          fi
         fi
         
         # Escape CSV value
