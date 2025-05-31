@@ -506,20 +506,21 @@ convert_to_csv(){
   return 0
 }
 
+
 # launch
-event_launch_DeployToken(){
+fetch_launch_DeployToken(){
   local from_block=${1}
   local to_block=${2}
   cast_logs $launchAddress "DeployToken(address indexed tokenAddress, string tokenSymbol, address indexed parentTokenAddress, address indexed deployer)" $from_block $to_block "launch_DeployToken.event"
 }
 
-event_launch_Contribute(){
+fetch_launch_Contribute(){
   local from_block=${1}
   local to_block=${2}
   cast_logs $launchAddress "Contribute(address indexed tokenAddress, address indexed contributor, uint256 amount, uint256 totalContributed, uint256 participantCount)" $from_block $to_block "launch_Contribute.event"
 }
 
-event_launch_Withdraw(){
+fetch_launch_Withdraw(){
   local from_block=${1}
   local to_block=${2}
   cast_logs $launchAddress "Withdraw(address indexed tokenAddress, address indexed contributor, uint256 amount)" $from_block $to_block "launch_Withdraw.event"
