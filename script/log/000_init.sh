@@ -2,6 +2,9 @@ maxBlocksPerRequest=4000
 maxRetries=3
 maxConcurrentJobs=10
 
+from_block=3130181
+to_block=3501132
+
 network=$1
 if [ -z "$network" ]; then
   echo "Network parameter is required."
@@ -634,34 +637,71 @@ event_signature(){
 }
 
 
-# launch
-fetch_launch_DeployToken(){
-  local from_block=${1}
-  local to_block=${2}
-  cast_logs $launchAddress "DeployToken(address indexed tokenAddress, string tokenSymbol, address indexed parentTokenAddress, address indexed deployer)" $from_block $to_block "launch_DeployToken.event"
+contract_address(){
+  local contract_name=${1}
+
+  case "$contract_name" in
+    "launch")
+      echo $launchAddress
+      ;;
+    "submit")
+      echo $submitAddress
+      ;;
+    "vote")
+      echo $voteAddress
+      ;;
+    "verify")
+      echo $verifyAddress
+      ;;
+    "stake")
+      echo $stakeAddress
+      ;;
+    "mint")
+      echo $mintAddress
+      ;;
+    "join")
+      echo $joinAddress
+      ;;
+    "token")
+      echo $tokenAddress
+      ;;
+    "tokenFactory")
+      echo $tokenFactoryAddress
+      ;;
+    "slToken")
+      echo $slTokenAddress
+      ;;
+    "stToken")
+      echo $stTokenAddress
+      ;;
+    "random")
+      echo $randomAddress
+      ;;
+    *)
+      echo "❌ Error: Unknown contract name: $contract_name"
+      return 1
+      ;;
+  esac
 }
 
-fetch_launch_Contribute(){
-  local from_block=${1}
-  local to_block=${2}
-  cast_logs $launchAddress "Contribute(address indexed tokenAddress, address indexed contributor, uint256 amount, uint256 totalContributed, uint256 participantCount)" $from_block $to_block "launch_Contribute.event"
+fetch_event_logs(){
+  local contract_name=${1}
+  local event_name=${2}
+
+  local contract_address=$(contract_address $contract_name)
+  local event_signature=$(event_signature $contract_name $event_name)
+
+  cast_logs $contract_address $event_signature $from_block $to_block "$contract_name.$event_name.event"
 }
 
-fetch_launch_Withdraw(){
-  local from_block=${1}
-  local to_block=${2}
-  cast_logs $launchAddress "Withdraw(address indexed tokenAddress, address indexed contributor, uint256 amount)" $from_block $to_block "launch_Withdraw.event"
+convert_event_logs(){
+  local contract_name=${1}
+  local event_name=${2}
+
+  local event_signature=$(event_signature $contract_name $event_name)
+  convert_to_csv "./output/$network/$contract_name.$event_name.event" "$event_signature" "$contract_name.$event_name.csv"
 }
 
 
-convert_launch_DeployToken(){
-  convert_to_csv "./output/$network/launch_DeployToken.event" "DeployToken(address indexed tokenAddress, string tokenSymbol, address indexed parentTokenAddress, address indexed deployer)" "launch_DeployToken"
-}
 
-convert_launch_Contribute(){
-  convert_to_csv "./output/$network/launch_Contribute.event" "Contribute(address indexed tokenAddress, address indexed contributor, uint256 amount, uint256 totalContributed, uint256 participantCount)" "launch_Contribute"
-}
 
-convert_launch_Withdraw(){
-  convert_to_csv "./output/$network/launch_Withdraw.event" "Withdraw(address indexed tokenAddress, address indexed contributor, uint256 amount)" "launch_Withdraw"
-}
