@@ -19,12 +19,18 @@ fetch_event_logs "launch" "LaunchEnd"
 fetch_event_logs "tokenFactory" "TokenCreate"
 
 # token - 代币操作
+fetch_event_logs "token" "Mint"
+fetch_event_logs "token" "Burn"
 fetch_event_logs "token" "BurnForParentToken"
 
 # slToken - 流动性代币操作
 fetch_event_logs "slToken" "TokenMint"
 fetch_event_logs "slToken" "TokenBurn"
 fetch_event_logs "slToken" "FeeWithdraw"
+
+# stToken - 质押代币操作
+fetch_event_logs "stToken" "TokenMint"
+fetch_event_logs "stToken" "TokenBurn"
 
 # stake - 质押操作
 fetch_event_logs "stake" "StakeLiquidity"

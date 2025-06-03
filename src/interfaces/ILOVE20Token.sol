@@ -5,6 +5,8 @@ import {IERC20} from "../../lib/openzeppelin-contracts/contracts/token/ERC20/IER
 import {IERC20Metadata} from "../../lib/openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 interface ILOVE20TokenEvents {
+    event TokenMint(address indexed to, uint256 amount);
+    event TokenBurn(address indexed from, uint256 amount);
     event BurnForParentToken(
         address indexed burner,
         uint256 burnAmount,

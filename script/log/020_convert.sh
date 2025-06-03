@@ -12,12 +12,18 @@ convert_event_logs "launch" "LaunchEnd"
 convert_event_logs "tokenFactory" "TokenCreate"
 
 # token - 代币操作
+convert_event_logs "token" "Mint"
+convert_event_logs "token" "Burn"
 convert_event_logs "token" "BurnForParentToken"
 
 # slToken - 流动性代币操作
 convert_event_logs "slToken" "TokenMint"
 convert_event_logs "slToken" "TokenBurn"
 convert_event_logs "slToken" "FeeWithdraw"
+
+# stToken - 质押代币操作
+convert_event_logs "stToken" "TokenMint"
+convert_event_logs "stToken" "TokenBurn"
 
 # stake - 质押操作
 convert_event_logs "stake" "StakeLiquidity"
