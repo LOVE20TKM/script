@@ -42,6 +42,7 @@ convert_event_logs "vote" "Vote"
 convert_event_logs "join" "Join"
 convert_event_logs "join" "Withdraw"
 convert_event_logs "join" "UpdateVerificationInfo"
+convert_event_logs "join" "PrepareRandomAccounts"
 
 # verify - 验证
 convert_event_logs "verify" "Verify"

@@ -49,6 +49,7 @@ fetch_event_logs "vote" "Vote"
 fetch_event_logs "join" "Join"
 fetch_event_logs "join" "Withdraw"
 fetch_event_logs "join" "UpdateVerificationInfo"
+fetch_event_logs "join" "PrepareRandomAccounts"
 
 # verify - 验证
 fetch_event_logs "verify" "Verify"

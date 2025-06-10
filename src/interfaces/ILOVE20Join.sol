@@ -29,6 +29,13 @@ interface ILOVE20JoinEvents {
         uint256 round,
         string verificationInfo
     );
+
+    event PrepareRandomAccounts(
+        address indexed tokenAddress,
+        uint256 indexed round,
+        uint256 indexed actionId,
+        address[] accounts
+    );
 }
 interface ILOVE20JoinErrors {
     // Custom errors
