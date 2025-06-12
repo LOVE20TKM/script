@@ -1,5 +1,11 @@
-from_block=3130181
-to_block=3501132
+from_block=3939811
+to_block=4126414
+
+network=$1
+if [ -z "$network" ]; then
+  echo "Network parameter is required."
+  return 1
+fi
 
 
 source ../network/$network/address.params 
@@ -15,11 +21,6 @@ maxConcurrentJobs=10
 
 
 
-network=$1
-if [ -z "$network" ]; then
-  echo "Network parameter is required."
-  return 1
-fi
 
 output_dir="./output/$network"
 
