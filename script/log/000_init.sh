@@ -1,5 +1,5 @@
 from_block=3939811
-to_block=4126414
+to_block=4365768
 
 network=$1
 if [ -z "$network" ]; then
@@ -692,6 +692,37 @@ convert_event_logs(){
 
   local event_signature=$(event_signature $contract_name $event_name)
   convert_to_csv "./output/$network/$contract_name.$event_name.event" "$event_signature" "$contract_name.$event_name"
+}
+
+process_event(){
+  local contract_name=${1}
+  local event_name=${2}
+
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "🚀 Processing: $contract_name.$event_name"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+  # Step 1: Fetch event logs
+  echo "📡 Step 1: Fetching event logs..."
+  if fetch_event_logs "$contract_name" "$event_name"; then
+    echo "✅ Fetch completed successfully"
+    
+    # Step 2: Convert to CSV
+    echo ""
+    echo "🔄 Step 2: Converting to CSV..."
+    if convert_event_logs "$contract_name" "$event_name"; then
+      echo "✅ Conversion completed successfully"
+      echo ""
+      echo "🎉 Processing completed: $contract_name.$event_name"
+    else
+      echo "❌ Conversion failed for: $contract_name.$event_name"
+      return 1
+    fi
+  else
+    echo "❌ Fetch failed for: $contract_name.$event_name"
+    return 1
+  fi
 }
 
 
