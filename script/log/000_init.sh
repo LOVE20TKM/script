@@ -1,5 +1,6 @@
 from_block=3939811
-to_block=4365768
+# cast block-number --rpc-url $RPC_URL
+to_block=4366177
 
 network=$1
 if [ -z "$network" ]; then
