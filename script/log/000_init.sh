@@ -1,7 +1,3 @@
-from_block=3939811
-# cast block-number --rpc-url $RPC_URL
-to_block=4366177
-
 network=$1
 if [ -z "$network" ]; then
   echo "Network parameter is required."
@@ -11,6 +7,9 @@ fi
 
 source ../network/$network/address.params 
 source ../network/$network/network.params
+
+from_block=3939811
+to_block=$(cast block-number --rpc-url $RPC_URL)
 
 tokenAddress=$firstTokenAddress
 stTokenAddress=$(cast call $tokenAddress "stAddress()" --rpc-url $RPC_URL)
