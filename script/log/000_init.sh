@@ -501,6 +501,160 @@ convert_to_csv(){
   return 0
 }
 
+# Convert CSV file to XLSX format using Python pandas
+# Parameters: csv_file_path
+# Returns: 0 on success, 1 on failure
+csv_to_xlsx(){
+  local csv_file=${1}
+  
+  # Parameter check
+  if [ -z "$csv_file" ]; then
+    echo "❌ Error: CSV file path is required"
+    return 1
+  fi
+  
+  # Check if input CSV file exists
+  if [ ! -f "$csv_file" ]; then
+    echo "❌ Error: CSV file not found: $csv_file"
+    return 1
+  fi
+  
+  # Generate XLSX file path (same name but with .xlsx extension)
+  local xlsx_file="${csv_file%.csv}.xlsx"
+  
+  # Check if XLSX file already exists
+  if [ -f "$xlsx_file" ]; then
+    echo "❌ Error: XLSX file already exists: $xlsx_file"
+    return 1
+  fi
+  
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "📊 Converting CSV to XLSX"
+  echo "📁 Input: $csv_file"
+  echo "💾 Output: $xlsx_file"
+  
+  # Check if Python is available
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "❌ Error: Python3 is not installed or not in PATH"
+    return 1
+  fi
+  
+  # Create temporary Python script
+  local temp_dir=$(mktemp -d)
+  local python_script="$temp_dir/csv_to_xlsx.py"
+  
+  cat > "$python_script" << 'EOF'
+import sys
+import pandas as pd
+from pathlib import Path
+
+def main():
+    if len(sys.argv) != 3:
+        print("❌ Error: Usage: python script.py <input_csv> <output_xlsx>")
+        sys.exit(1)
+    
+    input_csv = sys.argv[1]
+    output_xlsx = sys.argv[2]
+    
+    try:
+        # Read CSV file
+        df = pd.read_csv(input_csv)
+        
+        # Write to XLSX with formatting
+        with pd.ExcelWriter(output_xlsx, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Data')
+            
+            # Get the workbook and worksheet
+            workbook = writer.book
+            worksheet = writer.sheets['Data']
+            
+            # Auto-adjust column widths
+            for column in worksheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                
+                adjusted_width = min(max_length + 2, 50)  # Cap at 50 characters
+                worksheet.column_dimensions[column_letter].width = adjusted_width
+            
+            # Apply header formatting
+            from openpyxl.styles import PatternFill, Font
+            header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+            header_font = Font(color="FFFFFF", bold=True)
+            
+            for cell in worksheet[1]:
+                cell.fill = header_fill
+                cell.font = header_font
+        
+        print(f"✅ Successfully converted {len(df)} rows")
+        
+    except ImportError as e:
+        if 'pandas' in str(e):
+            print("❌ Error: pandas library is not installed. Please install it with: pip3 install pandas")
+        elif 'openpyxl' in str(e):
+            print("❌ Error: openpyxl library is not installed. Please install it with: pip3 install openpyxl")
+        else:
+            print(f"❌ Error: Missing required library: {e}")
+        sys.exit(1)
+        
+    except pd.errors.EmptyDataError:
+        print("❌ Error: CSV file is empty or has no data")
+        sys.exit(1)
+        
+    except pd.errors.ParserError as e:
+        print(f"❌ Error: Failed to parse CSV file: {e}")
+        sys.exit(1)
+        
+    except Exception as e:
+        print(f"❌ Error: Conversion failed: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+EOF
+  
+  # Run Python script
+  echo "🔄 Converting CSV to XLSX..."
+  
+  local python_output
+  python_output=$(python3 "$python_script" "$csv_file" "$xlsx_file" 2>&1)
+  local python_exit_code=$?
+  
+  if [ $python_exit_code -eq 0 ]; then
+    echo "$python_output"
+    
+    # Display file information
+    if [ -f "$xlsx_file" ]; then
+      local xlsx_size=$(wc -c < "$xlsx_file" | tr -d ' ')
+      local xlsx_size_kb=$((xlsx_size / 1024))
+      local csv_lines=$(wc -l < "$csv_file" | tr -d ' ')
+      echo "💾 File: $xlsx_file (${xlsx_size_kb}KB, $((csv_lines - 1)) rows)"
+      echo "✅ CSV to XLSX conversion completed successfully"
+    else
+      echo "❌ Error: XLSX file was not created"
+      rm -rf "$temp_dir"
+      return 1
+    fi
+  else
+    echo "$python_output"
+    echo "❌ Error: Python script failed"
+    rm -rf "$temp_dir"
+    return 1
+  fi
+  
+  # Cleanup
+  rm -rf "$temp_dir"
+  
+  return 0
+}
+
 # Extract event signature from interface file
 # Parameters: interface_file_path, event_name
 # Returns: cleaned event signature without "event" prefix
@@ -723,6 +877,7 @@ convert_event_logs(){
 
   local event_signature=$(event_signature $contract_name $event_name)
   convert_to_csv "./output/$network/$contract_name.$event_name.event" "$event_signature" "$contract_name.$event_name"
+  csv_to_xlsx "./output/$network/$contract_name.$event_name.csv"
 }
 
 process_event(){
@@ -741,7 +896,7 @@ process_event(){
     
     # Step 2: Convert to CSV
     echo ""
-    echo "🔄 Step 2: Converting to CSV..."
+    echo "🔄 Step 2: Converting to CSV and XLSX..."
     if convert_event_logs "$contract_name" "$event_name"; then
       echo "✅ Conversion completed successfully"
       echo ""
@@ -803,6 +958,7 @@ convert_pair_event_logs(){
   local event_signature=$(extract_event_signature_from_file "../../src/interfaces/IUniswapV2Pair.sol" "$event_name")
   
   convert_to_csv "./output/$network/$contract_name.$event_name.event" "$event_signature" "$contract_name.$event_name"
+  csv_to_xlsx "./output/$network/$contract_name.$event_name.csv"
 }
 
 process_pair_event(){
@@ -824,7 +980,7 @@ process_pair_event(){
     
     # Step 2: Convert to CSV
     echo ""
-    echo "🔄 Step 2: Converting to CSV..."
+    echo "🔄 Step 2: Converting to CSV and XLSX..."
     if convert_pair_event_logs "$token0" "$token1" "$event_name"; then
       echo "✅ Conversion completed successfully"
       echo ""
