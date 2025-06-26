@@ -69,6 +69,10 @@ process_event "mint" "BurnBoostReward"
 # random - 随机数更新（贯穿整个流程）
 process_event "random" "RandomSeedUpdate"
 
+# erc20 - ERC20标准事件（代币转账和授权）
+process_event "erc20" "Transfer"
+process_event "erc20" "Approval"
+
 echo ""
 echo "🎉 All event log processing completed!"
 echo "📊 Check the output directory for both .event and .csv files:"

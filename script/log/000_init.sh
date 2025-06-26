@@ -551,6 +551,9 @@ event_signature(){
     "random")
       interface_file="../../src/interfaces/ILOVE20Random.sol"
       ;;
+    "erc20")
+      interface_file="../../src/interfaces/IERC20.sol"
+      ;;
     *)
       echo "❌ Error: Unknown contract name: $contract_name"
       return 1
@@ -668,6 +671,9 @@ contract_address(){
       ;;
     "random")
       echo $randomAddress
+      ;;
+    "erc20")
+      echo $tokenAddress
       ;;
     *)
       echo "❌ Error: Unknown contract name: $contract_name"
