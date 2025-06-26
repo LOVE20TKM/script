@@ -73,6 +73,9 @@ process_event "random" "RandomSeedUpdate"
 process_event "erc20" "Transfer"
 process_event "erc20" "Approval"
 
+# uniswapV2Factory - UniswapV2工厂合约事件（创建交易对）
+process_event "uniswapV2Factory" "PairCreated"
+
 echo ""
 echo "🎉 All event log processing completed!"
 echo "📊 Check the output directory for both .event and .csv files:"

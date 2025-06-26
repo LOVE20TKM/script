@@ -554,6 +554,9 @@ event_signature(){
     "erc20")
       interface_file="../../src/interfaces/IERC20.sol"
       ;;
+    "uniswapV2Factory")
+      interface_file="../../src/interfaces/IUniswapV2Factory.sol"
+      ;;
     *)
       echo "❌ Error: Unknown contract name: $contract_name"
       return 1
@@ -674,6 +677,9 @@ contract_address(){
       ;;
     "erc20")
       echo $tokenAddress
+      ;;
+    "uniswapV2Factory")
+      echo $uniswapV2FactoryAddress
       ;;
     *)
       echo "❌ Error: Unknown contract name: $contract_name"
