@@ -81,3 +81,10 @@ echo "🎉 All event log processing completed!"
 echo "📊 Check the output directory for both .event and .csv files:"
 echo "   • *.event files contain raw event logs"
 echo "   • *.csv files contain structured data ready for analysis"
+
+# uniswapV2Pair - UniswapV2交易对合约事件（交易对创建和交易）
+process_pair_event $tokenAddress $rootParentTokenAddress "Transfer"
+process_pair_event $tokenAddress $rootParentTokenAddress "Sync"
+process_pair_event $tokenAddress $rootParentTokenAddress "Mint"
+process_pair_event $tokenAddress $rootParentTokenAddress "Burn"
+process_pair_event $tokenAddress $rootParentTokenAddress "Swap"

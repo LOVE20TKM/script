@@ -501,67 +501,18 @@ convert_to_csv(){
   return 0
 }
 
-# 例如：contract_name=launch, event_name=DeployToken, 则返回ILOVE20Launch里的事件签名： DeployToken(address indexed tokenAddress, string tokenSymbol, address indexed parentTokenAddress, address indexed deployer)
-event_signature(){
-  local contract_name=${1}
+# Extract event signature from interface file
+# Parameters: interface_file_path, event_name
+# Returns: cleaned event signature without "event" prefix
+extract_event_signature_from_file(){
+  local interface_file=${1}
   local event_name=${2}
   
   # 参数检查
-  if [ -z "$contract_name" ] || [ -z "$event_name" ]; then
-    echo "❌ Error: contract_name and event_name are required"
+  if [ -z "$interface_file" ] || [ -z "$event_name" ]; then
+    echo "❌ Error: interface_file and event_name are required"
     return 1
   fi
-  
-  # 构建接口文件路径
-  local interface_file=""
-  case "$contract_name" in
-    "launch")
-      interface_file="../../src/interfaces/ILOVE20Launch.sol"
-      ;;
-    "submit")
-      interface_file="../../src/interfaces/ILOVE20Submit.sol"
-      ;;
-    "vote")
-      interface_file="../../src/interfaces/ILOVE20Vote.sol"
-      ;;
-    "verify")
-      interface_file="../../src/interfaces/ILOVE20Verify.sol"
-      ;;
-    "stake")
-      interface_file="../../src/interfaces/ILOVE20Stake.sol"
-      ;;
-    "mint")
-      interface_file="../../src/interfaces/ILOVE20Mint.sol"
-      ;;
-    "join")
-      interface_file="../../src/interfaces/ILOVE20Join.sol"
-      ;;
-    "token")
-      interface_file="../../src/interfaces/ILOVE20Token.sol"
-      ;;
-    "tokenFactory")
-      interface_file="../../src/interfaces/ILOVE20TokenFactory.sol"
-      ;;
-    "slToken")
-      interface_file="../../src/interfaces/ILOVE20SLToken.sol"
-      ;;
-    "stToken")
-      interface_file="../../src/interfaces/ILOVE20STToken.sol"
-      ;;
-    "random")
-      interface_file="../../src/interfaces/ILOVE20Random.sol"
-      ;;
-    "erc20")
-      interface_file="../../src/interfaces/IERC20.sol"
-      ;;
-    "uniswapV2Factory")
-      interface_file="../../src/interfaces/IUniswapV2Factory.sol"
-      ;;
-    *)
-      echo "❌ Error: Unknown contract name: $contract_name"
-      return 1
-      ;;
-  esac
   
   # 检查文件是否存在
   if [ ! -f "$interface_file" ]; then
@@ -634,6 +585,72 @@ event_signature(){
   fi
 }
 
+# 例如：contract_name=launch, event_name=DeployToken, 则返回ILOVE20Launch里的事件签名： DeployToken(address indexed tokenAddress, string tokenSymbol, address indexed parentTokenAddress, address indexed deployer)
+event_signature(){
+  local contract_name=${1}
+  local event_name=${2}
+  
+  # 参数检查
+  if [ -z "$contract_name" ] || [ -z "$event_name" ]; then
+    echo "❌ Error: contract_name and event_name are required"
+    return 1
+  fi
+  
+  # 构建接口文件路径
+  local interface_file=""
+  case "$contract_name" in
+    "launch")
+      interface_file="../../src/interfaces/ILOVE20Launch.sol"
+      ;;
+    "submit")
+      interface_file="../../src/interfaces/ILOVE20Submit.sol"
+      ;;
+    "vote")
+      interface_file="../../src/interfaces/ILOVE20Vote.sol"
+      ;;
+    "verify")
+      interface_file="../../src/interfaces/ILOVE20Verify.sol"
+      ;;
+    "stake")
+      interface_file="../../src/interfaces/ILOVE20Stake.sol"
+      ;;
+    "mint")
+      interface_file="../../src/interfaces/ILOVE20Mint.sol"
+      ;;
+    "join")
+      interface_file="../../src/interfaces/ILOVE20Join.sol"
+      ;;
+    "token")
+      interface_file="../../src/interfaces/ILOVE20Token.sol"
+      ;;
+    "tokenFactory")
+      interface_file="../../src/interfaces/ILOVE20TokenFactory.sol"
+      ;;
+    "slToken")
+      interface_file="../../src/interfaces/ILOVE20SLToken.sol"
+      ;;
+    "stToken")
+      interface_file="../../src/interfaces/ILOVE20STToken.sol"
+      ;;
+    "random")
+      interface_file="../../src/interfaces/ILOVE20Random.sol"
+      ;;
+    "erc20")
+      interface_file="../../src/interfaces/IERC20.sol"
+      ;;
+    "uniswapV2Factory")
+      interface_file="../../src/interfaces/IUniswapV2Factory.sol"
+      ;;
+    *)
+      echo "❌ Error: Unknown contract name: $contract_name"
+      return 1
+      ;;
+  esac
+  
+  # 调用新的函数来提取事件签名
+  extract_event_signature_from_file "$interface_file" "$event_name"
+}
+
 
 contract_address(){
   local contract_name=${1}
@@ -688,6 +705,8 @@ contract_address(){
   esac
 }
 
+
+
 fetch_event_logs(){
   local contract_name=${1}
   local event_name=${2}
@@ -737,6 +756,88 @@ process_event(){
   fi
 }
 
+# 获取token0和token1的pair地址
+contract_pair_address(){
+  local token0=${1}
+  local token1=${2}
+
+  local pairAddress=$(cast call $uniswapV2FactoryAddress "getPair(address,address)" $token0 $token1 --rpc-url $RPC_URL)
+
+  # 去掉多于的前缀0，如果 0x 前缀不存在，则补充 0x 前缀
+  pairAddress=$(echo "$pairAddress" | sed 's/^0x0*//')
+  if echo "$pairAddress" | grep -q "^0x"; then
+    echo "$pairAddress"
+  else
+    echo "0x$pairAddress"
+  fi
+}
+
+contract_pair_name(){
+  local token0=${1}
+  local token1=${2}
+  echo "pair.$token0.$token1"
+}
+
+fetch_pair_event_logs(){
+  local token0=${1}
+  local token1=${2}
+  local event_name=${3}
+
+  local contract_address=$(contract_pair_address $token0 $token1)
+  local contract_name=$(contract_pair_name $token0 $token1)
+  
+  # For pair contracts, use IUniswapV2Pair interface
+  local event_signature=$(extract_event_signature_from_file "../../src/interfaces/IUniswapV2Pair.sol" "$event_name")
+
+  cast_logs $contract_address $event_signature $from_block $to_block "$contract_name.$event_name"
+}
+
+convert_pair_event_logs(){
+  local token0=${1}
+  local token1=${2}
+  local event_name=${3}
+
+  local contract_name=$(contract_pair_name $token0 $token1)
+  
+  # For pair contracts, use IUniswapV2Pair interface
+  local event_signature=$(extract_event_signature_from_file "../../src/interfaces/IUniswapV2Pair.sol" "$event_name")
+  
+  convert_to_csv "./output/$network/$contract_name.$event_name.event" "$event_signature" "$contract_name.$event_name"
+}
+
+process_pair_event(){
+  local token0=${1}
+  local token1=${2}
+  local event_name=${3}
+
+  local contract_name=$(contract_pair_name $token0 $token1)
+
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "🚀 Processing: $contract_name.$event_name"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+  # Step 1: Fetch event logs
+  echo "📡 Step 1: Fetching event logs..."
+  if fetch_pair_event_logs "$token0" "$token1" "$event_name"; then
+    echo "✅ Fetch completed successfully"
+    
+    # Step 2: Convert to CSV
+    echo ""
+    echo "🔄 Step 2: Converting to CSV..."
+    if convert_pair_event_logs "$token0" "$token1" "$event_name"; then
+      echo "✅ Conversion completed successfully"
+      echo ""
+      echo "🎉 Processing completed: $contract_name.$event_name"
+    else
+      echo "❌ Conversion failed for: $contract_name.$event_name"
+      return 1
+    fi
+  else
+    echo "❌ Fetch failed for: $contract_name.$event_name"
+    return 1
+  fi
+}
 
 
 
