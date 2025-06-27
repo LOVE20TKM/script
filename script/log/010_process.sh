@@ -24,8 +24,8 @@ process_event "launch" "LaunchEnd"
 process_event "tokenFactory" "TokenCreate"
 
 # token - 代币操作
-process_event "token" "Mint"
-process_event "token" "Burn"
+process_event "token" "TokenMint"
+process_event "token" "TokenBurn"
 process_event "token" "BurnForParentToken"
 
 # slToken - 流动性代币操作
@@ -76,15 +76,15 @@ process_event "erc20" "Approval"
 # uniswapV2Factory - UniswapV2工厂合约事件（创建交易对）
 process_event "uniswapV2Factory" "PairCreated"
 
-echo ""
-echo "🎉 All event log processing completed!"
-echo "📊 Check the output directory for both .event and .csv files:"
-echo "   • *.event files contain raw event logs"
-echo "   • *.csv files contain structured data ready for analysis"
-
 # uniswapV2Pair - UniswapV2交易对合约事件（交易对创建和交易）
 process_pair_event $tokenAddress $rootParentTokenAddress "Transfer"
 process_pair_event $tokenAddress $rootParentTokenAddress "Sync"
 process_pair_event $tokenAddress $rootParentTokenAddress "Mint"
 process_pair_event $tokenAddress $rootParentTokenAddress "Burn"
 process_pair_event $tokenAddress $rootParentTokenAddress "Swap"
+
+echo ""
+echo "🎉 All event log processing completed!"
+echo "📊 Check the output directory for both .event and .csv files:"
+echo "   • *.event files contain raw event logs"
+echo "   • *.csv files contain structured data ready for analysis"
