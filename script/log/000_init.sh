@@ -11,9 +11,28 @@ source ../network/$network/network.params
 from_block=3939811
 to_block=$(cast block-number --rpc-url $RPC_URL)
 
+normalize_address() {
+    # 如果有参数，使用参数；否则从标准输入读取
+    local address
+    if [ $# -gt 0 ]; then
+        address=$1
+    else
+        read address
+    fi
+    
+    # 去掉 0x 前缀
+    address=${address#0x}
+    
+    # 取最后40个字符（20字节地址）
+    address=${address: -40}
+    
+    # 重新添加 0x 前缀
+    echo "0x$address"
+}
+
 tokenAddress=$firstTokenAddress
-stTokenAddress=$(cast call $tokenAddress "stAddress()" --rpc-url $RPC_URL)
-slTokenAddress=$(cast call $tokenAddress "slAddress()" --rpc-url $RPC_URL)
+stTokenAddress=$(cast call $tokenAddress "stAddress()" --rpc-url $RPC_URL | normalize_address)
+slTokenAddress=$(cast call $tokenAddress "slAddress()" --rpc-url $RPC_URL | normalize_address)
 
 maxBlocksPerRequest=4000
 maxRetries=3
