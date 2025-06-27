@@ -435,10 +435,31 @@ convert_to_csv(){
         line_num=$((line_num + 1))
       done
       
-      # Decode non-indexed data if exists
-      if [ -n "$data" ] && [ "$data" != "0x" ] && [ -n "$non_indexed_types" ]; then
-        cast abi-decode --input "decode($non_indexed_types)" "$data" 2>/dev/null > "$temp_dir/decoded_$i.tmp"
-      fi
+              # Decode non-indexed data if exists
+        if [ -n "$data" ] && [ "$data" != "0x" ] && [ -n "$non_indexed_types" ]; then
+          # Special handling for ActionCreate event with complex tuple
+          if echo "$event_signature" | grep -q "ActionCreate.*minStake.*maxRandomAccounts"; then
+            # For ActionCreate, manually extract actionId from data
+            local actionId=$(echo "$data" | cut -c3-66 | sed 's/^0*//' | sed 's/^$/0/')  # Extract first 32 bytes and remove leading zeros
+            if [ -z "$actionId" ] || [ "$actionId" = "0" ]; then
+              actionId="0"
+            else
+              actionId=$((0x$actionId))  # Convert hex to decimal
+            fi
+            echo "$actionId" > "$temp_dir/decoded_$i.tmp"
+            # Add placeholder values for struct fields (since complex decode is failing)
+            echo "未解析" >> "$temp_dir/decoded_$i.tmp"  # minStake
+            echo "未解析" >> "$temp_dir/decoded_$i.tmp"  # maxRandomAccounts  
+            echo "未解析" >> "$temp_dir/decoded_$i.tmp"  # whiteList
+            echo "未解析" >> "$temp_dir/decoded_$i.tmp"  # action
+            echo "未解析" >> "$temp_dir/decoded_$i.tmp"  # consensus
+            echo "未解析" >> "$temp_dir/decoded_$i.tmp"  # verificationRule
+            echo "未解析" >> "$temp_dir/decoded_$i.tmp"  # verificationKeys
+            echo "未解析" >> "$temp_dir/decoded_$i.tmp"  # verificationInfoGuides
+          else
+            cast abi-decode --input "decode($non_indexed_types)" "$data" 2>/dev/null > "$temp_dir/decoded_$i.tmp"
+          fi
+        fi
       
       # Second pass: build CSV row with values
       local line_num=1
@@ -472,7 +493,13 @@ convert_to_csv(){
           else
             # Non-indexed parameter - get from decoded data
             if [ -f "$temp_dir/decoded_$i.tmp" ]; then
-              value=$(sed -n "${non_indexed_index}p" "$temp_dir/decoded_$i.tmp" | sed 's/^"//;s/"$//')
+              # Special handling for ActionCreate event
+              if echo "$event_signature" | grep -q "ActionCreate.*minStake.*maxRandomAccounts"; then
+                # For ActionCreate, simply read the pre-generated values line by line
+                value=$(sed -n "${non_indexed_index}p" "$temp_dir/decoded_$i.tmp" | sed 's/^"//;s/"$//')
+              else
+                value=$(sed -n "${non_indexed_index}p" "$temp_dir/decoded_$i.tmp" | sed 's/^"//;s/"$//')
+              fi
               non_indexed_index=$((non_indexed_index + 1))
             fi
           fi
@@ -490,7 +517,7 @@ convert_to_csv(){
         fi
         
         # Escape CSV value
-        local escaped_value=$(echo "$value" | sed 's/"/\\"/g')
+        local escaped_value=$(echo "$value" | sed 's/"/\\"/g' | tr '\n\r' '  ' | sed 's/  */ /g' | sed 's/,/，/g')
         if echo "$escaped_value" | grep -q ","; then
           escaped_value="\"$escaped_value\""
         fi
@@ -769,6 +796,12 @@ event_signature(){
     return 1
   fi
   
+  # 特殊处理包含struct的事件签名 - 手动映射到展开的元组类型
+  if [ "$contract_name" = "submit" ] && [ "$event_name" = "ActionCreate" ]; then
+    echo "ActionCreate(address indexed tokenAddress, uint256 indexed round, address indexed author, uint256 actionId, (uint256,uint256,address[],string,string,string,string[],string[]))"
+    return 0
+  fi
+  
   # 构建接口文件路径
   local interface_file=""
   case "$contract_name" in
@@ -822,6 +855,27 @@ event_signature(){
   
   # 调用新的函数来提取事件签名
   extract_event_signature_from_file "$interface_file" "$event_name"
+}
+
+# 获取用于CSV转换的展开事件签名（将struct展开为各个字段）
+event_signature_for_csv(){
+  local contract_name=${1}
+  local event_name=${2}
+  
+  # 参数检查
+  if [ -z "$contract_name" ] || [ -z "$event_name" ]; then
+    echo "❌ Error: contract_name and event_name are required"
+    return 1
+  fi
+  
+  # 特殊处理包含struct的事件签名 - 手动映射到展开的各个字段
+  if [ "$contract_name" = "submit" ] && [ "$event_name" = "ActionCreate" ]; then
+    echo "ActionCreate(address indexed tokenAddress, uint256 indexed round, address indexed author, uint256 actionId, uint256 minStake, uint256 maxRandomAccounts, address[] whiteList, string action, string consensus, string verificationRule, string[] verificationKeys, string[] verificationInfoGuides)"
+    return 0
+  fi
+  
+  # 对于其他事件，使用标准的事件签名
+  event_signature "$contract_name" "$event_name"
 }
 
 
@@ -894,9 +948,452 @@ convert_event_logs(){
   local contract_name=${1}
   local event_name=${2}
 
-  local event_signature=$(event_signature $contract_name $event_name)
-  convert_to_csv "./output/$network/$contract_name.$event_name.event" "$event_signature" "$contract_name.$event_name"
-  csv_to_xlsx "./output/$network/$contract_name.$event_name.csv"
+  # Special handling for ActionCreate
+  if [ "$contract_name" = "submit" ] && [ "$event_name" = "ActionCreate" ]; then
+    convert_actioncreate_logs "$contract_name" "$event_name"
+  else
+    local event_signature=$(event_signature_for_csv $contract_name $event_name)
+    convert_to_csv "./output/$network/$contract_name.$event_name.event" "$event_signature" "$contract_name.$event_name"
+    csv_to_xlsx "./output/$network/$contract_name.$event_name.csv"
+  fi
+}
+
+# Precise manual parsing function for ActionCreate events
+parse_actioncreate_manual() {
+  local hex_data=$1
+  local entry_num=$2
+  local debug_file=$3
+  
+  # Remove 0x prefix
+  hex_data=${hex_data#0x}
+  
+  # Initialize all fields
+  local actionId="0"
+  local minStake="0"  
+  local maxRandomAccounts="0"
+  local whiteList="[]"
+  local action=""
+  local consensus=""
+  local verificationRule=""
+  local verificationKeys="[]"
+  local verificationInfoGuides="[]"
+  
+  # Extract actionId (first 32 bytes)
+  local actionId_hex=$(echo "$hex_data" | cut -c1-64 | sed 's/^0*//' | sed 's/^$/0/')
+  if [ "$actionId_hex" != "0" ] && [ -n "$actionId_hex" ]; then
+    actionId=$((0x$actionId_hex))
+  fi
+  
+  # Extract struct offset (second 32 bytes)
+  local struct_offset_hex=$(echo "$hex_data" | cut -c65-128 | sed 's/^0*//' | sed 's/^$/0/')
+  local struct_offset=$((0x$struct_offset_hex))
+  
+  echo "Event $entry_num: actionId=$actionId, struct_offset=$struct_offset" >> "$debug_file"
+  
+  if [ $struct_offset -gt 0 ]; then
+    local struct_start=$((struct_offset * 2))
+    
+    # Read struct fields in order
+    # minStake (offset 0x00)
+    local minStake_start=$((struct_start + 1))
+    local minStake_end=$((minStake_start + 63))
+    if [ $minStake_end -le ${#hex_data} ]; then
+      local minStake_hex=$(echo "$hex_data" | cut -c${minStake_start}-${minStake_end} | sed 's/^0*//' | sed 's/^$/0/')
+      if [ "$minStake_hex" != "0" ] && [ -n "$minStake_hex" ]; then
+        minStake=$((0x$minStake_hex))
+      fi
+    fi
+    
+    # maxRandomAccounts (offset 0x20)
+    local maxRA_start=$((struct_start + 65))
+    local maxRA_end=$((maxRA_start + 63))
+    if [ $maxRA_end -le ${#hex_data} ]; then
+      local maxRA_hex=$(echo "$hex_data" | cut -c${maxRA_start}-${maxRA_end} | sed 's/^0*//' | sed 's/^$/0/')
+      if [ "$maxRA_hex" != "0" ] && [ -n "$maxRA_hex" ]; then
+        maxRandomAccounts=$((0x$maxRA_hex))
+      fi
+    fi
+    
+    # Read field offsets for dynamic types
+    # whiteList offset (offset 0x40)
+    local whiteList_offset_start=$((struct_start + 129))
+    local whiteList_offset_end=$((whiteList_offset_start + 63))
+    local whiteList_offset_hex=""
+    if [ $whiteList_offset_end -le ${#hex_data} ]; then
+      whiteList_offset_hex=$(echo "$hex_data" | cut -c${whiteList_offset_start}-${whiteList_offset_end} | sed 's/^0*//' | sed 's/^$/0/')
+    fi
+    
+    # action offset (offset 0x60)
+    local action_offset_start=$((struct_start + 193))
+    local action_offset_end=$((action_offset_start + 63))
+    local action_offset_hex=""
+    if [ $action_offset_end -le ${#hex_data} ]; then
+      action_offset_hex=$(echo "$hex_data" | cut -c${action_offset_start}-${action_offset_end} | sed 's/^0*//' | sed 's/^$/0/')
+    fi
+    
+    # consensus offset (offset 0x80)
+    local consensus_offset_start=$((struct_start + 257))
+    local consensus_offset_end=$((consensus_offset_start + 63))
+    local consensus_offset_hex=""
+    if [ $consensus_offset_end -le ${#hex_data} ]; then
+      consensus_offset_hex=$(echo "$hex_data" | cut -c${consensus_offset_start}-${consensus_offset_end} | sed 's/^0*//' | sed 's/^$/0/')
+    fi
+    
+    # verificationRule offset (offset 0xa0)
+    local verificationRule_offset_start=$((struct_start + 321))
+    local verificationRule_offset_end=$((verificationRule_offset_start + 63))
+    local verificationRule_offset_hex=""
+    if [ $verificationRule_offset_end -le ${#hex_data} ]; then
+      verificationRule_offset_hex=$(echo "$hex_data" | cut -c${verificationRule_offset_start}-${verificationRule_offset_end} | sed 's/^0*//' | sed 's/^$/0/')
+    fi
+    
+    # verificationKeys offset (offset 0xc0)
+    local verificationKeys_offset_start=$((struct_start + 385))
+    local verificationKeys_offset_end=$((verificationKeys_offset_start + 63))
+    local verificationKeys_offset_hex=""
+    if [ $verificationKeys_offset_end -le ${#hex_data} ]; then
+      verificationKeys_offset_hex=$(echo "$hex_data" | cut -c${verificationKeys_offset_start}-${verificationKeys_offset_end} | sed 's/^0*//' | sed 's/^$/0/')
+    fi
+    
+    # verificationInfoGuides offset (offset 0xe0)
+    local verificationInfoGuides_offset_start=$((struct_start + 449))
+    local verificationInfoGuides_offset_end=$((verificationInfoGuides_offset_start + 63))
+    local verificationInfoGuides_offset_hex=""
+    if [ $verificationInfoGuides_offset_end -le ${#hex_data} ]; then
+      verificationInfoGuides_offset_hex=$(echo "$hex_data" | cut -c${verificationInfoGuides_offset_start}-${verificationInfoGuides_offset_end} | sed 's/^0*//' | sed 's/^$/0/')
+    fi
+    
+    echo "Offsets: action=$action_offset_hex, consensus=$consensus_offset_hex, rule=$verificationRule_offset_hex, keys=$verificationKeys_offset_hex, guides=$verificationInfoGuides_offset_hex" >> "$debug_file"
+    
+    # Parse strings using calculated offsets
+    if [ -n "$action_offset_hex" ] && [ "$action_offset_hex" != "0" ]; then
+      local action_abs_offset=$((struct_offset + 0x$action_offset_hex))
+      action=$(parse_string_at_offset "$hex_data" $action_abs_offset)
+    fi
+    
+    if [ -n "$consensus_offset_hex" ] && [ "$consensus_offset_hex" != "0" ]; then
+      local consensus_abs_offset=$((struct_offset + 0x$consensus_offset_hex))
+      consensus=$(parse_string_at_offset "$hex_data" $consensus_abs_offset)
+    fi
+    
+    if [ -n "$verificationRule_offset_hex" ] && [ "$verificationRule_offset_hex" != "0" ]; then
+      local verificationRule_abs_offset=$((struct_offset + 0x$verificationRule_offset_hex))
+      verificationRule=$(parse_string_at_offset "$hex_data" $verificationRule_abs_offset)
+    fi
+    
+    if [ -n "$verificationKeys_offset_hex" ] && [ "$verificationKeys_offset_hex" != "0" ]; then
+      local verificationKeys_abs_offset=$((struct_offset + 0x$verificationKeys_offset_hex))
+      verificationKeys=$(parse_string_array_at_offset "$hex_data" $verificationKeys_abs_offset)
+    fi
+    
+    if [ -n "$verificationInfoGuides_offset_hex" ] && [ "$verificationInfoGuides_offset_hex" != "0" ]; then
+      local verificationInfoGuides_abs_offset=$((struct_offset + 0x$verificationInfoGuides_offset_hex))
+      verificationInfoGuides=$(parse_string_array_at_offset "$hex_data" $verificationInfoGuides_abs_offset)
+    fi
+  fi
+  
+  # Return results as JSON-like string with proper escaping
+  # Remove all newlines and carriage returns from string fields
+  action=$(echo "$action" | tr '\n\r' '  ' | sed 's/  */ /g')
+  consensus=$(echo "$consensus" | tr '\n\r' '  ' | sed 's/  */ /g')
+  verificationRule=$(echo "$verificationRule" | tr '\n\r' '  ' | sed 's/  */ /g')
+  verificationKeys=$(echo "$verificationKeys" | tr '\n\r' '  ' | sed 's/  */ /g')
+  verificationInfoGuides=$(echo "$verificationInfoGuides" | tr '\n\r' '  ' | sed 's/  */ /g')
+  
+  echo "$actionId|$minStake|$maxRandomAccounts|$whiteList|$action|$consensus|$verificationRule|$verificationKeys|$verificationInfoGuides"
+}
+
+# Helper function to parse string at specific offset
+parse_string_at_offset() {
+  local hex_data=$1
+  local offset=$2
+  
+  local hex_pos=$((offset * 2 + 1))
+  
+  # Read string length (32 bytes)
+  if [ $((hex_pos + 63)) -le ${#hex_data} ]; then
+    local length_hex=$(echo "$hex_data" | cut -c${hex_pos}-$((hex_pos + 63)) | sed 's/^0*//' | sed 's/^$/0/')
+    local string_length=$((0x$length_hex))
+    
+    if [ $string_length -gt 0 ] && [ $string_length -lt 10000 ]; then
+      # Read string data
+      local string_start=$((hex_pos + 64))
+      local string_end=$((string_start + string_length * 2 - 1))
+      
+      if [ $string_end -le ${#hex_data} ]; then
+        local string_hex=$(echo "$hex_data" | cut -c${string_start}-${string_end})
+        echo "$string_hex" | xxd -r -p 2>/dev/null | tr -d '\0' | sed 's/[[:cntrl:]]//g' || echo ""
+      fi
+    fi
+  fi
+}
+
+# Helper function to parse string array at specific offset  
+parse_string_array_at_offset() {
+  local hex_data=$1
+  local offset=$2
+  
+  local hex_pos=$((offset * 2 + 1))
+  
+  # Read array length
+  if [ $((hex_pos + 63)) -le ${#hex_data} ]; then
+    local array_length_hex=$(echo "$hex_data" | cut -c${hex_pos}-$((hex_pos + 63)) | sed 's/^0*//' | sed 's/^$/0/')
+    local array_length=$((0x$array_length_hex))
+    
+    if [ $array_length -eq 0 ]; then
+      echo "[]"
+      return
+    fi
+    
+    if [ $array_length -gt 0 ] && [ $array_length -le 100 ]; then
+      local result="["
+      local i=0
+      
+      while [ $i -lt $array_length ]; do
+        # Read element offset (relative to array start)
+        local element_offset_start=$((hex_pos + 64 + i * 64))
+        local element_offset_end=$((element_offset_start + 63))
+        
+        if [ $element_offset_end -le ${#hex_data} ]; then
+          local element_offset_hex=$(echo "$hex_data" | cut -c${element_offset_start}-${element_offset_end} | sed 's/^0*//' | sed 's/^$/0/')
+          
+          if [ "$element_offset_hex" != "0" ] && [ -n "$element_offset_hex" ]; then
+            # Calculate element position (relative to array start)
+            local element_pos=$((offset + 0x$element_offset_hex))
+            local element_hex_pos=$((element_pos * 2 + 1))
+            
+            # Read string offset (relative to element position) - this is the key fix!
+            if [ $((element_hex_pos + 63)) -le ${#hex_data} ]; then
+              local string_offset_hex=$(echo "$hex_data" | cut -c${element_hex_pos}-$((element_hex_pos + 63)) | sed 's/^0*//' | sed 's/^$/0/')
+              local string_offset=$((0x$string_offset_hex))
+              
+              # Calculate actual string data position
+              local string_data_pos=$((element_pos + string_offset))
+              local element_string=$(parse_string_at_offset "$hex_data" $string_data_pos)
+              
+              if [ -n "$element_string" ]; then
+                element_string=$(echo "$element_string" | sed 's/"/\\"/g' | sed 's/,/，/g')
+                if [ $i -gt 0 ]; then
+                  result="$result,\"$element_string\""
+                else
+                  result="$result\"$element_string\""
+                fi
+              else
+                if [ $i -gt 0 ]; then
+                  result="$result,\"\""
+                else
+                  result="$result\"\""
+                fi
+              fi
+            else
+              if [ $i -gt 0 ]; then
+                result="$result,\"\""
+              else
+                result="$result\"\""
+              fi
+            fi
+          else
+            if [ $i -gt 0 ]; then
+              result="$result,\"\""
+            else
+              result="$result\"\""
+            fi
+          fi
+        fi
+        
+        i=$((i + 1))
+      done
+      
+      result="$result]"
+      echo "$result"
+    else
+      echo "[]"
+    fi
+  else
+    echo "[]"
+  fi
+}
+
+# Specialized function for ActionCreate events with improved ABI decoding
+convert_actioncreate_logs(){
+  local contract_name=${1}
+  local event_name=${2}
+  local input_file="./output/$network/$contract_name.$event_name.event"
+  local csv_file="./output/$network/$contract_name.$event_name.csv"
+
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "📊 Converting ActionCreate to CSV (improved ABI decode)"
+  echo "📁 Input: $input_file"
+  echo "💾 Output: $csv_file"
+
+  # Create CSV header
+  echo "blockNumber,transactionHash,transactionIndex,logIndex,address,tokenAddress,round,author,actionId,minStake,maxRandomAccounts,whiteList,action,consensus,verificationRule,verificationKeys,verificationInfoGuides" > "$csv_file"
+
+  # Parse each event from the input file
+  local temp_dir=$(mktemp -d)
+  grep -n "^- address:" "$input_file" | cut -d: -f1 > "$temp_dir/log_starts.tmp"
+  local line_count=$(wc -l < "$input_file" | tr -d ' ')
+  echo $((line_count + 1)) >> "$temp_dir/log_starts.tmp"
+  
+  local entry_count=0
+  local prev_start=0
+  
+  # Helper function to decode hex string to UTF-8
+  decode_hex_string() {
+    local hex_string=$1
+    if [ -z "$hex_string" ] || [ ${#hex_string} -eq 0 ]; then
+      echo ""
+      return
+    fi
+    # Convert hex to UTF-8 string, remove null bytes
+    echo "$hex_string" | xxd -r -p 2>/dev/null | tr -d '\0' | sed 's/[[:cntrl:]]//g' || echo ""
+  }
+  
+  # Helper function to extract string array from data using cast abi-decode
+  decode_string_array() {
+    local hex_data=$1
+    local offset=$2
+    
+    if [ -z "$hex_data" ] || [ -z "$offset" ] || [ $offset -le 0 ]; then
+      echo "[]"
+      return
+    fi
+    
+    # Extract data from offset
+    local data_start=$((offset * 2))
+    if [ $data_start -ge ${#hex_data} ]; then
+      echo "[]"
+      return
+    fi
+    
+    local remaining_data="0x${hex_data:$data_start}"
+    
+    # Try to decode as string array using cast
+    local decoded=$(cast abi-decode "decode(string[])" "$remaining_data" 2>/dev/null)
+    if [ $? -eq 0 ] && [ -n "$decoded" ]; then
+      # Convert decoded result to JSON-like format
+      echo "$decoded" | sed 's/\[/["/g' | sed 's/\]/"\]/g' | sed 's/, /", "/g'
+    else
+      echo "[]"
+    fi
+  }
+  
+  while IFS= read -r start_line; do
+    if [ $prev_start -gt 0 ]; then
+      local end_line=$((start_line - 1))
+      sed -n "${prev_start},${end_line}p" "$input_file" > "$temp_dir/log_$entry_count.yaml"
+      
+      # Extract basic fields
+      local address=$(grep "address:" "$temp_dir/log_$entry_count.yaml" | head -1 | sed 's/.*address: *//' | tr -d ' ')
+      local block_number=$(grep "blockNumber:" "$temp_dir/log_$entry_count.yaml" | sed 's/.*blockNumber: *//' | tr -d ' ')
+      local tx_hash=$(grep "transactionHash:" "$temp_dir/log_$entry_count.yaml" | sed 's/.*transactionHash: *//' | tr -d ' ')
+      local tx_index=$(grep "transactionIndex:" "$temp_dir/log_$entry_count.yaml" | sed 's/.*transactionIndex: *//' | tr -d ' ')
+      local log_index=$(grep "logIndex:" "$temp_dir/log_$entry_count.yaml" | sed 's/.*logIndex: *//' | tr -d ' ')
+      local data=$(grep "data:" "$temp_dir/log_$entry_count.yaml" | sed 's/.*data: *//' | tr -d ' ')
+      
+      # Extract indexed parameters from topics
+      grep "0x" "$temp_dir/log_$entry_count.yaml" | grep -v "address\|data\|Hash" | sed 's/^[[:space:]]*//' | tail -n +2 > "$temp_dir/topics_$entry_count.tmp"
+      local tokenAddress=$(sed -n "1p" "$temp_dir/topics_$entry_count.tmp" | sed 's/^0x0*/0x/')
+      local round_hex=$(sed -n "2p" "$temp_dir/topics_$entry_count.tmp")
+      local author=$(sed -n "3p" "$temp_dir/topics_$entry_count.tmp" | sed 's/^0x0*/0x/')
+      local round=$((round_hex))
+      
+      # Initialize all fields
+      local actionId="0"
+      local minStake="0"
+      local maxRandomAccounts="0"
+      local whiteList="[]"
+      local action=""
+      local consensus=""
+      local verificationRule=""
+      local verificationKeys="[]"
+      local verificationInfoGuides="[]"
+      
+      if [ -n "$data" ] && [ "$data" != "0x" ]; then
+        # Use cast abi-decode to parse the entire data structure
+        local decoded_result=$(cast abi-decode "decode(uint256,(uint256,uint256,address[],string,string,string,string[],string[]))" "$data" 2>/dev/null)
+        
+        if [ $? -eq 0 ] && [ -n "$decoded_result" ]; then
+          echo "成功解析事件 $entry_count: $decoded_result" >> "$temp_dir/decode_log.txt"
+          
+          # Parse the decoded result to extract fields
+          # This is a simplified parsing - in reality we'd need more sophisticated parsing
+          actionId=$(echo "$decoded_result" | head -1 | tr -d ' ')
+          
+          # Extract struct fields from the second part of the result
+          local struct_part=$(echo "$decoded_result" | tail -n +2)
+          if [ -n "$struct_part" ]; then
+            # Extract individual fields from struct (this is simplified)
+            minStake=$(echo "$struct_part" | sed -n '1p' | tr -d ' ' | sed 's/[^0-9]//g')
+            maxRandomAccounts=$(echo "$struct_part" | sed -n '2p' | tr -d ' ' | sed 's/[^0-9]//g')
+            action=$(echo "$struct_part" | grep -E "^[^[].*[^]]$" | head -1 | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+            consensus=$(echo "$struct_part" | grep -E "^[^[].*[^]]$" | head -2 | tail -1 | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+            verificationRule=$(echo "$struct_part" | grep -E "^[^[].*[^]]$" | head -3 | tail -1 | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+          fi
+        else
+          # Use precise manual parsing
+          echo "Cast decode failed for event $entry_count, using precise manual parsing" >> "$temp_dir/decode_log.txt"
+          
+          # Use the new precise parsing function
+          local parse_result=$(parse_actioncreate_manual "$data" "$entry_count" "$temp_dir/decode_log.txt")
+          
+          # Parse the result string (format: actionId|minStake|maxRandomAccounts|whiteList|action|consensus|verificationRule|verificationKeys|verificationInfoGuides)
+          actionId=$(echo "$parse_result" | cut -d'|' -f1)
+          minStake=$(echo "$parse_result" | cut -d'|' -f2)
+          maxRandomAccounts=$(echo "$parse_result" | cut -d'|' -f3)
+          whiteList=$(echo "$parse_result" | cut -d'|' -f4)
+          action=$(echo "$parse_result" | cut -d'|' -f5)
+          consensus=$(echo "$parse_result" | cut -d'|' -f6)
+          verificationRule=$(echo "$parse_result" | cut -d'|' -f7)
+          verificationKeys=$(echo "$parse_result" | cut -d'|' -f8)
+          verificationInfoGuides=$(echo "$parse_result" | cut -d'|' -f9)
+        fi
+      fi
+       
+      # Escape CSV values - replace problematic characters properly
+      action=$(echo "$action" | sed 's/"/\\"/g' | tr '\n\r' '  ' | sed 's/  */ /g' | sed 's/,/，/g')
+      consensus=$(echo "$consensus" | sed 's/"/\\"/g' | tr '\n\r' '  ' | sed 's/  */ /g' | sed 's/,/，/g')
+      verificationRule=$(echo "$verificationRule" | sed 's/"/\\"/g' | tr '\n\r' '  ' | sed 's/  */ /g' | sed 's/,/，/g')
+      verificationKeys=$(echo "$verificationKeys" | sed 's/"/\\"/g' | tr '\n\r' '  ' | sed 's/  */ /g' | sed 's/,/，/g')
+      verificationInfoGuides=$(echo "$verificationInfoGuides" | sed 's/"/\\"/g' | tr '\n\r' '  ' | sed 's/  */ /g' | sed 's/,/，/g')
+      
+      # Ensure all fields have values (use empty string if null)
+      if [ -z "$action" ]; then action=""; fi
+      if [ -z "$consensus" ]; then consensus=""; fi
+      if [ -z "$verificationRule" ]; then verificationRule=""; fi
+      if [ -z "$verificationKeys" ]; then verificationKeys="[]"; fi
+      if [ -z "$verificationInfoGuides" ]; then verificationInfoGuides="[]"; fi
+      if [ -z "$whiteList" ]; then whiteList="[]"; fi
+      
+      # Build CSV row with proper quoting
+      echo "$block_number,$tx_hash,$tx_index,$log_index,$address,$tokenAddress,$round,$author,$actionId,$minStake,$maxRandomAccounts,\"$whiteList\",\"$action\",\"$consensus\",\"$verificationRule\",\"$verificationKeys\",\"$verificationInfoGuides\"" >> "$csv_file"
+      
+      entry_count=$((entry_count + 1))
+    fi
+    prev_start=$start_line
+  done < "$temp_dir/log_starts.tmp"
+
+  echo "✅ Converted $entry_count logs to CSV"
+  
+  if [ -f "$csv_file" ]; then
+    local csv_lines=$(wc -l < "$csv_file" | tr -d ' ')
+    local csv_size=$(wc -c < "$csv_file" | tr -d ' ')
+    local csv_size_kb=$((csv_size / 1024))
+    echo "💾 File: $csv_file (${csv_size_kb}KB, $((csv_lines - 1)) rows)"
+  fi
+
+  # Show decode log if exists
+  if [ -f "$temp_dir/decode_log.txt" ]; then
+    echo "🔍 Decode log:"
+    cat "$temp_dir/decode_log.txt"
+  fi
+
+  # Cleanup
+  rm -rf "$temp_dir"
+  
+  # Convert to XLSX
+  csv_to_xlsx "$csv_file"
 }
 
 process_event(){
