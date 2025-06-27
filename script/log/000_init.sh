@@ -504,13 +504,24 @@ convert_to_csv(){
             fi
           fi
           
-          # Remove scientific notation suffix only for uint256 type
-          if [ -n "$value" ] && [ "$param_type" = "uint256" ] && echo "$value" | grep -q " \[.*e.*\]"; then
-            value=$(echo "$value" | sed 's/ \[.*e.*\]$//')
+          # Remove scientific notation suffix for uint types - extract first value only
+          if [ -n "$value" ] && echo "$param_type" | grep -q "^uint"; then
+            # Handle format like "6250000000000000000000000 [6.25e24]" - take first value only
+            if echo "$value" | grep -q " \[.*\]"; then
+              value=$(echo "$value" | sed 's/ \[.*\]$//')
+            fi
+            # Handle format with scientific notation suffix like "6250000000000000000000000 6.25e24"
+            if echo "$value" | grep -q " [0-9]*\.[0-9]*e[0-9]*"; then
+              value=$(echo "$value" | cut -d' ' -f1)
+            fi
+            # Handle any space-separated format - take first value
+            if echo "$value" | grep -q " "; then
+              value=$(echo "$value" | cut -d' ' -f1)
+            fi
           fi
           
-          # Convert hexadecimal to decimal for uint256 type
-          if [ -n "$value" ] && [ "$param_type" = "uint256" ] && echo "$value" | grep -q "^0x"; then
+          # Convert hexadecimal to decimal for uint types
+          if [ -n "$value" ] && echo "$param_type" | grep -q "^uint" && echo "$value" | grep -q "^0x"; then
             # Convert hex to decimal using bash arithmetic expansion
             value=$(echo $((value)))
           fi
@@ -1321,12 +1332,37 @@ convert_actioncreate_logs(){
           # This is a simplified parsing - in reality we'd need more sophisticated parsing
           actionId=$(echo "$decoded_result" | head -1 | tr -d ' ')
           
+          # Handle format like "6250000000000000000000000 [6.25e24]" for actionId
+          if echo "$actionId" | grep -q " \[.*\]"; then
+            actionId=$(echo "$actionId" | sed 's/ \[.*\]$//')
+          elif echo "$actionId" | grep -q " "; then
+            actionId=$(echo "$actionId" | cut -d' ' -f1)
+          fi
+          
           # Extract struct fields from the second part of the result
           local struct_part=$(echo "$decoded_result" | tail -n +2)
           if [ -n "$struct_part" ]; then
             # Extract individual fields from struct (this is simplified)
-            minStake=$(echo "$struct_part" | sed -n '1p' | tr -d ' ' | sed 's/[^0-9]//g')
-            maxRandomAccounts=$(echo "$struct_part" | sed -n '2p' | tr -d ' ' | sed 's/[^0-9]//g')
+            minStake=$(echo "$struct_part" | sed -n '1p' | tr -d ' ')
+            maxRandomAccounts=$(echo "$struct_part" | sed -n '2p' | tr -d ' ')
+            
+            # Handle format like "6250000000000000000000000 [6.25e24]" for uint256 fields
+            if echo "$minStake" | grep -q " \[.*\]"; then
+              minStake=$(echo "$minStake" | sed 's/ \[.*\]$//')
+            elif echo "$minStake" | grep -q " "; then
+              minStake=$(echo "$minStake" | cut -d' ' -f1)
+            fi
+            # Remove non-numeric characters
+            minStake=$(echo "$minStake" | sed 's/[^0-9]//g')
+            
+            if echo "$maxRandomAccounts" | grep -q " \[.*\]"; then
+              maxRandomAccounts=$(echo "$maxRandomAccounts" | sed 's/ \[.*\]$//')
+            elif echo "$maxRandomAccounts" | grep -q " "; then
+              maxRandomAccounts=$(echo "$maxRandomAccounts" | cut -d' ' -f1)
+            fi
+            # Remove non-numeric characters
+            maxRandomAccounts=$(echo "$maxRandomAccounts" | sed 's/[^0-9]//g')
+            
             action=$(echo "$struct_part" | grep -E "^[^[].*[^]]$" | head -1 | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
             consensus=$(echo "$struct_part" | grep -E "^[^[].*[^]]$" | head -2 | tail -1 | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
             verificationRule=$(echo "$struct_part" | grep -E "^[^[].*[^]]$" | head -3 | tail -1 | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
