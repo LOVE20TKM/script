@@ -294,6 +294,124 @@ cast_logs(){
 }
 
 
+# Parse decoded output from cast abi-decode to handle dynamic arrays properly
+# Parameters: decoded_file, params_file, output_file
+parse_decoded_output() {
+  local decoded_file="$1"
+  local params_file="$2" 
+  local output_file="$3"
+  
+  # Create output file
+  : > "$output_file"
+  
+  # Check if decoded file exists and has content
+  if [ ! -f "$decoded_file" ] || [ ! -s "$decoded_file" ]; then
+    echo "Empty or missing decoded file: $decoded_file" >&2
+    return 1
+  fi
+  
+  # Read all decoded content into a single string, preserving structure
+  local decoded_content=$(cat "$decoded_file")
+  
+  # Count parameters to know how many values to expect
+  local param_count=$(wc -l < "$params_file" | tr -d ' ')
+  
+  # Parse parameters to identify dynamic arrays
+  local param_index=1
+  local current_line=1
+  
+  # Convert decoded content to a format where we can extract values sequentially
+  # First, let's identify array patterns and normalize the output
+  local temp_parsed=$(mktemp)
+  
+  # Process the decoded output line by line but treat arrays as single units
+  local in_array=false
+  local array_content=""
+  local line_buffer=""
+  
+  while IFS= read -r line; do
+    # Trim whitespace
+    line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    
+    # Check if this line starts an array
+    if echo "$line" | grep -q "^\[" && ! echo "$line" | grep -q "\]$"; then
+      in_array=true
+      array_content="$line"
+    # Check if this line ends an array
+    elif echo "$line" | grep -q "\]$" && [ "$in_array" = true ]; then
+      in_array=false
+      array_content="$array_content $line"
+      # Clean up array content and write as single line
+      array_content=$(echo "$array_content" | sed 's/  */ /g')
+      echo "$array_content" >> "$temp_parsed"
+      array_content=""
+    # If we're inside an array, accumulate content
+    elif [ "$in_array" = true ]; then
+      array_content="$array_content $line"
+    # Regular line (not part of array) or complete array in single line
+    else
+      # Check if it's a complete array in single line
+      if echo "$line" | grep -q "^\[.*\]$"; then
+        echo "$line" >> "$temp_parsed"
+      else
+        # Regular value
+        if [ -n "$line" ]; then
+          echo "$line" >> "$temp_parsed"
+        fi
+      fi
+    fi
+  done < "$decoded_file"
+  
+  # Now read the parsed values sequentially
+  local param_index=1
+  local non_indexed_line=1
+  while [ $param_index -le $param_count ]; do
+    local param=$(sed -n "${param_index}p" "$params_file" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    local param_type=$(echo "$param" | awk '{print $1}' | sed 's/indexed[[:space:]]*//')
+    
+    # Skip indexed parameters (they're handled separately)
+    if echo "$param" | grep -q "indexed"; then
+      param_index=$((param_index + 1))
+      continue
+    fi
+    
+    # Get the corresponding value from parsed output (only for non-indexed parameters)
+    local value=$(sed -n "${non_indexed_line}p" "$temp_parsed" 2>/dev/null || echo "")
+    
+    # Special handling for different types
+    if echo "$param_type" | grep -q "\[\]"; then
+      # Dynamic array - value should already be properly formatted by our parsing
+      if [ -z "$value" ]; then
+        value="[]"
+      fi
+      # Ensure proper array formatting
+      if ! echo "$value" | grep -q "^\[.*\]$"; then
+        value="[$value]"
+      fi
+    elif echo "$param_type" | grep -q "^uint"; then
+      # Handle uint types with scientific notation cleanup
+      if [ -n "$value" ] && echo "$value" | grep -q " \[.*\]"; then
+        value=$(echo "$value" | sed 's/ \[.*\]$//')
+      elif [ -n "$value" ] && echo "$value" | grep -q " "; then
+        value=$(echo "$value" | cut -d' ' -f1)
+      fi
+      # Convert hex to decimal if needed
+      if [ -n "$value" ] && echo "$value" | grep -q "^0x"; then
+        value=$(echo $((value)) 2>/dev/null || echo "$value")
+      fi
+    fi
+    
+    # Write value to output
+    echo "$value" >> "$output_file"
+    
+    non_indexed_line=$((non_indexed_line + 1))
+    param_index=$((param_index + 1))
+  done
+  
+  # Cleanup
+  rm -f "$temp_parsed"
+}
+
 # Convert event logs to CSV format using cast abi-decode
 convert_to_csv(){
   local input_file=${1}
@@ -457,7 +575,10 @@ convert_to_csv(){
             echo "未解析" >> "$temp_dir/decoded_$i.tmp"  # verificationKeys
             echo "未解析" >> "$temp_dir/decoded_$i.tmp"  # verificationInfoGuides
           else
-            cast abi-decode --input "decode($non_indexed_types)" "$data" 2>/dev/null > "$temp_dir/decoded_$i.tmp"
+            # Use improved ABI decode with proper dynamic array handling
+            cast abi-decode --input "decode($non_indexed_types)" "$data" 2>/dev/null > "$temp_dir/decoded_raw_$i.tmp"
+            # Parse the decoded output and create structured parameter file
+            parse_decoded_output "$temp_dir/decoded_raw_$i.tmp" "$temp_dir/params.txt" "$temp_dir/decoded_$i.tmp"
           fi
         fi
       
@@ -498,7 +619,16 @@ convert_to_csv(){
                 # For ActionCreate, simply read the pre-generated values line by line
                 value=$(sed -n "${non_indexed_index}p" "$temp_dir/decoded_$i.tmp" | sed 's/^"//;s/"$//')
               else
+                # Use improved parsing that handles dynamic arrays properly
                 value=$(sed -n "${non_indexed_index}p" "$temp_dir/decoded_$i.tmp" | sed 's/^"//;s/"$//')
+                
+                # Additional formatting for dynamic arrays
+                if echo "$param_type" | grep -q "\[\]"; then
+                  # Clean up array formatting for CSV
+                  value=$(echo "$value" | sed 's/\[/[/g' | sed 's/\]/]/g' | sed 's/, */, /g')
+                  # Escape any remaining commas for CSV
+                  value=$(echo "$value" | sed 's/,/，/g')
+                fi
               fi
               non_indexed_index=$((non_indexed_index + 1))
             fi
