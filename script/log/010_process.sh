@@ -13,75 +13,75 @@ echo "📊 This will fetch raw logs and convert them to CSV format"
 echo ""
 
 # launch - 项目启动和众筹
-process_event "launch" "DeployToken"
-process_event "launch" "Contribute"
-process_event "launch" "Withdraw"
-process_event "launch" "Claim"
-process_event "launch" "SecondHalfStart"
-process_event "launch" "LaunchEnd"
+fetch_and_convert "launch" "DeployToken"
+fetch_and_convert "launch" "Contribute"
+fetch_and_convert "launch" "Withdraw"
+fetch_and_convert "launch" "Claim"
+fetch_and_convert "launch" "SecondHalfStart"
+fetch_and_convert "launch" "LaunchEnd"
 
 # tokenFactory - 代币工厂创建代币
-process_event "tokenFactory" "TokenCreate"
+fetch_and_convert "tokenFactory" "TokenCreate"
 
 # token - 代币操作
-process_event "token" "TokenMint"
-process_event "token" "TokenBurn"
-process_event "token" "BurnForParentToken"
+fetch_and_convert "token" "TokenMint"
+fetch_and_convert "token" "TokenBurn"
+fetch_and_convert "token" "BurnForParentToken"
 
 # slToken - 流动性代币操作
-process_event "slToken" "TokenMint"
-process_event "slToken" "TokenBurn"
-process_event "slToken" "FeeWithdraw"
+fetch_and_convert "slToken" "TokenMint"
+fetch_and_convert "slToken" "TokenBurn"
+fetch_and_convert "slToken" "FeeWithdraw"
 
 # stToken - 质押代币操作
-process_event "stToken" "TokenMint"
-process_event "stToken" "TokenBurn"
+fetch_and_convert "stToken" "TokenMint"
+fetch_and_convert "stToken" "TokenBurn"
 
 # stake - 质押操作
-process_event "stake" "StakeLiquidity"
-process_event "stake" "StakeToken"
-process_event "stake" "Unstake"
-process_event "stake" "Withdraw"
+fetch_and_convert "stake" "StakeLiquidity"
+fetch_and_convert "stake" "StakeToken"
+fetch_and_convert "stake" "Unstake"
+fetch_and_convert "stake" "Withdraw"
 
 # submit - 提交行动提案
-process_event "submit" "ActionCreate"
-process_event "submit" "ActionSubmit"
+fetch_and_convert "submit" "ActionCreate"
+fetch_and_convert "submit" "ActionSubmit"
 
 # vote - 投票
-process_event "vote" "Vote"
+fetch_and_convert "vote" "Vote"
 
 # join - 加入行动
-process_event "join" "Join"
-process_event "join" "Withdraw"
-process_event "join" "UpdateVerificationInfo"
-process_event "join" "PrepareRandomAccounts"
+fetch_and_convert "join" "Join"
+fetch_and_convert "join" "Withdraw"
+fetch_and_convert "join" "UpdateVerificationInfo"
+fetch_and_convert "join" "PrepareRandomAccounts"
 
 # verify - 验证
-process_event "verify" "Verify"
+fetch_and_convert "verify" "Verify"
 
 # mint - 铸造奖励
-process_event "mint" "PrepareReward"
-process_event "mint" "MintGovReward"
-process_event "mint" "MintActionReward"
-process_event "mint" "BurnAbstentionActionReward"
-process_event "mint" "BurnBoostReward"
+fetch_and_convert "mint" "PrepareReward"
+fetch_and_convert "mint" "MintGovReward"
+fetch_and_convert "mint" "MintActionReward"
+fetch_and_convert "mint" "BurnAbstentionActionReward"
+fetch_and_convert "mint" "BurnBoostReward"
 
 # random - 随机数更新（贯穿整个流程）
-process_event "random" "RandomSeedUpdate"
+fetch_and_convert "random" "RandomSeedUpdate"
 
 # erc20 - ERC20标准事件（代币转账和授权）
-process_event "erc20" "Transfer"
-process_event "erc20" "Approval"
+fetch_and_convert "erc20" "Transfer"
+fetch_and_convert "erc20" "Approval"
 
 # uniswapV2Factory - UniswapV2工厂合约事件（创建交易对）
-process_event "uniswapV2Factory" "PairCreated"
+fetch_and_convert "uniswapV2Factory" "PairCreated"
 
-# uniswapV2Pair - UniswapV2交易对合约事件（交易对创建和交易）
-process_pair_event $tokenAddress $rootParentTokenAddress "Transfer"
-process_pair_event $tokenAddress $rootParentTokenAddress "Sync"
-process_pair_event $tokenAddress $rootParentTokenAddress "Mint"
-process_pair_event $tokenAddress $rootParentTokenAddress "Burn"
-process_pair_event $tokenAddress $rootParentTokenAddress "Swap"
+# # uniswapV2Pair - UniswapV2交易对合约事件（交易对创建和交易）
+# process_pair_event $tokenAddress $rootParentTokenAddress "Transfer"
+# process_pair_event $tokenAddress $rootParentTokenAddress "Sync"
+# process_pair_event $tokenAddress $rootParentTokenAddress "Mint"
+# process_pair_event $tokenAddress $rootParentTokenAddress "Burn"
+# process_pair_event $tokenAddress $rootParentTokenAddress "Swap"
 
 echo ""
 echo "🎉 All event log processing completed!"
