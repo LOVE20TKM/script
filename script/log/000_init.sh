@@ -200,10 +200,6 @@ event_def_from_contract_name(){
 }
 
 fetch_and_convert(){
-  # Save current shell options and disable debug output completely
-  local original_shell_opts="$-"
-  set +x  # Disable debug output to prevent pollution
-  
   local contract_name=${1}
   local event_name=${2}
 
@@ -212,11 +208,7 @@ fetch_and_convert(){
 
   fetch_events $contract_name $event_name $output_file_name
   convert_event_file_to_csv $output_file_name $abi_file_path $event_name
-  
-  # Restore original shell options only after all conversions complete
-  case $original_shell_opts in
-    *x*) set -x ;;
-  esac
+  convert_csv_to_xlsx $output_file_name
 }
 
 get_output_file_name(){
