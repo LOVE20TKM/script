@@ -885,15 +885,15 @@ get_decoded_value() {
         value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
         # Remove scientific notation annotations like "[1.23e21]" 
         value=$(echo "$value" | sed 's/ \[[^]]*\]//g')
-        # Convert "1, 2, 3" format to "[1,2,3]" format  
+        # Convert "1, 2, 3" format to "[1;2;3]" format (use semicolon to avoid CSV parsing issues)
         if [ -n "$value" ] && [ "$value" != "null" ]; then
           # Check if it's already in bracket format
           if ! echo "$value" | grep -q '^\[.*\]$'; then
             # Convert comma-separated values to bracketed format
             value="[$value]"
           fi
-          # Clean up spaces around commas for consistent formatting
-          value=$(echo "$value" | sed 's/, */,/g' | sed 's/ *,/,/g')
+          # Clean up spaces around commas and replace commas with semicolons for CSV safety
+          value=$(echo "$value" | sed 's/, */;/g' | sed 's/ *,/;/g')
         else
           value="[]"
         fi
@@ -964,14 +964,14 @@ escape_csv_value() {
       return 0
     fi
 
-    # Escape quotes
-    value=$(echo "$value" | sed 's/"/\\"/g')
-    
-    # Remove control characters
+    # Remove control characters first
     value=$(echo "$value" | tr -d '\r\n\t')
     
-    # For arrays and values containing commas, spaces, or quotes - always quote
+    # Check if quoting is needed (contains comma, quote, or whitespace)
     if echo "$value" | grep -q '[,"]' || echo "$value" | grep -q '[[:space:]]'; then
+      # Escape quotes by doubling them (CSV standard)
+      value=$(echo "$value" | sed 's/"/\"\"/g')
+      # Wrap in quotes
       echo "\"$value\""
     else
       echo "$value"
