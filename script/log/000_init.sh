@@ -172,12 +172,22 @@ event_def_from_abi() {
     return 1
   fi
   
-  # 修正的jq查询 - 正确处理indexed字段
-  local signature=$(jq -r --arg name "$event_name" '
+  # Build type expansion function for tuple types
+  local expand_type_def='
+    def expand_type(input):
+      if input.type == "tuple" and (input | has("components")) then
+        "(" + (input.components | map(expand_type(.)) | join(",")) + ")"
+      else
+        input.type
+      end;
+  '
+
+  # 修正的jq查询 - 正确处理indexed字段和tuple展开
+  local signature=$(jq -r --arg name "$event_name" "$expand_type_def"'
     .abi[] | 
     select(.type == "event" and .name == $name) | 
     .name + "(" + 
-    (.inputs | map(.type + (if .indexed then " indexed" else "" end)) | join(", ")) + 
+    (.inputs | map(expand_type(.) + (if .indexed then " indexed" else "" end)) | join(", ")) + 
     ")"
   ' "$abi_file")
   
@@ -225,11 +235,11 @@ fetch_events(){
   local event_def=$(event_def_from_contract_name $contract_name $event_name)
   local output_file_name="$(get_output_file_name $contract_name $event_name)"
 
-  # echo "contract_address: $contract_address"
-  # echo "event_def: $event_def"
-  # echo "from_block: $from_block"
-  # echo "to_block: $to_block"
-  # echo "output_file_name: $output_file_name"
+  echo "contract_address: $contract_address"
+  echo "event_def: $event_def"
+  echo "from_block: $from_block"
+  echo "to_block: $to_block"
+  echo "output_file_name: $output_file_name"
 
   cast_logs $contract_address "$event_def" $from_block $to_block $output_file_name
 }
@@ -879,14 +889,22 @@ extract_event_abi() {
   return 0
 }
 
-# Generate CSV header with proper escaping
+# Generate CSV header with proper escaping and tuple expansion
 generate_csv_header() {
   local event_abi=$1
 
   local header
   header=$(echo "$event_abi" | jq -r '
+    def expand_param_name(param; prefix):
+      if param.type == "tuple" and (param | has("components")) then
+        (param.name | if . == null then "param" else . end) as $tuple_name |
+        param.components | map(expand_param_name(.; prefix + $tuple_name + ".")) | join(",")
+      else
+        prefix + (param.name | if . == null then "param" else . end)
+      end;
+    
     "blockNumber,transactionHash,transactionIndex,logIndex,address," +
-    (.inputs | map(.name // ("param" + (. | keys | length | tostring))) | join(","))
+    (.inputs | map(expand_param_name(.; "")) | join(","))
   ' 2>/dev/null)
 
   if [ $? -ne 0 ] || [ -z "$header" ]; then
@@ -898,23 +916,42 @@ generate_csv_header() {
   return 0
 }
 
-# Extract parameter metadata for processing
+# Extract parameter metadata for processing with tuple expansion
 extract_parameter_metadata() {
   local event_abi=$1
   local temp_dir=$2
 
-  # Extract parameter details
-  echo "$event_abi" | jq -r '.inputs[] | @json' > "$temp_dir/params.json"
+  # Extract parameter details with tuple expansion
+  echo "$event_abi" | jq -r '
+    def expand_param(param):
+      if param.type == "tuple" and (param | has("components")) then
+        param.components | map(. + {
+          "parent_name": param.name,
+          "parent_indexed": (param.indexed | if . == null then false else . end)
+        })
+      else
+        [param]
+      end;
+    
+    [.inputs[] | expand_param(.)] | flatten | .[] | @json
+  ' > "$temp_dir/params.json"
   
   if [ $? -ne 0 ]; then
     echo "❌ Failed to extract parameter metadata" >&2
     return 1
   fi
 
-  # Generate type information for cast abi-decode
+  # Generate type information for cast abi-decode (non-indexed only) with tuple expansion
   local non_indexed_types
   non_indexed_types=$(echo "$event_abi" | jq -r '
-    [.inputs[] | select(.indexed != true) | .type] | join(",")
+    def expand_type(input):
+      if input.type == "tuple" and (input | has("components")) then
+        "(" + (input.components | map(expand_type(.)) | join(",")) + ")"
+      else
+        input.type
+      end;
+    
+    [.inputs[] | select(.indexed != true) | expand_type(.)] | join(",")
   ' 2>/dev/null)
 
   if [ $? -ne 0 ]; then
@@ -924,10 +961,8 @@ extract_parameter_metadata() {
 
   echo "$non_indexed_types" > "$temp_dir/non_indexed_types.txt"
 
-  # Count parameters
-  local param_count
-  param_count=$(echo "$event_abi" | jq -r '.inputs | length' 2>/dev/null)
-  echo "$param_count" > "$temp_dir/param_count.txt"
+  # Store original parameter structure for tuple processing
+  echo "$event_abi" | jq -r '.inputs[] | @json' > "$temp_dir/original_params.json"
 
   return 0
 }
@@ -1142,7 +1177,7 @@ process_single_event_safe() {
   return 0
 }
 
-# Process event parameters with type-aware handling
+# Process event parameters with tuple expansion support
 process_event_parameters() {
   # Completely suppress all output except the final result
   # Save current shell options
@@ -1170,27 +1205,57 @@ process_event_parameters() {
       decoded_values=$(decode_non_indexed_data "$data" "$non_indexed_types" 2>/dev/null)
     fi
 
-    # Process each parameter
-    while IFS= read -r param_json; do
-      if [ -n "$param_json" ] && [ "$param_json" != "null" ]; then
-        local value=""
+    # Process original parameters and expand tuples
+    local original_param_index=0
+    local expanded_param_index=0
+    
+    while IFS= read -r original_param_json; do
+      if [ -n "$original_param_json" ] && [ "$original_param_json" != "null" ]; then
+        local param_type=$(echo "$original_param_json" | jq -r '.type // ""' 2>/dev/null)
+        local param_indexed=$(echo "$original_param_json" | jq -r '.indexed // false' 2>/dev/null)
         
-        # Process parameter directly without intermediate variables to avoid debug output
-        if [ "$(echo "$param_json" | jq -r '.indexed // false' 2>/dev/null)" = "true" ]; then
-          # Process indexed parameter
-          value=$(process_indexed_parameter "$topics_json" $topic_index "$(echo "$param_json" | jq -r '.type // ""' 2>/dev/null)" 2>/dev/null)
+        if [ "$param_indexed" = "true" ]; then
+          # Indexed parameter - process directly
+          local value=$(process_indexed_parameter "$topics_json" $topic_index "$param_type" 2>/dev/null)
+          value=$(escape_csv_value "$value" 2>/dev/null)
+          param_values="$param_values,$value"
           topic_index=$((topic_index + 1))
+          
+        elif [ "$param_type" = "tuple" ]; then
+          # Non-indexed tuple - parse and expand
+          local tuple_data=$(parse_tuple_data "$decoded_values" "$temp_dir/original_params.json" $non_indexed_index $original_param_index 2>/dev/null)
+          
+          # Get component count for this tuple
+          local component_count=$(echo "$original_param_json" | jq -r '.components | length' 2>/dev/null)
+          
+          # Process each tuple component
+          local component_index=0
+          while [ $component_index -lt $component_count ]; do
+            local component_value=$(echo "$tuple_data" | sed -n "$((component_index + 1))p" 2>/dev/null)
+            
+            # Get component type for proper formatting
+            local component_type=$(echo "$original_param_json" | jq -r ".components[$component_index].type // \"string\"" 2>/dev/null)
+            
+            # Apply type-specific formatting
+            component_value=$(format_value_by_type "$component_value" "$component_type" 2>/dev/null)
+            component_value=$(escape_csv_value "$component_value" 2>/dev/null)
+            param_values="$param_values,$component_value"
+            
+            component_index=$((component_index + 1))
+          done
+          
+          non_indexed_index=$((non_indexed_index + 1))
+          
         else
-          # Process non-indexed parameter
-          value=$(get_decoded_value "$decoded_values" $non_indexed_index "$(echo "$param_json" | jq -r '.type // ""' 2>/dev/null)" 2>/dev/null)
+          # Non-indexed simple parameter
+          local value=$(get_decoded_value "$decoded_values" $non_indexed_index "$param_type" 2>/dev/null)
+          value=$(escape_csv_value "$value" 2>/dev/null)
+          param_values="$param_values,$value"
           non_indexed_index=$((non_indexed_index + 1))
         fi
-
-        # Escape and format value for CSV
-        value=$(escape_csv_value "$value" 2>/dev/null)
-        param_values="$param_values,$value"
       fi
-    done < "$temp_dir/params.json"
+      original_param_index=$((original_param_index + 1))
+    done < "$temp_dir/original_params.json"
 
     # Only output the final result
     echo "$param_values"
@@ -1205,6 +1270,76 @@ process_event_parameters() {
   
   return 0
 } 3>&1
+
+# Format value according to its type
+format_value_by_type() {
+  local old_opts="$-"
+  set +x  # Disable debug output
+  
+  {
+    local value=$1
+    local param_type=$2
+
+    if [ -z "$value" ]; then
+      echo ""
+      return 0
+    fi
+
+    # Type-specific cleanup (similar to get_decoded_value)
+    case "$param_type" in
+      *"[]")
+        # Array type - format properly for CSV
+        value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        value=$(echo "$value" | sed 's/ \[[^]]*\]//g')
+        if [ -n "$value" ] && [ "$value" != "null" ]; then
+          if ! echo "$value" | grep -q '^\[.*\]$'; then
+            value="[$value]"
+          fi
+          value=$(echo "$value" | sed 's/, */;/g' | sed 's/ *,/;/g')
+        else
+          value="[]"
+        fi
+        ;;
+      uint*|int*)
+        value=$(echo "$value" | sed 's/ \[.*\]$//' | awk '{print $1}' | tr -d '\n\r\t')
+        ;;
+      bytes*)
+        value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        if [ -n "$value" ] && ! echo "$value" | grep -q '^0x'; then
+          value="0x$value"
+        fi
+        ;;
+      bool)
+        value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        case "$value" in
+          "true"|"True"|"TRUE"|"1") value="true" ;;
+          "false"|"False"|"FALSE"|"0") value="false" ;;
+        esac
+        ;;
+      address)
+        value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        if [ -n "$value" ] && command -v cast >/dev/null 2>&1; then
+          normalized=$(cast --to-checksum-address "$value" 2>/dev/null)
+          if [ $? -eq 0 ] && [ -n "$normalized" ]; then
+            value="$normalized"
+          fi
+        fi
+        ;;
+      string)
+        value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        ;;
+    esac
+
+    echo "$value"
+  } 2>/dev/null
+  
+  # Only restore debug mode if not in CSV conversion process
+  if [ -z "$CSV_CONVERSION_IN_PROGRESS" ]; then
+    case $old_opts in
+      *x*) set -x ;;
+    esac
+  fi
+}
 
 # Process indexed parameters with type-specific handling
 process_indexed_parameter() {
@@ -1310,6 +1445,175 @@ decode_non_indexed_data() {
   return 0
 }
 
+# Parse tuple data into individual components using improved Python parser
+parse_tuple_data() {
+  local old_opts="$-"
+  set +x  # Disable debug output
+  
+  {
+    local decoded_values=$1
+    local original_params_file=$2
+    local decoded_line_index=$3
+    local param_def_index=$4
+    
+    # Get the parameter definition
+    local param_def=$(sed -n "$((param_def_index + 1))p" "$original_params_file" 2>/dev/null)
+    
+    if [ -z "$param_def" ] || [ "$param_def" = "null" ]; then
+      echo ""
+      return 1
+    fi
+    
+    # Check if this parameter is a tuple
+    local param_type=$(echo "$param_def" | jq -r '.type // ""' 2>/dev/null)
+    
+    if [ "$param_type" != "tuple" ]; then
+      # Not a tuple, return the value as-is
+      echo "$decoded_values" | sed -n "$((decoded_line_index + 1))p" 2>/dev/null
+      return 0
+    fi
+    
+    # Parse tuple components - handle multi-line tuple data
+    # For tuple data, we need to extract from the specified line to the end
+    # since tuple data might span multiple lines due to embedded newlines
+    local all_lines
+    all_lines=$(echo "$decoded_values")
+    
+    # Get total line count
+    local total_lines=$(echo "$decoded_values" | wc -l)
+    
+    # Extract from the target line to the end, then join into single line
+    local tuple_line=""
+    if [ $decoded_line_index -lt $total_lines ]; then
+      tuple_line=$(echo "$decoded_values" | tail -n +$((decoded_line_index + 1)) | tr '\n' ' ' | sed 's/  */ /g')
+    fi
+    
+    if [ -z "$tuple_line" ]; then
+      echo ""
+      return 1
+    fi
+    
+    # Use Python to parse the complex tuple format from cast abi-decode
+    echo "$tuple_line" | python3 -c "
+import sys
+import re
+
+def parse_cast_tuple(line):
+    '''Parse tuple output from cast abi-decode with improved error handling'''
+    line = line.strip()
+    
+    # Remove outer parentheses
+    if line.startswith('(') and line.endswith(')'):
+        line = line[1:-1]
+    
+    components = []
+    current = ''
+    in_quotes = False
+    paren_depth = 0
+    bracket_depth = 0
+    
+    i = 0
+    while i < len(line):
+        try:
+            char = line[i]
+            
+            if char == '\"':
+                in_quotes = not in_quotes
+                current += char
+            elif not in_quotes:
+                if char == '(':
+                    paren_depth += 1
+                    current += char
+                elif char == ')':
+                    paren_depth -= 1
+                    current += char
+                elif char == '[':
+                    bracket_depth += 1
+                    current += char
+                elif char == ']':
+                    bracket_depth -= 1
+                    current += char
+                elif char == ',' and paren_depth == 0 and bracket_depth == 0:
+                    # Found a top-level comma separator
+                    if current.strip():
+                        components.append(current.strip())
+                    current = ''
+                else:
+                    current += char
+            else:
+                current += char
+            
+            i += 1
+        except Exception:
+            # Skip problematic characters and continue
+            i += 1
+            continue
+    
+    # Add the last component
+    if current.strip():
+        components.append(current.strip())
+    
+    return components
+
+def clean_component(comp):
+    '''Clean up individual components with better error handling'''
+    try:
+        comp = comp.strip()
+        
+        # Remove scientific notation annotations like '[1e20]'
+        comp = re.sub(r'\s+\[[^\]]*\]$', '', comp)
+        
+        # Clean up quotes more carefully
+        if len(comp) >= 2 and comp.startswith('\"') and comp.endswith('\"'):
+            comp = comp[1:-1]
+        
+        return comp
+    except Exception:
+        return str(comp) if comp else ''
+
+try:
+    line = sys.stdin.read().strip()
+    if not line:
+        # Return original line if empty
+        print(line)
+        sys.exit(0)
+    
+    # If line doesn't look like a tuple, return as-is
+    if not (line.startswith('(') and ')' in line):
+        print(line)
+        sys.exit(0)
+    
+    components = parse_cast_tuple(line)
+    
+    # If parsing failed or returned too few components, fallback
+    if len(components) < 2:
+        print(line)
+        sys.exit(0)
+    
+    for comp in components:
+        print(clean_component(comp))
+        
+except Exception as e:
+    # Fallback: return original line
+    try:
+        line = sys.stdin.read().strip()
+        print(line)
+    except:
+        pass
+" 2>/dev/null
+    
+  } 2>/dev/null
+  
+  # Only restore debug mode if not in CSV conversion process
+  if [ -z "$CSV_CONVERSION_IN_PROGRESS" ]; then
+    case $old_opts in
+      *x*) set -x ;;
+    esac
+  fi
+  
+  return 0
+}
+
 # Extract decoded value by index
 get_decoded_value() {
   # Save current shell options and disable debug output
@@ -1399,8 +1703,6 @@ get_decoded_value() {
       *x*) set -x ;;
     esac
   fi
-  
-  return 0
 }
 
 # Escape values for CSV with proper quoting
