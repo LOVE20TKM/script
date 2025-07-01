@@ -150,10 +150,10 @@ abi_file_path() {
       echo "$abi_dir/IERC20.sol/IERC20.json"
       ;;
     "uniswapV2Factory")
-      echo "$abi_dir/ILOVE20UniswapV2Factory.sol/ILOVE20UniswapV2Factory.json"
+      echo "$abi_dir/IUniswapV2Factory.sol/IUniswapV2Factory.0.5.16.json"
       ;;
     "uniswapV2Pair")
-      echo "$abi_dir/ILOVE20UniswapV2Pair.sol/ILOVE20UniswapV2Pair.json"
+      echo "$abi_dir/IUniswapV2Pair.sol/IUniswapV2Pair.0.5.16.json"
       ;;
     *)
       echo "❌ Error: Unknown contract name: $contract_name"
@@ -235,11 +235,11 @@ fetch_events(){
   local event_def=$(event_def_from_contract_name $contract_name $event_name)
   local output_file_name="$(get_output_file_name $contract_name $event_name)"
 
-  echo "contract_address: $contract_address"
-  echo "event_def: $event_def"
-  echo "from_block: $from_block"
-  echo "to_block: $to_block"
-  echo "output_file_name: $output_file_name"
+  # echo "contract_address: $contract_address"
+  # echo "event_def: $event_def"
+  # echo "from_block: $from_block"
+  # echo "to_block: $to_block"
+  # echo "output_file_name: $output_file_name"
 
   cast_logs $contract_address "$event_def" $from_block $to_block $output_file_name
 }
