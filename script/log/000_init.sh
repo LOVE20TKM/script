@@ -199,32 +199,815 @@ event_def_from_contract_name(){
   echo "$event_def"
 }
 
+fetch_and_convert(){
+  local contract_name=${1}
+  local event_name=${2}
+
+  local output_file_name="$(get_output_file_name $contract_name $event_name)"
+  local abi_file_path=$(abi_file_path $contract_name)
+
+  fetch_events $contract_name $event_name $output_file_name
+  convert_event_file_to_csv $output_file_name $abi_file_path $event_name
+}
+
+get_output_file_name(){
+  local contract_name=${1}
+  local event_name=${2}
+  echo "${contract_name}.${event_name}"
+}
+
 fetch_events(){
   local contract_name=${1}
   local event_name=${2}
 
-  local abi_file=$(abi_file_path $contract_name)
-  local event_def=$(event_def_from_abi $abi_file $event_name)
-  local output_file_name="${contract_name}.${event_name}"
+  local contract_address=$(contract_address $contract_name)
+  local event_def=$(event_def_from_contract_name $contract_name $event_name)
+  local output_file_name="$(get_output_file_name $contract_name $event_name)"
 
-  echo "abi_file: $abi_file"
+  echo "contract_address: $contract_address"
   echo "event_def: $event_def"
+  echo "from_block: $from_block"
+  echo "to_block: $to_block"
   echo "output_file_name: $output_file_name"
 
-  cast_logs $contract_name "$event_def" $from_block $to_block $output_file_name
+  cast_logs $contract_address "$event_def" $from_block $to_block $output_file_name
 }
 
 # 用event_def来解析event log，并转换为csv格式
+# 生产级实现：完整错误处理、性能优化、类型安全
 convert_event_file_to_csv(){
+  set +x  # Explicitly disable debug output at function start
+  
   local output_file_name=${1}
   local abi_file_path=${2}
   local event_name=${3}
 
-  local event_def=$(event_def_from_abi $abi_file_path $event_name)
+  local input_file="$output_dir/$output_file_name.event"
+  local csv_file="$output_dir/$output_file_name.csv"
+  local temp_dir=$(mktemp -d)
+  local log_file="$temp_dir/conversion.log"
 
-  echo "event_def: $event_def"
-  echo "output_file_name: $output_file_name"
+  # Initialize logging
+  exec 3>"$log_file"
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - Starting conversion for $event_name" >&3
+
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "📊 Converting to CSV: $event_name"
+  echo "📁 Input: $input_file"
+  echo "💾 Output: $csv_file"
+  echo "🔧 Log: $log_file"
+
+  # Validation checks
+  if ! validate_inputs "$input_file" "$abi_file_path" "$csv_file" "$event_name"; then
+    cleanup_and_exit "$temp_dir" 1
+    return 1
+  fi
+
+  # Extract and validate event ABI
+  local event_abi
+  if ! event_abi=$(extract_event_abi "$abi_file_path" "$event_name"); then
+    echo "❌ Failed to extract event ABI" >&3
+    cleanup_and_exit "$temp_dir" 1
+    return 1
+  fi
+
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - Event ABI extracted successfully" >&3
+
+  # Generate CSV structure
+  local csv_header
+  if ! csv_header=$(generate_csv_header "$event_abi"); then
+    echo "❌ Failed to generate CSV header" >&3
+    cleanup_and_exit "$temp_dir" 1
+    return 1
+  fi
+
+  echo "$csv_header" > "$csv_file"
+  echo "📝 CSV header: $csv_header"
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - CSV header generated: $csv_header" >&3
+
+  # Extract parameter metadata
+  if ! extract_parameter_metadata "$event_abi" "$temp_dir"; then
+    echo "❌ Failed to extract parameter metadata" >&3
+    cleanup_and_exit "$temp_dir" 1
+    return 1
+  fi
+
+  # Convert and process events
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - Starting event processing" >&3
+  local success_count=0 error_count=0
+  if ! process_all_events "$input_file" "$temp_dir" "$csv_file" success_count error_count; then
+    echo "❌ Failed to process events" >&3
+    cleanup_and_exit "$temp_dir" 1
+    return 1
+  fi
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - Event processing completed" >&3
+
+  # Generate final report
+  generate_final_report "$csv_file" "$success_count" "$error_count" "$log_file"
   
+  # Cleanup
+  cleanup_and_exit "$temp_dir" 0
+  return 0
+}
+
+# Comprehensive input validation
+validate_inputs() {
+  local input_file=$1
+  local abi_file_path=$2
+  local csv_file=$3
+  local event_name=$4
+
+  # Check if input file exists and is readable
+  if [ ! -f "$input_file" ]; then
+    echo "❌ Input file not found: $input_file"
+    return 1
+  fi
+
+  if [ ! -r "$input_file" ]; then
+    echo "❌ Input file not readable: $input_file"
+    return 1
+  fi
+
+  # Check if input file is not empty
+  if [ ! -s "$input_file" ]; then
+    echo "⚠️  Input file is empty: $input_file"
+    return 1
+  fi
+
+  # Check if ABI file exists and is valid JSON
+  if [ ! -f "$abi_file_path" ]; then
+    echo "❌ ABI file not found: $abi_file_path"
+    return 1
+  fi
+
+  if ! jq empty "$abi_file_path" 2>/dev/null; then
+    echo "❌ ABI file is not valid JSON: $abi_file_path"
+    return 1
+  fi
+
+  # Check if CSV file already exists
+  if [ -f "$csv_file" ]; then
+    echo "❌ CSV file already exists: $csv_file"
+    return 1
+  fi
+
+  # Check if output directory is writable
+  local output_dir=$(dirname "$csv_file")
+  if [ ! -w "$output_dir" ]; then
+    echo "❌ Output directory not writable: $output_dir"
+    return 1
+  fi
+
+  # Validate event name
+  if [ -z "$event_name" ]; then
+    echo "❌ Event name cannot be empty"
+    return 1
+  fi
+
+  # Check available disk space (require at least 100MB)
+  local available_space=$(df "$output_dir" | awk 'NR==2 {print $4}')
+  if [ "$available_space" -lt 102400 ]; then
+    echo "❌ Insufficient disk space (need at least 100MB)"
+    return 1
+  fi
+
+  return 0
+}
+
+# Extract event ABI with error handling
+extract_event_abi() {
+  local abi_file_path=$1
+  local event_name=$2
+
+  local event_abi
+  event_abi=$(jq -r --arg name "$event_name" '
+    .abi[] | select(.type == "event" and .name == $name) | @json
+  ' "$abi_file_path" 2>/dev/null)
+
+  if [ $? -ne 0 ]; then
+    echo "❌ jq failed to process ABI file" >&2
+    return 1
+  fi
+
+  if [ "$event_abi" = "null" ] || [ -z "$event_abi" ]; then
+    echo "❌ Event '$event_name' not found in ABI" >&2
+    return 1
+  fi
+
+  # Validate event ABI structure
+  if ! echo "$event_abi" | jq -e '.inputs | type == "array"' >/dev/null 2>&1; then
+    echo "❌ Invalid event ABI structure: missing inputs array" >&2
+    return 1
+  fi
+
+  echo "$event_abi"
+  return 0
+}
+
+# Generate CSV header with proper escaping
+generate_csv_header() {
+  local event_abi=$1
+
+  local header
+  header=$(echo "$event_abi" | jq -r '
+    "blockNumber,transactionHash,transactionIndex,logIndex,address," +
+    (.inputs | map(.name // ("param" + (. | keys | length | tostring))) | join(","))
+  ' 2>/dev/null)
+
+  if [ $? -ne 0 ] || [ -z "$header" ]; then
+    echo "❌ Failed to generate CSV header" >&2
+    return 1
+  fi
+
+  echo "$header"
+  return 0
+}
+
+# Extract parameter metadata for processing
+extract_parameter_metadata() {
+  local event_abi=$1
+  local temp_dir=$2
+
+  # Extract parameter details
+  echo "$event_abi" | jq -r '.inputs[] | @json' > "$temp_dir/params.json"
+  
+  if [ $? -ne 0 ]; then
+    echo "❌ Failed to extract parameter metadata" >&2
+    return 1
+  fi
+
+  # Generate type information for cast abi-decode
+  local non_indexed_types
+  non_indexed_types=$(echo "$event_abi" | jq -r '
+    [.inputs[] | select(.indexed != true) | .type] | join(",")
+  ' 2>/dev/null)
+
+  if [ $? -ne 0 ]; then
+    echo "❌ Failed to generate type information" >&2
+    return 1
+  fi
+
+  echo "$non_indexed_types" > "$temp_dir/non_indexed_types.txt"
+
+  # Count parameters
+  local param_count
+  param_count=$(echo "$event_abi" | jq -r '.inputs | length' 2>/dev/null)
+  echo "$param_count" > "$temp_dir/param_count.txt"
+
+  return 0
+}
+
+# Convert YAML to JSON with robust error handling
+convert_yaml_to_json() {
+  local yaml_file=$1
+  local json_file=$2
+
+  echo "🔄 Converting YAML to JSON..."
+
+  # Try yq first if available
+  if command -v yq >/dev/null 2>&1; then
+    echo "📝 Using yq for YAML conversion"
+    if yq eval -o json "$yaml_file" > "$json_file" 2>/dev/null; then
+      # Validate the JSON output
+      if jq empty "$json_file" 2>/dev/null; then
+        return 0
+      else
+        echo "⚠️  yq produced invalid JSON, falling back to Python conversion"
+        rm -f "$json_file"
+      fi
+    else
+      echo "⚠️  yq conversion failed, falling back to Python conversion"
+    fi
+  fi
+
+  # Python-based conversion (more reliable)
+  echo "📝 Using Python for YAML to JSON conversion"
+  
+  python3 -c "
+import sys
+import json
+import re
+
+events = []
+current_event = None
+in_topics = False
+topics = []
+
+with open('$yaml_file', 'r') as f:
+    for line in f:
+        line = line.strip()
+        
+        if line.startswith('- address:'):
+            if current_event:
+                if in_topics:
+                    current_event['topics'] = topics
+                    in_topics = False
+                    topics = []
+                events.append(current_event)
+            
+            current_event = {'address': line.split(':', 1)[1].strip()}
+            in_topics = False
+            
+        elif line.startswith('topics:'):
+            in_topics = True
+            topics = []
+            
+        elif in_topics and line.startswith('- '):
+            topics.append(line[2:].strip())
+            
+        elif current_event and ':' in line and not in_topics:
+            key, value = line.split(':', 1)
+            key = key.strip()
+            value = value.strip()
+            
+            # Convert numeric fields
+            if key in ['blockNumber', 'transactionIndex', 'logIndex']:
+                try:
+                    value = int(value)
+                except:
+                    pass
+                    
+            current_event[key] = value
+        
+        elif current_event and in_topics and not line.startswith('- '):
+            # End of topics, process the current line as regular field
+            if topics:
+                current_event['topics'] = topics
+                in_topics = False
+                topics = []
+                
+            if ':' in line:
+                key, value = line.split(':', 1)
+                key = key.strip()
+                value = value.strip()
+                
+                if key in ['blockNumber', 'transactionIndex', 'logIndex']:
+                    try:
+                        value = int(value)
+                    except:
+                        pass
+                        
+                current_event[key] = value
+
+# Add the last event
+if current_event:
+    if in_topics:
+        current_event['topics'] = topics
+    events.append(current_event)
+
+with open('$json_file', 'w') as f:
+    json.dump(events, f, indent=2)
+" 2>/dev/null
+
+  # Validate the JSON output
+  if ! jq empty "$json_file" 2>/dev/null; then
+    echo "❌ Python YAML conversion produced invalid JSON" >&2
+    return 1
+  fi
+
+  return 0
+}
+
+# Process all events with progress tracking and error handling
+process_all_events() {
+  local input_file=$1
+  local temp_dir=$2
+  local csv_file=$3
+  local success_var_name=$4
+  local error_var_name=$5
+
+  eval "${success_var_name}=0"
+  eval "${error_var_name}=0"
+
+  # Convert YAML to JSON
+  if ! convert_yaml_to_json "$input_file" "$temp_dir/events.json"; then
+    echo "❌ Failed to convert YAML to JSON" >&2
+    return 1
+  fi
+
+  # Validate JSON structure
+  local event_count
+  event_count=$(jq '. | length' "$temp_dir/events.json" 2>/dev/null)
+  
+  if [ $? -ne 0 ] || [ "$event_count" = "null" ]; then
+    echo "❌ Invalid JSON structure" >&2
+    return 1
+  fi
+
+  echo "📊 Processing $event_count events..."
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - Processing $event_count events" >&3
+
+  # Load parameter metadata
+  local non_indexed_types
+  non_indexed_types=$(cat "$temp_dir/non_indexed_types.txt" 2>/dev/null || echo "")
+
+  # Process events in batches for better performance
+  local batch_size=100
+  local processed=0
+
+  for ((start=0; start<event_count; start+=batch_size)); do
+    local end=$((start + batch_size - 1))
+    if [ $end -ge $event_count ]; then
+      end=$((event_count - 1))
+    fi
+
+    # Process batch
+    for ((i=start; i<=end; i++)); do
+      if process_single_event_safe "$temp_dir/events.json" $i "$temp_dir" "$csv_file" "$non_indexed_types"; then
+        eval "${success_var_name}=\$((\$${success_var_name} + 1))"
+      else
+        eval "${error_var_name}=\$((\$${error_var_name} + 1))"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - Failed to process event $i" >&3
+      fi
+      
+      processed=$((processed + 1))
+    done
+
+    # Progress update
+    local progress=$((processed * 100 / event_count))
+    echo "🔄 Progress: $progress% ($processed/$event_count)"
+  done
+
+  return 0
+}
+
+# Process single event with comprehensive error handling
+process_single_event_safe() {
+  local events_file=$1
+  local event_index=$2
+  local temp_dir=$3
+  local csv_file=$4
+  local non_indexed_types=$5
+
+  # Extract event data using jq with error handling
+  local event_data
+  event_data=$(jq -r ".[$event_index] // empty" "$events_file" 2>/dev/null)
+
+  if [ $? -ne 0 ] || [ -z "$event_data" ] || [ "$event_data" = "null" ]; then
+    echo "⚠️  Failed to extract event data for index $event_index" >&2
+    return 1
+  fi
+
+  # Extract transaction information
+  local tx_info
+  tx_info=$(echo "$event_data" | jq -r '
+    [
+      (.blockNumber // ""),
+      (.transactionHash // ""),
+      (.transactionIndex // ""),
+      (.logIndex // ""),
+      (.address // "")
+    ] | @csv
+  ' 2>/dev/null)
+
+  if [ $? -ne 0 ]; then
+    echo "⚠️  Failed to extract transaction info for event $event_index" >&2
+    return 1
+  fi
+
+  # Extract and process parameter values
+  local param_values
+  if ! param_values=$(process_event_parameters "$event_data" "$temp_dir" "$non_indexed_types"); then
+    echo "⚠️  Failed to process parameters for event $event_index" >&2
+    return 1
+  fi
+
+  # Write complete row to CSV
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - Writing event $event_index to CSV" >&3
+  echo "$tx_info$param_values" >> "$csv_file"
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - Event $event_index written successfully" >&3
+  return 0
+}
+
+# Process event parameters with type-aware handling
+process_event_parameters() {
+  # Completely suppress all output except the final result
+  {
+    local event_data=$1
+    local temp_dir=$2
+    local non_indexed_types=$3
+
+    local param_values=""
+    local topic_index=1  # Skip event signature hash
+    local non_indexed_index=0
+
+    # Extract topics and data
+    local topics_json
+    topics_json=$(echo "$event_data" | jq -r '.topics // []')
+    local data
+    data=$(echo "$event_data" | jq -r '.data // "0x"')
+
+    # Decode non-indexed data if present
+    local decoded_values=""
+    if [ "$data" != "0x" ] && [ -n "$non_indexed_types" ] && [ "$non_indexed_types" != "" ]; then
+      decoded_values=$(decode_non_indexed_data "$data" "$non_indexed_types")
+    fi
+
+    # Process each parameter
+    while IFS= read -r param_json; do
+      if [ -n "$param_json" ] && [ "$param_json" != "null" ]; then
+        local value=""
+        local is_indexed
+        local param_type
+        
+        is_indexed=$(echo "$param_json" | jq -r '.indexed // false')
+        param_type=$(echo "$param_json" | jq -r '.type // ""')
+
+        if [ "$is_indexed" = "true" ]; then
+          # Process indexed parameter
+          value=$(process_indexed_parameter "$topics_json" $topic_index "$param_type")
+          topic_index=$((topic_index + 1))
+        else
+          # Process non-indexed parameter
+          value=$(get_decoded_value "$decoded_values" $non_indexed_index "$param_type")
+          non_indexed_index=$((non_indexed_index + 1))
+        fi
+
+        # Escape and format value for CSV
+        value=$(escape_csv_value "$value")
+        param_values="$param_values,$value"
+      fi
+    done < "$temp_dir/params.json"
+
+    # Only output the final result
+    echo "$param_values"
+  } 2>/dev/null
+  
+  return 0
+}
+
+# Process indexed parameters with type-specific handling
+process_indexed_parameter() {
+  set +x  # Disable debug output
+  
+  local topics_json=$1
+  local topic_index=$2
+  local param_type=$3
+
+  local raw_value
+  raw_value=$(echo "$topics_json" | jq -r ".[$topic_index] // \"\"" 2>/dev/null)
+
+  if [ -z "$raw_value" ] || [ "$raw_value" = "null" ]; then
+    echo ""
+    return 0
+  fi
+
+  # Type-specific processing using cast
+  case "$param_type" in
+    "address")
+      # Normalize address using cast
+      cast --to-checksum-address "$raw_value" 2>/dev/null || echo "$raw_value"
+      ;;
+    uint*)
+      # Convert to decimal using cast
+      cast --to-dec "$raw_value" 2>/dev/null || echo "$raw_value"
+      ;;
+    int*)
+      # Handle signed integers
+      cast --to-dec "$raw_value" 2>/dev/null || echo "$raw_value"
+      ;;
+    bool)
+      # Convert boolean
+      if [ "$raw_value" = "0x0000000000000000000000000000000000000000000000000000000000000000" ]; then
+        echo "false"
+      else
+        echo "true"
+      fi
+      ;;
+    bytes*)
+      # Keep as hex
+      echo "$raw_value"
+      ;;
+    *)
+      # Default: keep as-is
+      echo "$raw_value"
+      ;;
+  esac
+}
+
+# Decode non-indexed data using cast abi-decode
+decode_non_indexed_data() {
+  local data=$1
+  local types=$2
+
+  if [ -z "$types" ] || [ "$types" = "" ]; then
+    echo ""
+    return 0
+  fi
+
+  # Use cast abi-decode with correct function output format
+  local decoded
+  decoded=$(cast abi-decode "decode()($types)" "$data" 2>/dev/null)
+
+  if [ $? -ne 0 ]; then
+    echo "⚠️  cast abi-decode failed for data: $data, types: $types" >&2
+    return 1
+  fi
+
+  echo "$decoded"
+  return 0
+}
+
+# Extract decoded value by index
+get_decoded_value() {
+  set +x  # Disable debug output
+  
+  local decoded_values=$1
+  local index=$2
+  local param_type=$3
+
+  if [ -z "$decoded_values" ]; then
+    echo ""
+    return 0
+  fi
+
+  # Extract value by line number (simple approach)
+  local value
+  value=$(echo "$decoded_values" | sed -n "$((index + 1))p" 2>/dev/null)
+
+  # Type-specific cleanup
+  case "$param_type" in
+    *"[]")
+      # Array type - format properly for CSV (check this first!)
+      # Remove leading/trailing whitespace and format as JSON-like array
+      value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+      # Convert "1, 2, 3" format to "[1,2,3]" format  
+      if [ -n "$value" ] && [ "$value" != "null" ]; then
+        # Check if it's already in bracket format
+        if ! echo "$value" | grep -q '^\[.*\]$'; then
+          # Convert comma-separated values to bracketed format
+          value="[$value]"
+        fi
+        # Clean up spaces around commas for consistent formatting
+        value=$(echo "$value" | sed 's/, */,/g' | sed 's/ *,/,/g')
+      else
+        value="[]"
+      fi
+      ;;
+    uint*|int*)
+      # Remove scientific notation annotations
+      value=$(echo "$value" | sed 's/ \[.*\]$//' | awk '{print $1}')
+      ;;
+    bytes*)
+      # Bytes types - keep as hex, ensure proper format
+      value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+      if [ -n "$value" ] && ! echo "$value" | grep -q '^0x'; then
+        value="0x$value"
+      fi
+      ;;
+    bool)
+      # Boolean type - normalize values
+      value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+      case "$value" in
+        "true"|"True"|"TRUE"|"1")
+          value="true"
+          ;;
+        "false"|"False"|"FALSE"|"0")
+          value="false"
+          ;;
+      esac
+      ;;
+    address)
+      # Address type - normalize using cast if available
+      value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+      if [ -n "$value" ] && command -v cast >/dev/null 2>&1; then
+        normalized=$(cast --to-checksum-address "$value" 2>/dev/null)
+        if [ $? -eq 0 ] && [ -n "$normalized" ]; then
+          value="$normalized"
+        fi
+      fi
+      ;;
+    string)
+      # Keep as-is but trim
+      value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+      ;;
+  esac
+
+  echo "$value"
+  return 0
+}
+
+# Escape values for CSV with proper quoting
+escape_csv_value() {
+  local value=$1
+
+  if [ -z "$value" ]; then
+    echo ""
+    return 0
+  fi
+
+  # Escape quotes
+  value=$(echo "$value" | sed 's/"/\\"/g')
+  
+  # Remove control characters
+  value=$(echo "$value" | tr -d '\r\n\t')
+  
+  # For arrays and values containing commas, spaces, or quotes - always quote
+  if echo "$value" | grep -q '[,"]' || echo "$value" | grep -q '[[:space:]]'; then
+    echo "\"$value\""
+  else
+    echo "$value"
+  fi
+}
+
+# Generate comprehensive final report
+generate_final_report() {
+  local csv_file=$1
+  local success_count=$2
+  local error_count=$3
+  local log_file=$4
+
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "📊 Conversion Complete"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  
+  if [ -f "$csv_file" ]; then
+    local csv_lines
+    csv_lines=$(wc -l < "$csv_file" | tr -d ' ')
+    local csv_size
+    csv_size=$(wc -c < "$csv_file" | tr -d ' ')
+    local csv_size_kb=$((csv_size / 1024))
+    
+    echo "✅ Successfully processed: $success_count events"
+    if [ $error_count -gt 0 ]; then
+      echo "⚠️  Failed to process: $error_count events"
+    fi
+    echo "💾 Output file: $csv_file"
+    echo "📏 File size: ${csv_size_kb}KB"
+    echo "📄 Total rows: $((csv_lines - 1)) (excluding header)"
+    
+    # Validate CSV structure
+    if validate_csv_output "$csv_file"; then
+      echo "✅ CSV structure validation: PASSED"
+    else
+      echo "⚠️  CSV structure validation: FAILED"
+    fi
+  else
+    echo "❌ No output file generated"
+  fi
+
+  if [ -f "$log_file" ]; then
+    echo "📋 Detailed log: $log_file"
+    local log_size
+    log_size=$(wc -c < "$log_file" | tr -d ' ')
+    if [ $log_size -gt 1024 ]; then
+      echo "📝 Log size: $((log_size / 1024))KB"
+    fi
+  fi
+
+  local total_processed=$((success_count + error_count))
+  if [ $total_processed -gt 0 ]; then
+    local success_rate=$((success_count * 100 / total_processed))
+    echo "📈 Success rate: ${success_rate}%"
+  fi
+
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - Conversion completed: $success_count success, $error_count errors" >&3
+}
+
+# Validate CSV output structure
+validate_csv_output() {
+  local csv_file=$1
+
+  # Check if file exists and is not empty
+  if [ ! -s "$csv_file" ]; then
+    return 1
+  fi
+
+  # Check if all lines have the same number of fields
+  local header_fields
+  header_fields=$(head -1 "$csv_file" | tr ',' '\n' | wc -l)
+  
+  local inconsistent_lines
+  inconsistent_lines=$(awk -F',' -v expected="$header_fields" 'NF != expected {print NR}' "$csv_file" | wc -l)
+
+  if [ "$inconsistent_lines" -gt 0 ]; then
+    echo "⚠️  Found $inconsistent_lines lines with inconsistent field count" >&2
+    return 1
+  fi
+
+  return 0
+}
+
+# Clean up temporary files and exit
+cleanup_and_exit() {
+  local temp_dir=$1
+  local exit_code=$2
+
+  if [ -d "$temp_dir" ]; then
+    # Copy log file to output directory if it exists
+    if [ -f "$temp_dir/conversion.log" ] && [ -d "$output_dir" ]; then
+      cp "$temp_dir/conversion.log" "$output_dir/" 2>/dev/null || true
+    fi
+    
+    rm -rf "$temp_dir"
+  fi
+
+  # Close log file descriptor
+  exec 3>&-
+
+  return $exit_code
 }
 
 cast_logs(){
