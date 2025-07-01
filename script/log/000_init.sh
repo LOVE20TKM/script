@@ -1420,8 +1420,24 @@ escape_csv_value() {
     # Remove control characters first
     value=$(echo "$value" | tr -d '\r\n\t')
     
-    # Check if quoting is needed (contains comma, quote, or whitespace)
-    if echo "$value" | grep -q '[,"]' || echo "$value" | grep -q '[[:space:]]'; then
+    # Handle string values that are already properly quoted by cast abi-decode
+    # If value is wrapped in quotes (check for proper quote pairing)
+    if echo "$value" | grep -q '^".*"$' && [ "$(echo "$value" | grep -o '"' | wc -l)" -eq 2 ]; then
+      # Extract the content inside quotes
+      local inner_content
+      inner_content=$(echo "$value" | sed 's/^"\(.*\)"$/\1/')
+      
+      # Check if inner content needs quoting (contains comma, quote, or whitespace)
+      if echo "$inner_content" | grep -q '[,"]' || echo "$inner_content" | grep -q '[[:space:]]'; then
+        # Keep the quotes and escape internal quotes
+        value=$(echo "$inner_content" | sed 's/"/\"\"/g')
+        echo "\"$value\""
+      else
+        # Simple string - remove outer quotes
+        echo "$inner_content"
+      fi
+    # Check if quoting is needed for unquoted values
+    elif echo "$value" | grep -q '[,"]' || echo "$value" | grep -q '[[:space:]]'; then
       # Escape quotes by doubling them (CSV standard)
       value=$(echo "$value" | sed 's/"/\"\"/g')
       # Wrap in quotes
