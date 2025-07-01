@@ -242,6 +242,467 @@ fetch_events(){
   cast_logs $contract_address "$event_def" $from_block $to_block $output_file_name
 }
 
+convert_csv_to_xlsx(){
+  local output_file_name=${1}
+
+  local csv_file="$output_dir/$output_file_name.csv"
+  local xlsx_file="$output_dir/$output_file_name.xlsx"
+  
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "📊 Converting CSV to Excel: $output_file_name"
+  echo "📁 Input: $csv_file"
+  echo "💾 Output: $xlsx_file"
+
+  # Input validation
+  if ! validate_csv_for_xlsx_conversion "$csv_file" "$xlsx_file"; then
+    echo "❌ Validation failed"
+    return 1
+  fi
+
+  # Check for available conversion tools
+  local conversion_method=""
+  if command -v python3 >/dev/null 2>&1; then
+    if python3 -c "import pandas, openpyxl" 2>/dev/null; then
+      conversion_method="pandas"
+    elif python3 -c "import csv, xlsxwriter" 2>/dev/null; then
+      conversion_method="xlsxwriter"
+    fi
+  fi
+
+  if [ -z "$conversion_method" ] && command -v libreoffice >/dev/null 2>&1; then
+    conversion_method="libreoffice"
+  fi
+
+  if [ -z "$conversion_method" ]; then
+    echo "❌ No suitable conversion tool found"
+    echo "💡 Please install one of the following:"
+    echo "   - Python3 with pandas and openpyxl: pip install pandas openpyxl"
+    echo "   - Python3 with xlsxwriter: pip install xlsxwriter"
+    echo "   - LibreOffice: apt-get install libreoffice (Linux) or brew install --cask libreoffice (macOS)"
+    return 1
+  fi
+
+  echo "🔧 Using conversion method: $conversion_method"
+
+  # Perform conversion based on available method
+  case "$conversion_method" in
+    "pandas")
+      convert_with_pandas "$csv_file" "$xlsx_file"
+      ;;
+    "xlsxwriter")
+      convert_with_xlsxwriter "$csv_file" "$xlsx_file"
+      ;;
+    "libreoffice")
+      convert_with_libreoffice "$csv_file" "$xlsx_file"
+      ;;
+    *)
+      echo "❌ Unknown conversion method: $conversion_method"
+      return 1
+      ;;
+  esac
+
+  local conversion_result=$?
+
+  # Validate output and generate report
+  if [ $conversion_result -eq 0 ]; then
+    generate_xlsx_conversion_report "$csv_file" "$xlsx_file"
+  else
+    echo "❌ Conversion failed"
+    return 1
+  fi
+
+  return 0
+}
+
+# Validate inputs for XLSX conversion
+validate_csv_for_xlsx_conversion() {
+  local csv_file=$1
+  local xlsx_file=$2
+
+  # Check if CSV file exists and is readable
+  if [ ! -f "$csv_file" ]; then
+    echo "❌ CSV file not found: $csv_file"
+    return 1
+  fi
+
+  if [ ! -r "$csv_file" ]; then
+    echo "❌ CSV file not readable: $csv_file"
+    return 1
+  fi
+
+  # Check if CSV file is not empty
+  if [ ! -s "$csv_file" ]; then
+    echo "❌ CSV file is empty: $csv_file"
+    return 1
+  fi
+
+  # Check if output file already exists
+  if [ -f "$xlsx_file" ]; then
+    echo "⚠️  Excel file already exists: $xlsx_file"
+    echo "🔄 Overwriting existing file..."
+    rm -f "$xlsx_file"
+  fi
+
+  # Check if output directory is writable
+  local output_dir=$(dirname "$xlsx_file")
+  if [ ! -w "$output_dir" ]; then
+    echo "❌ Output directory not writable: $output_dir"
+    return 1
+  fi
+
+  # Check available disk space (require at least 50MB)
+  local available_space=$(df "$output_dir" | awk 'NR==2 {print $4}')
+  if [ "$available_space" -lt 51200 ]; then
+    echo "❌ Insufficient disk space (need at least 50MB)"
+    return 1
+  fi
+
+  # Validate CSV structure (basic check)
+  local header_line=$(head -1 "$csv_file" 2>/dev/null)
+  if [ -z "$header_line" ]; then
+    echo "❌ CSV file appears to have no header"
+    return 1
+  fi
+
+  echo "✅ Input validation passed"
+  return 0
+}
+
+# Convert using pandas (most robust method)
+convert_with_pandas() {
+  local csv_file=$1
+  local xlsx_file=$2
+
+  echo "🐍 Converting with pandas..."
+
+  python3 << EOF
+import sys
+import pandas as pd
+from datetime import datetime
+import traceback
+
+def convert_csv_to_xlsx(csv_file, xlsx_file):
+    try:
+        print("📖 Reading CSV file...")
+        
+        # Read CSV with error handling for encoding issues
+        try:
+            df = pd.read_csv(csv_file, encoding='utf-8')
+        except UnicodeDecodeError:
+            print("⚠️  UTF-8 encoding failed, trying latin-1...")
+            df = pd.read_csv(csv_file, encoding='latin-1')
+        
+        if df.empty:
+            print("❌ CSV file is empty or has no valid data")
+            return False
+            
+        print(f"📊 Loaded {len(df)} rows and {len(df.columns)} columns")
+        
+        # Data preprocessing and type optimization
+        print("🔧 Optimizing data types...")
+        
+        # Convert numeric columns where possible
+        for col in df.columns:
+            if df[col].dtype == 'object':
+                # Try to convert to numeric
+                numeric_series = pd.to_numeric(df[col], errors='ignore')
+                if not numeric_series.equals(df[col]):
+                    df[col] = numeric_series
+                    
+                # Try to convert to datetime for timestamp-like columns
+                elif 'time' in col.lower() or 'date' in col.lower():
+                    try:
+                        df[col] = pd.to_datetime(df[col], errors='ignore')
+                    except:
+                        pass
+        
+        print("💾 Writing Excel file...")
+        
+        # Create Excel writer with engine
+        with pd.ExcelWriter(xlsx_file, engine='openpyxl') as writer:
+            
+            # Write main data sheet
+            df.to_excel(writer, sheet_name='Events', index=False, freeze_panes=(1, 0))
+            
+            # Get the workbook and worksheet
+            workbook = writer.book
+            worksheet = writer.sheets['Events']
+            
+            # Auto-adjust column widths
+            for column in worksheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                
+                # Set column width (max 50 characters)
+                adjusted_width = min(max_length + 2, 50)
+                worksheet.column_dimensions[column_letter].width = adjusted_width
+            
+            # Add formatting to header row
+            from openpyxl.styles import Font, PatternFill, Border, Side
+            
+            header_font = Font(bold=True, color="FFFFFF")
+            header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+            header_border = Border(
+                left=Side(style='thin'),
+                right=Side(style='thin'),
+                top=Side(style='thin'),
+                bottom=Side(style='thin')
+            )
+            
+            # Apply header formatting
+            for cell in worksheet[1]:
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.border = header_border
+            
+            # Add summary sheet with metadata
+            summary_data = {
+                'Metric': [
+                    'Total Rows',
+                    'Total Columns', 
+                    'File Size (CSV)',
+                    'Conversion Time',
+                    'Generated By'
+                ],
+                'Value': [
+                    len(df),
+                    len(df.columns),
+                    f"{csv_file}",
+                    datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'LOVE20 Event Log Processor'
+                ]
+            }
+            
+            summary_df = pd.DataFrame(summary_data)
+            summary_df.to_excel(writer, sheet_name='Summary', index=False)
+            
+            # Format summary sheet
+            summary_ws = writer.sheets['Summary']
+            for column in summary_ws.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 30)
+                summary_ws.column_dimensions[column_letter].width = adjusted_width
+        
+        print("✅ Excel file created successfully")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error during conversion: {str(e)}")
+        traceback.print_exc()
+        return False
+
+# Execute conversion
+success = convert_csv_to_xlsx('$csv_file', '$xlsx_file')
+sys.exit(0 if success else 1)
+EOF
+
+  return $?
+}
+
+# Convert using xlsxwriter (lightweight alternative)
+convert_with_xlsxwriter() {
+  local csv_file=$1
+  local xlsx_file=$2
+
+  echo "📝 Converting with xlsxwriter..."
+
+  python3 << EOF
+import sys
+import csv
+import xlsxwriter
+from datetime import datetime
+import traceback
+
+def convert_csv_to_xlsx(csv_file, xlsx_file):
+    try:
+        print("📖 Reading CSV file...")
+        
+        # Create workbook and worksheet
+        workbook = xlsxwriter.Workbook(xlsx_file)
+        worksheet = workbook.add_worksheet('Events')
+        
+        # Define formats
+        header_format = workbook.add_format({
+            'bold': True,
+            'fg_color': '#366092',
+            'font_color': 'white',
+            'border': 1
+        })
+        
+        cell_format = workbook.add_format({'border': 1})
+        
+        row_count = 0
+        col_count = 0
+        
+        # Read and write CSV data
+        with open(csv_file, 'r', encoding='utf-8') as f:
+            csv_reader = csv.reader(f)
+            
+            for row_num, row in enumerate(csv_reader):
+                col_count = max(col_count, len(row))
+                
+                for col_num, cell_value in enumerate(row):
+                    if row_num == 0:  # Header row
+                        worksheet.write(row_num, col_num, cell_value, header_format)
+                    else:
+                        # Try to convert to number if possible
+                        try:
+                            if '.' in cell_value:
+                                worksheet.write(row_num, col_num, float(cell_value), cell_format)
+                            else:
+                                worksheet.write(row_num, col_num, int(cell_value), cell_format)
+                        except (ValueError, TypeError):
+                            worksheet.write(row_num, col_num, cell_value, cell_format)
+                
+                row_count = row_num + 1
+                
+                if row_count % 1000 == 0:
+                    print(f"🔄 Processed {row_count} rows...")
+        
+        # Auto-adjust column widths (basic implementation)
+        for col in range(col_count):
+            worksheet.set_column(col, col, 15)  # Set default width
+        
+        # Add summary worksheet
+        summary_ws = workbook.add_worksheet('Summary')
+        summary_data = [
+            ['Metric', 'Value'],
+            ['Total Rows', row_count - 1],  # Excluding header
+            ['Total Columns', col_count],
+            ['Source File', csv_file],
+            ['Conversion Time', datetime.now().strftime('%Y-%m-%d %H:%M:%S')],
+            ['Generated By', 'LOVE20 Event Log Processor']
+        ]
+        
+        for row_num, row_data in enumerate(summary_data):
+            for col_num, cell_value in enumerate(row_data):
+                if row_num == 0:
+                    summary_ws.write(row_num, col_num, cell_value, header_format)
+                else:
+                    summary_ws.write(row_num, col_num, cell_value, cell_format)
+        
+        workbook.close()
+        
+        print(f"✅ Excel file created with {row_count} rows and {col_count} columns")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error during conversion: {str(e)}")
+        traceback.print_exc()
+        return False
+
+# Execute conversion
+success = convert_csv_to_xlsx('$csv_file', '$xlsx_file')
+sys.exit(0 if success else 1)
+EOF
+
+  return $?
+}
+
+# Convert using LibreOffice (system tool alternative)
+convert_with_libreoffice() {
+  local csv_file=$1
+  local xlsx_file=$2
+
+  echo "📊 Converting with LibreOffice..."
+
+  # Use LibreOffice headless mode for conversion
+  libreoffice --headless --convert-to xlsx --outdir "$(dirname "$xlsx_file")" "$csv_file" 2>/dev/null
+
+  local conversion_result=$?
+
+  if [ $conversion_result -eq 0 ]; then
+    # LibreOffice creates file with same name but .xlsx extension
+    local base_name=$(basename "$csv_file" .csv)
+    local lo_output="$(dirname "$xlsx_file")/${base_name}.xlsx"
+    
+    # Rename to expected output filename if different
+    if [ "$lo_output" != "$xlsx_file" ]; then
+      mv "$lo_output" "$xlsx_file" 2>/dev/null
+    fi
+    
+    if [ -f "$xlsx_file" ]; then
+      echo "✅ LibreOffice conversion completed"
+      return 0
+    else
+      echo "❌ LibreOffice conversion failed - output file not found"
+      return 1
+    fi
+  else
+    echo "❌ LibreOffice conversion failed with exit code: $conversion_result"
+    return 1
+  fi
+}
+
+# Generate comprehensive conversion report
+generate_xlsx_conversion_report() {
+  local csv_file=$1
+  local xlsx_file=$2
+
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "📊 Conversion Report"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+  if [ -f "$xlsx_file" ]; then
+    # File size comparison
+    local csv_size=$(wc -c < "$csv_file" | tr -d ' ')
+    local xlsx_size=$(wc -c < "$xlsx_file" | tr -d ' ')
+    local csv_size_kb=$((csv_size / 1024))
+    local xlsx_size_kb=$((xlsx_size / 1024))
+    
+    # Row count from CSV
+    local csv_rows=$(wc -l < "$csv_file" | tr -d ' ')
+    local data_rows=$((csv_rows - 1))  # Excluding header
+    
+    echo "✅ Conversion successful!"
+    echo "📁 Input (CSV): $csv_file (${csv_size_kb}KB)"
+    echo "📁 Output (Excel): $xlsx_file (${xlsx_size_kb}KB)"
+    echo "📊 Data rows: $data_rows"
+    
+    # Calculate compression ratio
+    if [ $csv_size -gt 0 ]; then
+      local compression_ratio=$((xlsx_size * 100 / csv_size))
+      echo "📈 Size ratio: ${compression_ratio}% of original"
+    fi
+    
+    # Verify Excel file can be opened (basic test)
+    if command -v python3 >/dev/null 2>&1; then
+      python3 -c "
+import pandas as pd
+try:
+    df = pd.read_excel('$xlsx_file', sheet_name='Events')
+    print(f'✅ Excel file verification: {len(df)} rows loaded successfully')
+except Exception as e:
+    print(f'⚠️  Excel file verification failed: {e}')
+" 2>/dev/null
+    fi
+    
+    echo "🎉 Ready to open in Excel, LibreOffice, or other spreadsheet applications!"
+    
+  else
+    echo "❌ Conversion failed - output file not created"
+    return 1
+  fi
+
+  return 0
+}
+
 # 用event_def来解析event log，并转换为csv格式
 # 生产级实现：完整错误处理、性能优化、类型安全
 convert_event_file_to_csv(){
