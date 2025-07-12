@@ -13,7 +13,7 @@ echo "📊 This will fetch raw logs and convert them to CSV format"
 echo ""
 
 # launch - 项目启动和众筹
-fetch_and_convert "launch" "DeployToken"
+fetch_and_convert "launch" "LaunchToken"
 fetch_and_convert "launch" "Contribute"
 fetch_and_convert "launch" "Withdraw"
 fetch_and_convert "launch" "Claim"
