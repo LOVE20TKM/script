@@ -31,7 +31,7 @@ fetch_and_convert "token" "BurnForParentToken"
 # slToken - 流动性代币操作
 fetch_and_convert "slToken" "TokenMint"
 fetch_and_convert "slToken" "TokenBurn"
-fetch_and_convert "slToken" "FeeWithdraw"
+fetch_and_convert "slToken" "WithdrawFee"
 
 # stToken - 质押代币操作
 fetch_and_convert "stToken" "TokenMint"
