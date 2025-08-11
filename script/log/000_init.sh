@@ -8,7 +8,7 @@ fi
 source ../network/$network/address.params 
 source ../network/$network/network.params
 
-from_block=3939811
+from_block=64747182
 to_block=$(cast block-number --rpc-url $RPC_URL)
 
 normalize_address() {

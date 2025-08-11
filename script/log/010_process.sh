@@ -63,11 +63,11 @@ fetch_and_convert "verify" "Verify"
 fetch_and_convert "mint" "PrepareReward"
 fetch_and_convert "mint" "MintGovReward"
 fetch_and_convert "mint" "MintActionReward"
-fetch_and_convert "mint" "BurnAbstentionActionReward"
+fetch_and_convert "mint" "BurnActionReward"
 fetch_and_convert "mint" "BurnBoostReward"
 
 # random - 随机数更新（贯穿整个流程）
-fetch_and_convert "random" "RandomSeedUpdate"
+fetch_and_convert "random" "UpdateRandomSeed"
 
 # erc20 - ERC20标准事件（代币转账和授权）
 fetch_and_convert "erc20" "Transfer"
