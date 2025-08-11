@@ -1,0 +1,39 @@
+# Token 
+
+# ForTest 
+FIRST_TOKEN_SYMBOL=TestLOVE20
+
+TOKEN_SYMBOL_LENGTH=6
+MAX_SUPPLY=10000000000000000000000000000  # 1e10 * 1e18 (10 billion tokens)
+
+# Launch
+FIRST_PARENT_TOKEN_FUNDRAISING_GOAL=100000000000000000  # ForTest 1e17 (0.1 TKM)
+PARENT_TOKEN_FUNDRAISING_GOAL=20000000000000000000000000  # 2 * 1e7 * 1e18 (20 million tokens)
+LAUNCH_AMOUNT=1000000000000000000000000000  # 1e9 * 1e18 (1 billion tokens, 10% of total supply)
+WITHDRAW_WAITING_BLOCKS=48 # ForTest  2 minutes
+SECOND_HALF_MIN_BLOCKS=48 # ForTest 2 minutes 
+MIN_GOV_REWARD_MINTS_TO_LAUNCH=2 # ForTest how many gov reward mints to launch one token 
+
+# Round
+PHASE_BLOCKS=120 # ForTest 5 minutes 
+PROMISED_WAITING_PHASES_MIN=1 # ForTest
+PROMISED_WAITING_PHASES_MAX=4 # ForTest
+
+# Stake
+MAX_WITHDRAWABLE_TO_FEE_RATIO=300  # When lpFee exceeds 1/300 of lpWithdrawable, the lpFee will be burned
+
+# Submit
+SUBMIT_MIN_PER_THOUSAND=3  # 0.3% gov votes
+MAX_VERIFICATION_KEY_LENGTH=32
+
+# Join
+JOIN_END_PHASE_BLOCKS=8 # last 20 seconds fobid to join
+
+# Random Seed 
+RANDOM_SEED_UPDATE_MIN_PER_TEN_THOUSAND=3  # 0.03% of verifier scores to trigger random seed update
+
+# Reward 
+ACTION_REWARD_MIN_VOTE_PER_THOUSAND=30  # 3%
+ROUND_REWARD_GOV_PER_THOUSAND=1  # 0.1%
+ROUND_REWARD_ACTION_PER_THOUSAND=1  # 0.1%
+MAX_GOV_BOOST_REWARD_MULTIPLIER=2 # boost reward <= 2 * verify reward
