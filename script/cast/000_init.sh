@@ -131,6 +131,12 @@ show_in_eth(){
 
     # Remove possible scientific notation format and trailing spaces
     wei_value=$(echo "$wei_value" | sed 's/\[.*\]//' | tr -d ' ')
+    
+    # Check if the value is empty or invalid
+    if [ -z "$wei_value" ] || ! [[ "$wei_value" =~ ^[0-9]+$ ]]; then
+        echo "0"
+        return
+    fi
 
     # Convert wei to eth using bc for precise calculation
     echo "scale=18; $wei_value / 1000000000000000000" | bc | sed 's/0*$//' | sed 's/\.$//'
@@ -153,7 +159,7 @@ next_phase_waiting_blocks(){
         return 1
     fi
 
-    local current_round=$(cast_call $contract_address "currentRound()(uint256)")
+    local current_round=$(cast_call $contract_address "currentRound()(uint256)" | awk '{print $1}')
     printf "current_round: %s\n" $current_round
     local current_block=$(cast block latest --field number --rpc-url $RPC_URL)
     printf "current_block: %s\n" $current_block
@@ -234,17 +240,17 @@ echo "launch_info() loaded"
 stake_status(){
     local token_address=$1
     local account_address=$2
-    local slAmount slAmountSci stAmount promisedWaitingPhases requestedUnstakeRound govVotes
+    local slAmount stAmount promisedWaitingPhases requestedUnstakeRound govVotes
     
     cast_call $stakeAddress "accountStakeStatus(address,address)(int256,uint256,uint256,uint256,uint256)" $token_address $account_address | {
-        read slAmount slAmountSci
+        read slAmount
         read stAmount
         read promisedWaitingPhases
         read requestedUnstakeRound
         read govVotes
 
         echo "{"
-        echo "    slAmount: $slAmount $slAmountSci"
+        echo "    slAmount: $slAmount"
         echo "    stAmount: $stAmount"
         echo "    promisedWaitingPhases: $promisedWaitingPhases"
         echo "    requestedUnstakeRound: $requestedUnstakeRound"
@@ -301,7 +307,7 @@ join_status() {
   local token_address=$1
   local action_id=$2
 
-  local num_of_accounts=$(cast_call $joinAddress "numOfAccounts(address,uint256)(uint256)" $token_address $action_id)
+  local num_of_accounts=$(cast_call $joinAddress "numOfAccounts(address,uint256)(uint256)" $token_address $action_id | awk '{print $1}')
   local amount_by_action_id=$(cast_call $joinAddress "amountByActionId(address,uint256)(uint256) " $token_address $action_id | show_in_eth)
 
   echo "numOfAccounts: $num_of_accounts"
@@ -321,15 +327,44 @@ join_status() {
 echo "join_status() loaded"
 
 account_status() {
-    local token_address=$1
+  local token_address=$1
   local account_address=$2
+  
+  echo "--------------------"
+  echo "Balance Status"
+  echo "--------------------"
 
-  local amount_by_account=$(cast_call $joinAddress "amountByAccount(address,address)(uint256)" $token_address $account_address | show_in_eth)
-  local action_ids_by_account=$(cast_call $joinAddress "actionIdsByAccount(address,address)(uint256[])" $token_address $account_address)
+  local balanceETH=$(balance_eth $account_address)
+  echo "balanceETH: $balanceETH"
+
+  local balanceWETH=$(balance_of $rootParentTokenAddress $account_address)
+  echo "balanceWETH: $balanceWETH"
+
+  local balanceToken=$(balance_of $token_address $account_address)
+  echo "balanceToken: $balanceToken"
+
+  stake_status $token_address $account_address
+
+  local balanceSL=$(balance_of $slTokenAddress $account_address)
+  echo "balanceSL: $balanceSL"
+
+  local balanceSL_wei=$(balance_of_wei $slTokenAddress $account_address)
+  local sl_amounts=$(cast_call $slTokenAddress "tokenAmountsBySlAmount(uint256)(uint256,uint256)" $balanceSL_wei)
+  local tokenAmountForSL=$(echo "$sl_amounts" | awk 'NR==1 {print $1}' | show_in_eth)
+  local parentAmountForSL=$(echo "$sl_amounts" | awk 'NR==2 {print $1}' | show_in_eth)
+  echo "tokenAmountForSL: $tokenAmountForSL"
+  echo "parentAmountForSL: $parentAmountForSL"
+
+  local balanceST=$(balance_of $stTokenAddress $account_address)
+  echo "balanceST: $balanceST"
+
 
   echo "--------------------"
   echo "Action Status"
   echo "--------------------"
+  local amount_by_account=$(cast_call $joinAddress "amountByAccount(address,address)(uint256)" $token_address $account_address | show_in_eth)
+  local action_ids_by_account=$(cast_call $joinAddress "actionIdsByAccount(address,address)(uint256[])" $token_address $account_address)
+
 
   echo "amountByAccount: $amount_by_account"
   echo "actionIdsByAccount: $action_ids_by_account"
@@ -358,7 +393,7 @@ echo "balance_of() loaded"
 balance_of_wei(){
     local token_address=$1
     local account_address=$2
-    cast_call $token_address "balanceOf(address)(uint256)" $account_address
+    cast_call $token_address "balanceOf(address)(uint256)" $account_address | awk '{print $1}'
 }
 echo "balance_of_wei() loaded"
 
