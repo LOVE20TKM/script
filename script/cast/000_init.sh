@@ -297,6 +297,57 @@ action_info_by_field() {
 }
 echo "action_info_by_field() loaded"
 
+join_status() {
+  local token_address=$1
+  local action_id=$2
+
+  local num_of_accounts=$(cast_call $joinAddress "numOfAccounts(address,uint256)(uint256)" $token_address $action_id)
+  local amount_by_action_id=$(cast_call $joinAddress "amountByActionId(address,uint256)(uint256) " $token_address $action_id | show_in_eth)
+
+  echo "numOfAccounts: $num_of_accounts"
+  echo "amountByActionId: $amount_by_action_id"
+
+  if [ "$num_of_accounts" -gt 0 ]; then
+    echo "index account amountByActionIdByAccount"
+  fi
+
+  for ((i=1; i<= num_of_accounts; i++)); do
+    local account=$(cast_call $joinAddress "indexToAccount(address,uint256,uint256)(address)" $token_address $action_id $i)
+    local amount_by_action_id_by_account=$(cast_call $joinAddress "amountByActionIdByAccount(address,uint256,address)(uint256)" $token_address $action_id $account | show_in_eth)
+    
+    echo "$i $account $amount_by_action_id_by_account"
+  done
+}
+echo "join_status() loaded"
+
+account_status() {
+    local token_address=$1
+  local account_address=$2
+
+  local amount_by_account=$(cast_call $joinAddress "amountByAccount(address,address)(uint256)" $token_address $account_address | show_in_eth)
+  local action_ids_by_account=$(cast_call $joinAddress "actionIdsByAccount(address,address)(uint256[])" $token_address $account_address)
+
+  echo "--------------------"
+  echo "Action Status"
+  echo "--------------------"
+
+  echo "amountByAccount: $amount_by_account"
+  echo "actionIdsByAccount: $action_ids_by_account"
+
+  if [ -n "$action_ids_by_account" ] && [ "$action_ids_by_account" != "[]" ]; then
+    action_ids_clean=$(echo "$action_ids_by_account" | sed 's/\[//g' | sed 's/\]//g')
+    
+    echo "$action_ids_clean" | tr ',' '\n' | while read -r action_id; do
+      action_id=$(echo "$action_id" | xargs)
+      if [ -n "$action_id" ]; then
+        local amount_by_action_id_by_account=$(cast_call $joinAddress "amountByActionIdByAccount(address,uint256,address)(uint256)" $token_address $action_id $account_address | show_in_eth)
+        echo "actionId: $action_id, amountByActionIdByAccount: $amount_by_action_id_by_account"
+      fi
+    done
+  fi
+}
+echo "account_status() loaded"
+
 balance_of(){
     local token_address=$1
     local account_address=$2
@@ -512,6 +563,8 @@ help() {
     echo "  stake_status(token_address, account_address)       - Get stake status"
     echo "  action_info(action_id)                            - Get action information"
     echo "  action_info_by_field(action_id, field)            - Get specific action field"
+    echo "  join_status(token_address, action_id)             - Get join status"
+    echo "  account_status(token_address, account_address)     - Get account status"
     
     echo -e "\n\033[33mBalance Functions:\033[0m"
     echo "  balance_of(token_address, account_address)         - Get token balance in ETH"
