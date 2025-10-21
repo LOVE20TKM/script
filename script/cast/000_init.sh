@@ -547,6 +547,11 @@ echo "------ $base_dir/WETH.params loaded ------";
 echo "WETH_NAME: $WETH_NAME"
 echo "WETH_SYMBOL: $WETH_SYMBOL"
 
+echo "------ uniswap related variables loaded ------";
+echo "uniswap tusdt pair address"
+tusdtPairAddress=$(cast_call $uniswapV2FactoryAddress "getPair(address,address)(address)" $tokenAddress $tusdtAddress)
+echo "tusdtPairAddress: $tusdtPairAddress"
+
 echo "------ $base_dir/LOVE20.params loaded ------";
 echo "FIRST_TOKEN_SYMBOL: $FIRST_TOKEN_SYMBOL"
 echo "TOKEN_SYMBOL_LENGTH: $TOKEN_SYMBOL_LENGTH"

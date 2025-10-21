@@ -128,6 +128,9 @@ fetch_and_convert "erc20" "Transfer"
 fetch_and_convert "erc20" "Approval"
   # Topic: 0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925 (Approval(address,address,uint256))
 
+fetch_and_convert "TUSDT" "Transfer"
+fetch_and_convert "TUSDT" "Approval"
+
 
 # uniswapV2Factory - UniswapV2工厂合约事件（创建交易对）
 fetch_and_convert "uniswapV2Factory" "PairCreated"

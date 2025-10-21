@@ -94,6 +94,9 @@ contract_address(){
     "erc20")
       echo $tokenAddress
       ;;
+    "TUSDT")
+      echo $tusdtAddress
+      ;;
     "uniswapV2Factory")
       echo $uniswapV2FactoryAddress
       ;;
@@ -147,6 +150,9 @@ abi_file_path() {
       echo "$abi_dir/ILOVE20Random.sol/ILOVE20Random.json"
       ;;
     "erc20")
+      echo "$abi_dir/IERC20.sol/IERC20.json"
+      ;;
+    "TUSDT")
       echo "$abi_dir/IERC20.sol/IERC20.json"
       ;;
     "uniswapV2Factory")
