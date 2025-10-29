@@ -260,6 +260,32 @@ stake_status(){
 }
 echo "stake_status() loaded"
 
+gov_status(){
+    local token_address=$1
+    local account_address=$2
+    local voteRound=$(current_round $voteAddress)
+    local verifyRound=$(current_round $verifyAddress)
+
+    local validGovVotes=$(cast_call $stakeAddress "validGovVotes(address,address)(uint256)" $token_address $account_address)
+    local voted=$(cast_call $voteAddress "votesNumByAccount(address,uint256,address)(uint256)" $token_address $voteRound $account_address)
+    local verified=$(cast_call $verifyAddress "scoreByVerifier(address,uint256,address)(uint256)" $token_address $verifyRound $account_address)
+
+    local vote_status=""
+    local verify_status=""
+    [ "$voted" != "$validGovVotes" ] && vote_status="⚠️"
+    [ "$verified" != "$validGovVotes" ] && verify_status="⚠️"
+    [ "$voted" = "$validGovVotes" ] && vote_status="✅ "
+    [ "$verified" = "$validGovVotes" ] && verify_status="✅ "
+    
+    echo "{"
+    echo "    account_address: $account_address"
+    echo "    validGovVotes: $validGovVotes"
+    echo "    ${vote_status}voted(round: $voteRound): $voted"
+    echo "    ${verify_status}verified(round: $verifyRound): $verified"
+    echo "}"
+}
+echo "gov_status() loaded"
+
 action_info(){
     local action_id=$1
     echo "action_id: $action_id"
