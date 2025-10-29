@@ -627,6 +627,7 @@ help() {
     echo "  launch_info(token_address)                         - Get launch information"
     echo "  launch_info_by_index(index)                       - Get launch info by index"
     echo "  stake_status(token_address, account_address)       - Get stake status"
+    echo "  gov_status(token_address, account_address)        - Get gov status"
     echo "  action_info(action_id)                            - Get action information"
     echo "  action_info_by_field(action_id, field)            - Get specific action field"
     echo "  join_status(token_address, action_id)             - Get join status"
