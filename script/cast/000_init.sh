@@ -211,6 +211,7 @@ current_round(){
 echo "current_round() loaded"
 
 
+
 launch_info(){
     local token_address=$1
     echo "token_address: $token_address"
@@ -600,6 +601,57 @@ echo "ROUND_REWARD_GOV_PER_THOUSAND: $ROUND_REWARD_GOV_PER_THOUSAND"
 echo "ROUND_REWARD_ACTION_PER_THOUSAND: $ROUND_REWARD_ACTION_PER_THOUSAND"
 echo "MAX_GOV_BOOST_REWARD_MULTIPLIER: $MAX_GOV_BOOST_REWARD_MULTIPLIER"
 
+
+core_data(){
+    local show_labels=${1:-false}  # 默认只显示数字，传入true则显示指标名称和数字
+    
+    dailyGovReward=$(cast_call $mintAddress "calculateRoundGovReward(address)(uint256)" $tokenAddress | show_in_eth)
+    totalToken=$(cast_call $tokenAddress "totalSupply()(uint256)" | show_in_eth)
+    totalTusdt=$(cast_call $tusdtPairAddress "totalSupply()(uint256)" | show_in_eth)
+    result=$(cast_call $tusdtPairAddress "getReserves()(uint112,uint112,uint32)");
+    reserveTusdt=$(echo "$result" | sed -n '1p' | awk '{print $1}' | show_in_eth)
+    reserveToken=$(echo "$result" | sed -n '2p' | awk '{print $1}' | show_in_eth)
+
+    totalGovVotes=$(cast_call $stakeAddress "govVotesNum(address)(uint256)" $tokenAddress | show_in_eth)
+    totalStToken=$(cast_call $stTokenAddress "totalSupply()(uint256)" | show_in_eth)
+    totalSlToken=$(cast_call $slTokenAddress "totalSupply()(uint256)" | show_in_eth)
+    result=$(cast_call $slTokenAddress "tokenAmounts()(uint256,uint256,uint256,uint256)");
+    slTokenAmount=$(echo "$result" | sed -n '1p' | awk '{print $1}' | show_in_eth)
+    slParentTokenAmount=$(echo "$result" | sed -n '2p' | awk '{print $1}' | show_in_eth)
+
+    if [ "$show_labels" = "true" ]; then
+        # 显示指标名称和数字，用制表符分隔（Excel兼容）
+        echo -e "日新增治理激励\t$dailyGovReward"
+        echo -e "代币总量\t$totalToken"
+        echo -e "U池总LP\t$totalTusdt"
+        echo -e "U池中U\t$reserveTusdt"
+        echo -e "U池中LOVE20\t$reserveToken"
+        echo ""
+        echo "总计"
+        echo -e "治理票\t$totalGovVotes"
+        echo -e "ST加速激励质押\t$totalStToken"
+        echo -e "SL流动性质押\t$totalSlToken"
+        echo -e "其中：LOVE20\t$slTokenAmount"
+        echo -e "其中：TKM20\t$slParentTokenAmount"
+    else
+        # 默认只显示数字
+        echo "$dailyGovReward"
+        echo "$totalToken"
+        echo "$totalTusdt"
+        echo "$reserveTusdt"
+        echo "$reserveToken"
+        echo ""
+        echo "总计"
+        echo "$totalGovVotes"
+        echo "$totalStToken"
+        echo "$totalSlToken"
+        echo "$slTokenAmount"
+        echo "$slParentTokenAmount"
+    fi
+}
+echo "core_data() loaded"
+
+
 # ------ help function ------
 help() {
     echo -e "\n\033[32m=== Available Functions ===\033[0m"
@@ -632,6 +684,7 @@ help() {
     echo "  action_info_by_field(action_id, field)            - Get specific action field"
     echo "  join_status(token_address, action_id)             - Get join status"
     echo "  account_status(token_address, account_address)     - Get account status"
+    echo "  core_data()                                        - Get core data"
     
     echo -e "\n\033[33mBalance Functions:\033[0m"
     echo "  balance_of(token_address, account_address)         - Get token balance in ETH"

@@ -6,3 +6,6 @@ RPC_URL=https://proxy1.thinkiumrpc.net
 CHAIN_ID=70001
 VERIFIER=blockscout
 VERIFIER_URL=http://chain1.thinkiumscan.net/api/v2
+
+# Token
+tusdtAddress=0x47Ba4471046fC0442078CF1519924cb205F02c7a
