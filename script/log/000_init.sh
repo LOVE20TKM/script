@@ -36,7 +36,7 @@ slTokenAddress=$(cast call $tokenAddress "slAddress()" --rpc-url $RPC_URL | norm
 
 maxBlocksPerRequest=4000
 maxRetries=3
-maxConcurrentJobs=10
+maxConcurrentJobs=5  # Reduced from 30 to 5 to prevent data loss in high-concurrency scenarios
 
 
 
@@ -1902,6 +1902,45 @@ cast_logs(){
   echo "⚙️  Processing $total_ranges ranges..."
   echo ""
 
+  # Cross-platform atomic write function using lock directory
+  atomic_write_status() {
+    local message=$1
+    local lock_dir="$temp_dir/status.lock.dir"
+    local max_wait=300  # Increased from 30 to 300 (30 seconds total)
+    local waited=0
+    local retry_count=0
+    local max_retries=3
+    
+    # Retry loop for acquiring lock
+    while [ $retry_count -lt $max_retries ]; do
+      waited=0
+      # Try to acquire lock (mkdir is atomic)
+      while ! mkdir "$lock_dir" 2>/dev/null; do
+        sleep 0.1
+        waited=$((waited + 1))
+        if [ $waited -gt $max_wait ]; then
+          # Timeout - remove stale lock and retry
+          rm -rf "$lock_dir" 2>/dev/null
+          retry_count=$((retry_count + 1))
+          break
+        fi
+      done
+      
+      # Check if we got the lock
+      if [ -d "$lock_dir" ] || mkdir "$lock_dir" 2>/dev/null; then
+        # Success - write to file
+        echo "$message" >> "$temp_dir/status.log"
+        # Release lock
+        rm -rf "$lock_dir" 2>/dev/null
+        return 0
+      fi
+    done
+    
+    # All retries failed - write error to stderr
+    echo "ERROR: Failed to acquire lock after $max_retries retries for: $message" >&2
+    return 1
+  }
+
   # Function to fetch logs for a specific block range with retry mechanism
   fetch_logs_range() {
     local start_block=$1
@@ -1917,17 +1956,18 @@ cast_logs(){
     if [ $cast_exit_code -eq 0 ] && [ -n "$logs" ]; then
       echo "$logs" > "$temp_output_file"
       local log_count=$(echo "$logs" | grep -c "^- address:" 2>/dev/null || echo "0")
-      echo "SUCCESS:$range_id:$start_block:$end_block:$log_count" >> "$temp_dir/status.log"
+      # Use atomic write to prevent concurrent write conflicts
+      atomic_write_status "SUCCESS:$range_id:$start_block:$end_block:$log_count"
     elif [ $cast_exit_code -eq 0 ]; then
       # No logs found, but request was successful
-      echo "SUCCESS:$range_id:$start_block:$end_block:0" >> "$temp_dir/status.log"
+      atomic_write_status "SUCCESS:$range_id:$start_block:$end_block:0"
     else
       # Request failed
       if [ $retry_attempt -lt $maxRetries ]; then
         sleep 2
         fetch_logs_range $start_block $end_block "$temp_output_file" $range_id $((retry_attempt + 1))
       else
-        echo "FAILURE:$range_id:$start_block:$end_block:$((retry_attempt + 1))" >> "$temp_dir/status.log"
+        atomic_write_status "FAILURE:$range_id:$start_block:$end_block:$((retry_attempt + 1))"
       fi
     fi
   }
@@ -2009,11 +2049,31 @@ cast_logs(){
 
   # Final progress update
   echo "🔄 Processing: 100% ($total_ranges/$total_ranges) | Completed!"
+  
+  # Debug: list temp files and analyze status
+  local temp_file_count=$(ls -1 "$temp_dir"/logs_* 2>/dev/null | wc -l | tr -d ' ')
+  echo "🔍 Temp files created: $temp_file_count"
+  if [ $temp_file_count -gt 0 ] && [ $temp_file_count -le 10 ]; then
+    ls -lh "$temp_dir"/logs_* 2>/dev/null | awk '{print "   "$9" ("$5")"}'
+  elif [ $temp_file_count -gt 10 ]; then
+    echo "   (showing first 5 and last 5)"
+    ls -lh "$temp_dir"/logs_* 2>/dev/null | head -5 | awk '{print "   "$9" ("$5")"}'
+    echo "   ..."
+    ls -lh "$temp_dir"/logs_* 2>/dev/null | tail -5 | awk '{print "   "$9" ("$5")"}'
+  fi
 
   # Analyze results
   if [ -f "$temp_dir/status.log" ]; then
     success_count=$(grep -c "^SUCCESS:" "$temp_dir/status.log" 2>/dev/null | tr -d '\n' || echo "0")
     failure_count=$(grep -c "^FAILURE:" "$temp_dir/status.log" 2>/dev/null | tr -d '\n' || echo "0")
+    
+    # Count successes with events vs empty
+    local success_with_events=$(grep "^SUCCESS:" "$temp_dir/status.log" | grep -v ":0$" | wc -l | tr -d ' ')
+    local success_empty=$(grep "^SUCCESS:" "$temp_dir/status.log" | grep ":0$" | wc -l | tr -d ' ')
+    echo "🔍 Status summary:"
+    echo "   Success with events: $success_with_events"
+    echo "   Success (empty): $success_empty"
+    echo "   Failed: $failure_count"
     
     # Calculate actual total logs found
     local total_logs=0
@@ -2055,6 +2115,10 @@ cast_logs(){
 
   # Output results in order to file if specified, otherwise to stdout
   local total_log_count=0
+  local merged_ranges=0
+  local empty_ranges=0
+  local missing_ranges=0
+  
   current_from_block=$from_block
   while [ $current_from_block -le $to_block ]; do
     local current_to_block=$((current_from_block + maxBlocksPerRequest - 1))
@@ -2063,19 +2127,37 @@ cast_logs(){
     fi
     
     local temp_output_file="$temp_dir/logs_${current_from_block}_${current_to_block}"
-    if [ -f "$temp_output_file" ] && [ -s "$temp_output_file" ]; then
-      # Count actual event logs (lines starting with "- address:")
-      local log_count=$(grep -c "^- address:" "$temp_output_file" 2>/dev/null | tr -d '\n' || echo "0")
-      total_log_count=$((total_log_count + log_count))
-      if [ -n "$output_file" ]; then
-        cat "$temp_output_file" >> "$output_file"
+    if [ -f "$temp_output_file" ]; then
+      if [ -s "$temp_output_file" ]; then
+        # Count actual event logs (lines starting with "- address:")
+        local log_count=$(grep -c "^- address:" "$temp_output_file" 2>/dev/null | tr -d '\n' || echo "0")
+        total_log_count=$((total_log_count + log_count))
+        merged_ranges=$((merged_ranges + 1))
+        if [ -n "$output_file" ]; then
+          cat "$temp_output_file" >> "$output_file"
+        else
+          cat "$temp_output_file"
+        fi
       else
-        cat "$temp_output_file"
+        empty_ranges=$((empty_ranges + 1))
       fi
+    else
+      missing_ranges=$((missing_ranges + 1))
     fi
     
     current_from_block=$((current_to_block + 1))
   done
+  
+  # Debug output
+  local keep_temp_dir=0
+  if [ $merged_ranges -eq 0 ] && [ $total_ranges -gt 0 ]; then
+    echo "🔍 Debug: merged=$merged_ranges, empty=$empty_ranges, missing=$missing_ranges, total=$total_ranges"
+    echo "🔍 Temp dir: $temp_dir"
+    echo "🔍 Temp files count: $(ls -1 "$temp_dir"/logs_* 2>/dev/null | wc -l | tr -d ' ')"
+    echo "🔍 Checking first temp file content:"
+    ls -lh "$temp_dir"/logs_* 2>/dev/null | head -3
+    keep_temp_dir=1
+  fi
 
   # Final summary
   echo ""
@@ -2095,8 +2177,12 @@ cast_logs(){
     echo "⚠️  Note: Some ranges failed - check network connectivity"
   fi
 
-  # Cleanup
-  rm -rf "$temp_dir"
+  # Cleanup (keep temp dir for debugging if no data merged)
+  if [ $keep_temp_dir -eq 0 ]; then
+    rm -rf "$temp_dir"
+  else
+    echo "🔍 Temp dir preserved for debugging: $temp_dir"
+  fi
   
   # Return non-zero exit code if there were failures
   if [ $failure_count -gt 0 ]; then
