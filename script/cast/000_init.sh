@@ -35,6 +35,7 @@ export KEYSTORE_PASSWORD
 echo "Password saved, will not be requested again in this session"
 
 # ------ user defined variables ------ 
+ZERO_ADDRESS="0x0000000000000000000000000000000000000000"
 tokenAddress=$firstTokenAddress 
 parentTokenAmountForContribute=$((FIRST_PARENT_TOKEN_FUNDRAISING_GOAL/2))  
 verificationKey="default"

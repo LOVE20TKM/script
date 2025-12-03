@@ -36,6 +36,10 @@ cast_call $verifyAddress "abstentionScoreWithReward(address,uint256)(uint256)" $
 echo "Score by action id for tokenAddress:"
 cast_call $verifyAddress "scoreByActionId(address,uint256,uint256)(uint256)" $tokenAddress $round $actionId
 
+echo "Abstention score by action id for tokenAddress:"
+cast_call $verifyAddress "scoreByActionIdByAccount(address,uint256,uint256,address)(uint256)" $tokenAddress $round $actionId $ZERO_ADDRESS
+
+
 echo "Score by action id by account for tokenAddress:"
 cast_call $verifyAddress "scoreByActionIdByAccount(address,uint256,uint256,address)(uint256)" $tokenAddress $round $actionId $ACCOUNT_ADDRESS
 
