@@ -16,3 +16,5 @@ script/log/output/
 # Dotenv file
 .env
 .account
+script/log/__pycache__/event_processor.cpython-311.pyc
+script/log/__pycache__/event_processor.cpython-312.pyc
