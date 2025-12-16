@@ -362,14 +362,17 @@ account_status() {
   echo "Balance Status"
   echo "--------------------"
 
-  local balanceETH=$(balance_eth $account_address)
-  echo "balanceETH: $balanceETH"
+  local balanceTKM=$(balance_eth $account_address)
+  echo "balanceTKM: $balanceTKM"
 
-  local balanceWETH=$(balance_of $rootParentTokenAddress $account_address)
-  echo "balanceWETH: $balanceWETH"
+  local balanceTKM20=$(balance_of $rootParentTokenAddress $account_address)
+  echo "balanceTKM20: $balanceTKM20"
 
   local balanceToken=$(balance_of $token_address $account_address)
   echo "balanceToken: $balanceToken"
+
+  local balanceTUSDT=$(balance_of $tusdtAddress $account_address)
+  echo "balanceTUSDT: $balanceTUSDT"
 
   stake_status $token_address $account_address
 
