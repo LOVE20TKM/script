@@ -252,8 +252,6 @@ launch_info_by_index(){
 echo "launch_info() loaded"
 
 
-
-
 stake_status(){
     local token_address=$1
     local account_address=$2
@@ -467,6 +465,12 @@ echo "cast_block() loaded"
 send_eth_in_wei(){
     local address=$1
     local amount_in_wei=$2
+
+    if [ "$ACCOUNT_ADDRESS" = "$address" ]; then
+        echo "send_eth_in_wei: Skipped transfer because ACCOUNT_ADDRESS and address are the same ($address)"
+        return 0
+    fi
+
     cast send $address --value $amount_in_wei --rpc-url $RPC_URL --account $KEYSTORE_ACCOUNT --password $KEYSTORE_PASSWORD --legacy
 }
 echo "send_eth_in_wei() loaded"
@@ -483,6 +487,12 @@ send_token_in_wei(){
     local token_address=$1
     local account_address=$2
     local amount_in_wei=$3
+
+    if [ "$ACCOUNT_ADDRESS" = "$account_address" ]; then
+        echo "send_token_in_wei: Skipped transfer because ACCOUNT_ADDRESS and account_address are the same ($account_address)"
+        return 0
+    fi
+
     cast_send $token_address "transfer(address,uint256)" $account_address $amount_in_wei
 }
 echo "send_token_in_wei() loaded"
