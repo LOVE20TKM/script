@@ -90,6 +90,21 @@ cast_receipt(){
 }
 echo "cast_receipt() loaded"
 
+reset_KEYSTORE_PASSWORD(){
+    echo -e "\nPlease enter keystore password:"
+    read -s KEYSTORE_PASSWORD
+    export KEYSTORE_PASSWORD
+    echo "Password saved, will not be requested again in this session"
+}
+echo "reset_KEYSTORE_PASSWORD() loaded"
+
+load_keystore(){
+    export KEYSTORE_ACCOUNT=$1
+    export ACCOUNT_ADDRESS=$(cast wallet address $(cast wallet decrypt-keystore --unsafe-password $KEYSTORE_PASSWORD $KEYSTORE_ACCOUNT | grep -o '0x[a-fA-F0-9]\{64\}'))
+    echo "$ACCOUNT_ADDRESS"
+}
+echo "load_keystore() loaded"
+
 
 show_hex_3() {
     local hex_value decimal
@@ -663,6 +678,8 @@ help() {
     echo "  cast_send(address, function_signature, args...)     - Send transaction to contract"
     echo "  cast_call(address, function_signature, args...)     - Call contract function (view)"
     echo "  cast_receipt(tx_hash)                              - Get transaction receipt"
+    echo "  reset_KEYSTORE_PASSWORD()                          - Reset keystore password"
+    echo "  load_keystore(keystore_account)                    - Load keystore account"
     
     echo -e "\n\033[33mUtility Functions:\033[0m"
     echo "  show_hex_3(hex_value)                             - Convert hex to decimal and scientific notation"
