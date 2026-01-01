@@ -283,14 +283,17 @@ gov_status(){
 
     local validGovVotes=$(cast_call $stakeAddress "validGovVotes(address,address)(uint256)" $token_address $account_address)
     local voted=$(cast_call $voteAddress "votesNumByAccount(address,uint256,address)(uint256)" $token_address $voteRound $account_address)
+
+
+    local expectedVerified=$(cast_call $voteAddress "votesNumByAccount(address,uint256,address)(uint256)" $token_address $verifyRound $account_address)
     local verified=$(cast_call $verifyAddress "scoreByVerifier(address,uint256,address)(uint256)" $token_address $verifyRound $account_address)
 
     local vote_status=""
     local verify_status=""
     [ "$voted" != "$validGovVotes" ] && vote_status="⚠️"
-    [ "$verified" != "$validGovVotes" ] && verify_status="⚠️"
+    [ "$verified" != "$expectedVerified" ] && verify_status="⚠️"
     [ "$voted" = "$validGovVotes" ] && vote_status="✅ "
-    [ "$verified" = "$validGovVotes" ] && verify_status="✅ "
+    [ "$verified" = "$expectedVerified" ] && verify_status="✅ "
     
     echo "{"
     echo "    account_address: $account_address"
@@ -402,6 +405,39 @@ account_status() {
   local balanceST=$(balance_of $stTokenAddress $account_address)
   echo "balanceST: $balanceST"
 
+  echo "--------------------"
+  echo "Uniswap Pool Status"
+  echo "--------------------"
+  
+  if [ "$tusdtPairAddress" != "$ZERO_ADDRESS" ] && [ -n "$tusdtPairAddress" ]; then
+    local accountLP=$(balance_of $tusdtPairAddress $account_address)
+    echo "accountLP: $accountLP"
+    
+    if [ "$(echo "$accountLP > 0" | bc)" -eq 1 ]; then
+      local totalLP=$(cast_call $tusdtPairAddress "totalSupply()(uint256)" | show_in_eth)
+      
+      if [ "$(echo "$totalLP > 0" | bc)" -eq 1 ]; then
+        local reserves=$(cast_call $tusdtPairAddress "getReserves()(uint112,uint112,uint32)")
+        local reserveTusdt=$(echo "$reserves" | sed -n '1p' | awk '{print $1}' | show_in_eth)
+        local reserveToken=$(echo "$reserves" | sed -n '2p' | awk '{print $1}' | show_in_eth)
+        
+        local share=$(echo "scale=18; $accountLP / $totalLP" | bc)
+        local accountTokenInPool=$(echo "scale=18; $reserveToken * $share" | bc | sed 's/0*$//' | sed 's/\.$//')
+        local accountTusdtInPool=$(echo "scale=18; $reserveTusdt * $share" | bc | sed 's/0*$//' | sed 's/\.$//')
+        
+        echo "accountTokenInPool: $accountTokenInPool"
+        echo "accountTusdtInPool: $accountTusdtInPool"
+      else
+        echo "accountTokenInPool: 0"
+        echo "accountTusdtInPool: 0"
+      fi
+    else
+      echo "accountTokenInPool: 0"
+      echo "accountTusdtInPool: 0"
+    fi
+  else
+    echo "Pool not found or not initialized"
+  fi
 
   echo "--------------------"
   echo "Action Status"
