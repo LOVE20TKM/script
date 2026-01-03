@@ -132,6 +132,20 @@ show_hex_3() {
 }
 echo "show_hex_3() loaded"
 
+hex_to_decimal(){
+    local hex_value
+    if [ -n "$1" ]; then
+        hex_value=$1
+    else
+        read hex_value
+    fi
+    hex_value="${hex_value#0x}"
+    hex_value=$(echo "$hex_value" | tr '[:lower:]' '[:upper:]')
+    decimal=$(echo "ibase=16; $hex_value" | bc)
+    echo "$decimal"
+}
+echo "hex_to_decimal() loaded"
+
 # input: 13886575830208168899279802 [1.388e25]
 # output: 13886575.830208168899279802
 show_in_eth(){
