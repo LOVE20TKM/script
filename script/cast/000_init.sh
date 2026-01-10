@@ -388,6 +388,9 @@ account_status() {
   local token_address=$1
   local account_address=$2
   
+  echo ""
+  echo "--------------------"
+  echo "account_address: $account_address"
   echo "--------------------"
   echo "Balance Status"
   echo "--------------------"
@@ -466,11 +469,16 @@ account_status() {
   if [ -n "$action_ids_by_account" ] && [ "$action_ids_by_account" != "[]" ]; then
     action_ids_clean=$(echo "$action_ids_by_account" | sed 's/\[//g' | sed 's/\]//g')
     
-    echo "$action_ids_clean" | tr ',' '\n' | while read -r action_id; do
+    local current_round=$(current_round $verifyAddress | awk '{print $1}')
+    local mint_round=$((current_round - 1))
+    
+    for action_id in $(echo "$action_ids_clean" | tr ',' ' '); do
       action_id=$(echo "$action_id" | xargs)
       if [ -n "$action_id" ]; then
         local amount_by_action_id_by_account=$(cast_call $joinAddress "amountByActionIdByAccount(address,uint256,address)(uint256)" $token_address $action_id $account_address | show_in_eth)
-        echo "actionId: $action_id, amountByActionIdByAccount: $amount_by_action_id_by_account"
+        local action_reward_result=$(cast_call $mintAddress "actionRewardByActionIdByAccount(address,uint256,uint256,address)(uint256,bool)" $token_address $mint_round $action_id $account_address)
+        local action_reward=$(echo "$action_reward_result" | sed -n '1p' | awk '{print $1}' | show_in_eth)
+        echo "$action_id, $amount_by_action_id_by_account [$mint_round]$action_reward"
       fi
     done
   fi
