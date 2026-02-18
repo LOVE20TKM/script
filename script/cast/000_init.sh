@@ -88,6 +88,116 @@ cast_call() {
 }
 echo "cast_call() loaded"
 
+# abi dir relative to script/cast (run from script/cast)
+abi_dir="../../abi"
+abi_path_for_interface() {
+  local iface=$1
+  case "$iface" in
+    IUniswapV2Factory) echo "$abi_dir/IUniswapV2Factory.sol/IUniswapV2Factory.0.5.16.json" ;;
+    IUniswapV2Pair)     echo "$abi_dir/IUniswapV2Pair.sol/IUniswapV2Pair.0.5.16.json" ;;
+    *)                  echo "$abi_dir/$iface.sol/$iface.json" ;;
+  esac
+}
+# resolve function signature from ABI by name and arg count (for overloads)
+abi_sig_for_function() {
+  local abi_file=$1
+  local fn=$2
+  local argc=$3
+  jq -r --arg fn "$fn" --argjson argc "$argc" '
+    [.abi[]? | select(.type == "function" and .name == $fn)]
+    | if length == 0 then error("function not found: " + $fn)
+      elif length == 1 then .[0]
+      else ([.[] | select((.inputs | length) == $argc)] | if length >= 1 then .[0] else error("multiple overloads for " + $fn + ", none match argc " + ($argc | tostring)) end)
+      end
+    | (.name + "(" + ([.inputs[].type] | join(",")) + ")") as $base
+    | (if (.outputs | length) > 0 then $base + "(" + ([.outputs[].type] | join(",")) + ")" else $base end)
+  ' "$abi_file"
+}
+# call IXXX $contractAddress functionName param1 param2 ...
+call() {
+  local iface=$1
+  local address=$2
+  local fn=$3
+  shift 3
+  local args=("$@")
+  local abi_file
+  abi_file=$(abi_path_for_interface "$iface")
+  if [ ! -f "$abi_file" ]; then
+    echo "Error: ABI not found: $abi_file" >&2
+    return 1
+  fi
+  local sig
+  sig=$(abi_sig_for_function "$abi_file" "$fn" "${#args[@]}")
+  cast_call "$address" "$sig" "${args[@]}"
+}
+echo "call() loaded"
+# send IXXX $contractAddress functionName param1 param2 ...
+send() {
+  local iface=$1
+  local address=$2
+  local fn=$3
+  shift 3
+  local args=("$@")
+  local abi_file
+  abi_file=$(abi_path_for_interface "$iface")
+  if [ ! -f "$abi_file" ]; then
+    echo "Error: ABI not found: $abi_file" >&2
+    return 1
+  fi
+  local sig
+  sig=$(abi_sig_for_function "$abi_file" "$fn" "${#args[@]}")
+  cast_send "$address" "$sig" "${args[@]}"
+}
+echo "send() loaded"
+
+# abi_help IXXX [keyword] - list callable functions (optionally filtered by keyword), with examples
+abi_help() {
+  local iface=$1
+  local keyword=${2:-}
+  local abi_file
+  abi_file=$(abi_path_for_interface "$iface")
+  if [ ! -f "$abi_file" ]; then
+    echo "Error: ABI not found: $abi_file" >&2
+    return 1
+  fi
+  local title="Interface $iface"
+  [ -n "$keyword" ] && title="$title (name contains: $keyword)"
+  echo ""
+  echo -e "\033[32m=== $title ===\033[0m"
+  echo ""
+  local raw
+  raw=$(jq -r --arg iface "$iface" --arg kw "$keyword" '
+    [.abi[]? | select(.type == "function") | select(if ($kw | length) > 0 then (.name | test($kw; "i")) else true end)]
+    | sort_by(.name)
+    | .[]
+    | .name as $name
+    | (.name + "(" + ([.inputs[].type] | join(",")) + ")") as $sig
+    | (if .stateMutability == "view" or .stateMutability == "pure" then "call" else "send" end) as $kind
+    | ([.inputs[] | .type as $t | (if $t == "address" then "$addr" elif $t == "uint256" then "$n" elif $t == "uint256[]" then "\"[0]\"" elif $t == "bool" then "false" else "$x" end)] | join(" ")) as $args
+    | [$name, $sig, $kind, $args] | @tsv
+  ' "$abi_file")
+  if [ -z "$raw" ]; then
+    echo "  No functions found."
+    echo ""
+    echo -e "\033[32m=== end ===\033[0m"
+    echo ""
+    return 0
+  fi
+  echo "$raw" | while IFS=$'\t' read -r name sig kind args; do
+    [ -z "$name" ] && continue
+    echo -e "\033[33m  $name\033[0m  $sig"
+    if [ "$kind" = "call" ]; then
+      echo -e "    \033[90mexample:\033[0m  call $iface \$addr $name $args"
+    else
+      echo -e "    \033[90mexample:\033[0m  send $iface \$addr $name $args"
+    fi
+    echo ""
+  done
+  echo -e "\033[32m=== end ===\033[0m"
+  echo ""
+}
+echo "abi_help() loaded"
+
 # extension address by tokenAddress and actionId (via center)
 extension_address() {
     local tokenAddress=$1
@@ -662,6 +772,8 @@ skip_withdraw_waiting_blocks() {
 }
 echo "skip_withdraw_waiting_blocks() loaded"
 
+
+
 echo "------ user defined variables ------";
 echo "tokenAddress: $tokenAddress"
 echo "parentTokenAmountForContribute: $parentTokenAmountForContribute"
@@ -789,6 +901,14 @@ help() {
     echo "  reset_KEYSTORE_PASSWORD()                          - Reset keystore password"
     echo "  load_keystore(keystore_account)                    - Load keystore account"
     
+    echo -e "\n\033[33mInterface call/send (abi/*.sol):\033[0m"
+    echo "  call IXXX contractAddress functionName [args...]   - View call using ABI from abi/IXXX.sol/"
+    echo "  send IXXX contractAddress functionName [args...]   - Send tx using ABI from abi/IXXX.sol/"
+    echo "  abi_help IXXX [keyword]                            - List callable functions with examples (filter by keyword)"
+    echo "  e.g. call ILOVE20Vote \$voteAddress votesNum \$tokenAddress \$round"
+    echo "  e.g. send ILOVE20Vote \$voteAddress vote \$tokenAddress \"[\$actionId]\" \"[\$voteAmount]\""
+    echo "  e.g. abi_help ILOVE20Vote vote                     - List ILOVE20Vote functions whose name contains \"vote\""
+    
     echo -e "\n\033[33mUtility Functions:\033[0m"
     echo "  show_hex_3(hex_value)                             - Convert hex to decimal and scientific notation"
     echo "  show_in_eth(wei_value)                            - Convert wei to ETH"
@@ -848,6 +968,11 @@ help() {
     echo "  extension_rewardByAccount \$extension \$round \$ACCOUNT_ADDRESS  - Get extension reward"
     echo "  send_extension_claimReward \$extension \$round        - Claim extension reward"
     echo "  send_extension_claimReward_byActionId \$tokenAddress \$actionId \$round  - Claim by token and actionId"
+    echo "  call ILOVE20Token \$tokenAddress totalSupply         - View call via interface ABI"
+    echo "  call ILOVE20Vote \$voteAddress currentRound         - View call (no args)"
+    echo "  send ILOVE20Vote \$voteAddress vote \$tokenAddress \"[\$actionId]\" \"[\$voteAmount]\"  - Send via interface ABI"
+    echo "  abi_help ILOVE20Vote                                - List all ILOVE20Vote functions with examples"
+    echo "  abi_help ILOVE20Token balance                       - List ILOVE20Token functions containing \"balance\""
     
     echo -e "\n\033[32m=== Variables ===\033[0m"
     echo "  tokenAddress: $tokenAddress"
