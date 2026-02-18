@@ -105,6 +105,25 @@ extension_rewardByAccount() {
 }
 echo "extension_rewardByAccount() loaded"
 
+# send claimReward on extension (extension, round)
+send_extension_claimReward() {
+    local extension=$1
+    local round=$2
+    cast_send $extension "claimReward(uint256)" $round
+}
+echo "send_extension_claimReward() loaded"
+
+# send claimReward on extension by tokenAddress and actionId (tokenAddress, actionId, round)
+send_extension_claimReward_byActionId() {
+    local tokenAddress=$1
+    local actionId=$2
+    local round=$3
+    local ext
+    ext=$(extension_address $tokenAddress $actionId)
+    cast_send $ext "claimReward(uint256)" $round
+}
+echo "send_extension_claimReward_byActionId() loaded"
+
 cast_receipt(){
     local tx_hash=$1
     cast receipt $tx_hash --rpc-url $RPC_URL ## --json 
@@ -798,6 +817,9 @@ help() {
     echo "  extension_address(token_address, action_id)        - Get extension address via center"
     echo "  extension_rewardByAccount(extension, round, account)"
     echo "                                                     - Get reward by account from extension"
+    echo "  send_extension_claimReward(extension, round)        - Send claimReward on extension"
+    echo "  send_extension_claimReward_byActionId(token_address, action_id, round)"
+    echo "                                                     - Send claimReward on extension by token and actionId"
     
     echo -e "\n\033[33mBalance Functions:\033[0m"
     echo "  balance_of(token_address, account_address)         - Get token balance in ETH"
@@ -824,6 +846,8 @@ help() {
     echo "  stake_status \$tokenAddress \$ACCOUNT_ADDRESS       - Check stake status"
     echo "  extension_address \$tokenAddress \$actionId         - Get extension address"
     echo "  extension_rewardByAccount \$extension \$round \$ACCOUNT_ADDRESS  - Get extension reward"
+    echo "  send_extension_claimReward \$extension \$round        - Claim extension reward"
+    echo "  send_extension_claimReward_byActionId \$tokenAddress \$actionId \$round  - Claim by token and actionId"
     
     echo -e "\n\033[32m=== Variables ===\033[0m"
     echo "  tokenAddress: $tokenAddress"
