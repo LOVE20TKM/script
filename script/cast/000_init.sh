@@ -27,6 +27,10 @@ source "$base_dir/address.params"
 source "$base_dir/network.params"
 source "$base_dir/WETH.params"
 source "$base_dir/LOVE20.params"
+source "$base_dir/address.extension.center.params"
+source "$base_dir/address.extension.group.params"
+source "$base_dir/address.extension.lp.params"
+source "$base_dir/address.group.params"
 
 # ------ Request keystore password ------
 echo -e "\nPlease enter keystore password (for $KEYSTORE_ACCOUNT):"
@@ -83,6 +87,23 @@ cast_call() {
         --password "$KEYSTORE_PASSWORD"
 }
 echo "cast_call() loaded"
+
+# extension address by tokenAddress and actionId (via center)
+extension_address() {
+    local tokenAddress=$1
+    local actionId=$2
+    cast_call $centerAddress "extension(address,uint256)(address)" $tokenAddress $actionId
+}
+echo "extension_address() loaded"
+
+# reward by account from extension (extension, round, account) -> first return value of rewardByAccount
+extension_rewardByAccount() {
+    local extension=$1
+    local round=$2
+    local account=$3
+    cast_call $extension "rewardByAccount(uint256,address)(uint256,bool)" $round $account | head -1 | awk '{print $1}'
+}
+echo "extension_rewardByAccount() loaded"
 
 cast_receipt(){
     local tx_hash=$1
@@ -774,6 +795,9 @@ help() {
     echo "  join_status(token_address, action_id)             - Get join status"
     echo "  account_status(token_address, account_address)     - Get account status"
     echo "  core_data()                                        - Get core data"
+    echo "  extension_address(token_address, action_id)        - Get extension address via center"
+    echo "  extension_rewardByAccount(extension, round, account)"
+    echo "                                                     - Get reward by account from extension"
     
     echo -e "\n\033[33mBalance Functions:\033[0m"
     echo "  balance_of(token_address, account_address)         - Get token balance in ETH"
@@ -798,6 +822,8 @@ help() {
     echo "  current_round \$submitAddress                       - Check current round"
     echo "  launch_info \$tokenAddress                         - Get launch info"
     echo "  stake_status \$tokenAddress \$ACCOUNT_ADDRESS       - Check stake status"
+    echo "  extension_address \$tokenAddress \$actionId         - Get extension address"
+    echo "  extension_rewardByAccount \$extension \$round \$ACCOUNT_ADDRESS  - Get extension reward"
     
     echo -e "\n\033[32m=== Variables ===\033[0m"
     echo "  tokenAddress: $tokenAddress"
