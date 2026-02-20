@@ -167,11 +167,13 @@ abi_help() {
   echo ""
   local raw
   raw=$(jq -r --arg iface "$iface" --arg kw "$keyword" '
+    def in_sig: [.inputs[]? | (if (.name | type == "string" and length > 0) then "\(.type) \(.name)" else .type end)] | join(", ");
+    def out_sig: (if ((.outputs // []) | length) > 0 then " returns (" + ([.outputs[] | (if (.name | type == "string" and length > 0) then "\(.type) \(.name)" else .type end)] | join(", ")) + ")" else "" end);
     [.abi[]? | select(.type == "function") | select(if ($kw | length) > 0 then (.name | test($kw; "i")) else true end)]
     | sort_by(.name)
     | .[]
     | .name as $name
-    | (.name + "(" + ([.inputs[].type] | join(",")) + ")") as $sig
+    | (.name + "(" + in_sig + ")" + out_sig) as $sig
     | (if .stateMutability == "view" or .stateMutability == "pure" then "call" else "send" end) as $kind
     | ([.inputs[] | .type as $t | (if $t == "address" then "$addr" elif $t == "uint256" then "$n" elif $t == "uint256[]" then "\"[0]\"" elif $t == "bool" then "false" else "$x" end)] | join(" ")) as $args
     | [$name, $sig, $kind, $args] | @tsv
