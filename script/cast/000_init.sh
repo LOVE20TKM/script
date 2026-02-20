@@ -213,7 +213,7 @@ extension_rewardByAccount() {
     local extension=$1
     local round=$2
     local account=$3
-    cast_call $extension "rewardByAccount(uint256,address)(uint256,bool)" $round $account | head -1 | awk '{print $1}'
+    cast_call $extension "rewardByAccount(uint256,address)(uint256,uint256,bool)" $round $account | head -1 | awk '{print $1}'
 }
 echo "extension_rewardByAccount() loaded"
 
