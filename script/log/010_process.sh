@@ -1,13 +1,13 @@
-# 清除历史文件
+# 清除CSV/XLSX输出文件（保留db目录）
 if [ -d "$output_dir" ]; then
-  echo "📁 Clearing directory: $output_dir"
-  rm -rf $output_dir/*
-  echo "✅ Directory cleared"
+  echo "📁 Clearing CSV/XLSX files in: $output_dir"
+  rm -f $output_dir/*.csv $output_dir/*.xlsx $output_dir/*.event
+  echo "✅ Output files cleared"
 fi
 
 echo ""
-echo "🎯 Starting comprehensive event log processing..."
-echo "📊 This will fetch raw logs and convert them to CSV format"
+echo "🎯 Starting incremental event log processing..."
+echo "📊 This will fetch new logs since last sync and export to CSV/XLSX"
 echo ""
 
 # launch - 项目启动和众筹

@@ -9,6 +9,8 @@ Uses httpx for direct RPC calls, asyncio for parallel fetching, eth-abi for deco
 import asyncio
 import json
 import os
+import re
+import sqlite3
 import sys
 import argparse
 from dataclasses import dataclass
@@ -61,6 +63,9 @@ class ProcessConfig:
     max_concurrent_jobs: int = 50        # High concurrency
     max_retries: int = 5
     output_name: str = None  # Custom output file name prefix (overrides ABI-derived name)
+    db_path: str = None      # SQLite database path for persistent storage & incremental sync
+    origin_blocks: int = 0   # Origin block number for round calculation
+    phase_blocks: int = 0    # Blocks per round for round calculation
 
 
 # ============================================================================
@@ -125,6 +130,155 @@ def get_non_indexed_types(params: list[EventParam]) -> str:
             else:
                 types.append(param.type)
     return ','.join(types)
+
+
+# ============================================================================
+# SQLite Database Operations
+# ============================================================================
+
+def calc_round(block_number: int, origin_blocks: int, phase_blocks: int) -> int | None:
+    """Calculate protocol round from block number"""
+    if phase_blocks <= 0 or block_number < origin_blocks:
+        return None
+    return (block_number - origin_blocks) // phase_blocks
+
+
+def init_db(db_path: str):
+    """Create tables and indices if they don't exist"""
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS sync_status (
+        contract_name TEXT NOT NULL,
+        event_name    TEXT NOT NULL,
+        last_block    INTEGER NOT NULL,
+        updated_at    TEXT NOT NULL,
+        PRIMARY KEY (contract_name, event_name)
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS events (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        contract_name   TEXT NOT NULL,
+        event_name      TEXT NOT NULL,
+        round           INTEGER,
+        block_number    INTEGER NOT NULL,
+        tx_hash         TEXT NOT NULL,
+        tx_index        INTEGER,
+        log_index       INTEGER,
+        address         TEXT,
+        decoded_data    TEXT NOT NULL,
+        created_at      TEXT DEFAULT CURRENT_TIMESTAMP
+    )''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_events_contract_event ON events(contract_name, event_name)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_events_block ON events(block_number)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_events_round ON events(round)')
+    c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_events_unique ON events(tx_hash, log_index)')
+    _ensure_transfer_views_for_existing(conn)
+    conn.commit()
+    conn.close()
+
+
+def _safe_view_name(contract_name: str) -> str:
+    """Sanitize contract_name for use in view name (alphanumeric + underscore only)"""
+    safe = re.sub(r'[^a-zA-Z0-9_]', '', contract_name)
+    return safe or 'unknown'
+
+
+def _ensure_transfer_view(conn: sqlite3.Connection, contract_name: str):
+    """Create view v_<contract_name> for Transfer events with from, to, value, amount."""
+    safe_name = _safe_view_name(contract_name)
+    escaped = contract_name.replace("'", "''")
+    conn.execute(f"""CREATE VIEW IF NOT EXISTS v_{safe_name} AS
+        SELECT
+            id, contract_name, event_name, round, block_number, tx_hash, tx_index, log_index, address,
+            json_extract(decoded_data, '$.from')  AS "from",
+            json_extract(decoded_data, '$.to')    AS "to",
+            json_extract(decoded_data, '$.value') AS value,
+            CAST(json_extract(decoded_data, '$.value') AS REAL) / 1e18 AS amount,
+            created_at
+        FROM events
+        WHERE event_name = 'Transfer' AND contract_name = '{escaped}'""")
+
+
+def _ensure_transfer_views_for_existing(conn: sqlite3.Connection):
+    """Create v_<name> views for every contract_name that has Transfer events."""
+    c = conn.cursor()
+    c.execute("SELECT DISTINCT contract_name FROM events WHERE event_name = 'Transfer'")
+    for (name,) in c.fetchall():
+        _ensure_transfer_view(conn, name)
+
+
+def get_last_synced_block(db_path: str, contract_name: str, event_name: str) -> int | None:
+    """Query the last synced block for a given contract + event"""
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    c.execute('SELECT last_block FROM sync_status WHERE contract_name = ? AND event_name = ?',
+              (contract_name, event_name))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def save_events_to_db(db_path: str, contract_name: str, event_name: str,
+                      decoded_events: list[dict], last_block: int,
+                      origin_blocks: int = 0, phase_blocks: int = 0) -> int:
+    """Batch insert decoded events and update sync_status. Returns inserted count."""
+    base_fields = {'blockNumber', 'transactionHash', 'transactionIndex', 'logIndex', 'address', 'round'}
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    inserted = 0
+
+    for event in decoded_events:
+        decoded_data = {k: v for k, v in event.items() if k not in base_fields}
+        decoded_json = json.dumps(decoded_data, default=str)
+        block_num = event.get('blockNumber', 0)
+        rnd = calc_round(block_num, origin_blocks, phase_blocks)
+        try:
+            c.execute('''INSERT OR IGNORE INTO events
+                        (contract_name, event_name, round, block_number, tx_hash, tx_index, log_index, address, decoded_data)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                      (contract_name, event_name, rnd,
+                       block_num, event.get('transactionHash'),
+                       event.get('transactionIndex'), event.get('logIndex'),
+                       event.get('address'), decoded_json))
+            inserted += c.rowcount
+        except Exception as e:
+            log(f"⚠️  Failed to insert event: {e}")
+
+    c.execute('''INSERT OR REPLACE INTO sync_status (contract_name, event_name, last_block, updated_at)
+                VALUES (?, ?, ?, ?)''',
+              (contract_name, event_name, last_block, datetime.now().isoformat()))
+
+    conn.commit()
+    if event_name == 'Transfer':
+        _ensure_transfer_view(conn, contract_name)
+        conn.commit()
+    conn.close()
+    return inserted
+
+
+def load_all_events_from_db(db_path: str, contract_name: str, event_name: str) -> list[dict]:
+    """Load all stored events from DB for CSV/XLSX full export"""
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    c.execute('''SELECT round, block_number, tx_hash, tx_index, log_index, address, decoded_data
+                 FROM events WHERE contract_name = ? AND event_name = ?
+                 ORDER BY block_number, log_index''',
+              (contract_name, event_name))
+
+    events = []
+    for row in c.fetchall():
+        event = {
+            'round': row[0],
+            'blockNumber': row[1],
+            'transactionHash': row[2],
+            'transactionIndex': row[3],
+            'logIndex': row[4],
+            'address': row[5],
+        }
+        event.update(json.loads(row[6]))
+        events.append(event)
+
+    conn.close()
+    return events
 
 
 # ============================================================================
@@ -494,8 +648,8 @@ def generate_csv(events: list[dict], event_def: EventDef, output_file: str) -> i
         log("⚠️  No events to write")
         return 0
     
-    # Build column order
-    base_columns = ['blockNumber', 'transactionHash', 'transactionIndex', 'logIndex', 'address']
+    # Build column order (round first if present)
+    base_columns = ['round', 'blockNumber', 'transactionHash', 'transactionIndex', 'logIndex', 'address']
     param_columns = []
     
     for param in event_def.params:
@@ -598,78 +752,140 @@ async def process_events(config: ProcessConfig) -> bool:
     
     start_time = datetime.now()
     
+    # Resolve output name
+    if config.output_name:
+        contract_name = config.output_name
+    else:
+        abi_basename = os.path.basename(config.abi_file)
+        contract_name = abi_basename.split('.')[0]
+        if contract_name.startswith('I'):
+            contract_name = contract_name[1:]
+    
+    # Incremental sync: adjust from_block based on DB state
+    actual_from_block = config.from_block
+    if config.db_path:
+        init_db(config.db_path)
+        last_block = get_last_synced_block(config.db_path, contract_name, config.event_name)
+        if last_block is not None:
+            actual_from_block = max(config.from_block, last_block + 1)
+            log(f"📌 DB last synced block: {last_block}, resuming from {actual_from_block}")
+        else:
+            log(f"📌 No previous sync found, starting from {actual_from_block}")
+    
     # Load ABI and get event definition
     log("📖 Loading ABI...")
     abi = load_abi(config.abi_file)
     event_def = get_event_def(abi, config.event_name)
     log(f"✅ Event topic0: {event_def.topic0}")
     
-    # Fetch logs using direct RPC (high performance)
-    log("\n📡 Fetching event logs via direct RPC...")
-    fetch_start = datetime.now()
-    raw_logs = await fetch_all_logs_rpc(config, event_def)
-    fetch_elapsed = (datetime.now() - fetch_start).total_seconds()
-    log(f"✅ Fetched {len(raw_logs)} logs in {fetch_elapsed:.2f}s")
+    fetch_elapsed = 0.0
+    decode_elapsed = 0.0
+    new_event_count = 0
     
-    if not raw_logs:
-        log("⚠️  No events found in the specified block range")
-        return True
-    
-    # Convert and decode events
-    log("\n🔓 Decoding events...")
-    decode_start = datetime.now()
-    decoded_events = []
-    
-    for i, raw_log in enumerate(raw_logs):
-        event = convert_rpc_log_to_event(raw_log)
-        decoded = decode_event(event, event_def)
-        decoded_events.append(decoded)
-        
-        if (i + 1) % 5000 == 0:
-            log(f"   Decoded {i + 1}/{len(raw_logs)} events...")
-    
-    decode_elapsed = (datetime.now() - decode_start).total_seconds()
-    log(f"✅ Decoded {len(decoded_events)} events in {decode_elapsed:.2f}s")
-    
-    # Generate output files
-    # Use custom output name if provided, otherwise extract from ABI filename
-    if config.output_name:
-        contract_name = config.output_name
+    if actual_from_block > config.to_block:
+        log(f"✅ Already up to date (last_block={actual_from_block - 1} >= to_block={config.to_block})")
     else:
-        # Extract contract name from ABI filename
-        abi_basename = os.path.basename(config.abi_file)
-        # Handle patterns like "ILOVE20Token.sol" or "ILOVE20Token.json"
-        contract_name = abi_basename.split('.')[0]
-        if contract_name.startswith('I'):
-            contract_name = contract_name[1:]  # Remove 'I' prefix from interface names
+        # Fetch logs using direct RPC (high performance)
+        fetch_config = ProcessConfig(
+            contract_address=config.contract_address,
+            abi_file=config.abi_file,
+            event_name=config.event_name,
+            rpc_url=config.rpc_url,
+            from_block=actual_from_block,
+            to_block=config.to_block,
+            output_dir=config.output_dir,
+            max_blocks_per_request=config.max_blocks_per_request,
+            max_concurrent_jobs=config.max_concurrent_jobs,
+            max_retries=config.max_retries,
+            output_name=config.output_name,
+            db_path=config.db_path,
+        )
+        
+        log("\n📡 Fetching event logs via direct RPC...")
+        fetch_start = datetime.now()
+        raw_logs = await fetch_all_logs_rpc(fetch_config, event_def)
+        fetch_elapsed = (datetime.now() - fetch_start).total_seconds()
+        log(f"✅ Fetched {len(raw_logs)} logs in {fetch_elapsed:.2f}s")
+        
+        if raw_logs:
+            # Convert and decode events
+            log("\n🔓 Decoding events...")
+            decode_start = datetime.now()
+            decoded_events = []
+            
+            for i, raw_log in enumerate(raw_logs):
+                event = convert_rpc_log_to_event(raw_log)
+                decoded = decode_event(event, event_def)
+                decoded['round'] = calc_round(
+                    decoded.get('blockNumber', 0), config.origin_blocks, config.phase_blocks
+                )
+                decoded_events.append(decoded)
+                
+                if (i + 1) % 5000 == 0:
+                    log(f"   Decoded {i + 1}/{len(raw_logs)} events...")
+            
+            decode_elapsed = (datetime.now() - decode_start).total_seconds()
+            log(f"✅ Decoded {len(decoded_events)} events in {decode_elapsed:.2f}s")
+            new_event_count = len(decoded_events)
+            
+            # Save to SQLite
+            if config.db_path:
+                log(f"\n💾 Saving {new_event_count} events to SQLite...")
+                inserted = save_events_to_db(
+                    config.db_path, contract_name, config.event_name,
+                    decoded_events, config.to_block,
+                    config.origin_blocks, config.phase_blocks
+                )
+                log(f"✅ Inserted {inserted} new rows (duplicates ignored)")
+        elif config.db_path:
+            # No new events, but still update sync_status to record progress
+            save_events_to_db(config.db_path, contract_name, config.event_name, [], config.to_block,
+                              config.origin_blocks, config.phase_blocks)
+            log("📌 Sync status updated (no new events)")
+    
+    # Generate CSV/XLSX: export ALL events from DB if available, otherwise only current batch
+    if config.db_path:
+        log(f"\n📤 Exporting all events from SQLite...")
+        all_events = load_all_events_from_db(config.db_path, contract_name, config.event_name)
+        export_events = all_events
+        log(f"   Total events in DB: {len(all_events)}")
+    else:
+        export_events = locals().get('decoded_events', [])
     
     output_base = f"{config.output_dir}/{contract_name}.{config.event_name}"
     csv_file = f"{output_base}.csv"
     xlsx_file = f"{output_base}.xlsx"
     
-    # Write CSV
-    log(f"\n💾 Writing CSV: {csv_file}")
-    row_count = generate_csv(decoded_events, event_def, csv_file)
-    log(f"✅ Wrote {row_count} rows")
-    
-    # Convert to XLSX
-    log(f"\n📊 Converting to Excel: {xlsx_file}")
-    if convert_csv_to_xlsx(csv_file, xlsx_file):
-        log("✅ Excel file created")
+    if export_events:
+        log(f"\n💾 Writing CSV: {csv_file}")
+        row_count = generate_csv(export_events, event_def, csv_file)
+        log(f"✅ Wrote {row_count} rows")
+        
+        log(f"\n📊 Converting to Excel: {xlsx_file}")
+        if convert_csv_to_xlsx(csv_file, xlsx_file):
+            log("✅ Excel file created")
+    else:
+        log("⚠️  No events to export")
     
     # Final report
     elapsed = (datetime.now() - start_time).total_seconds()
-    events_per_sec = len(decoded_events) / elapsed if elapsed > 0 else 0
+    total_events = len(export_events) if export_events else 0
+    events_per_sec = total_events / elapsed if elapsed > 0 else 0
     log("")
     log("━" * 50)
     log("📊 Processing Complete")
     log("━" * 50)
-    log(f"✅ Events processed: {len(decoded_events)}")
+    log(f"✅ New events fetched: {new_event_count}")
+    log(f"✅ Total events exported: {total_events}")
     log(f"⏱️  Total time: {elapsed:.2f}s ({events_per_sec:.0f} events/s)")
-    log(f"   - Fetching: {fetch_elapsed:.2f}s")
-    log(f"   - Decoding: {decode_elapsed:.2f}s")
+    if fetch_elapsed > 0:
+        log(f"   - Fetching: {fetch_elapsed:.2f}s")
+    if decode_elapsed > 0:
+        log(f"   - Decoding: {decode_elapsed:.2f}s")
     log(f"📁 CSV: {csv_file}")
     log(f"📁 Excel: {xlsx_file}")
+    if config.db_path:
+        log(f"📁 SQLite: {config.db_path}")
     
     return True
 
@@ -690,11 +906,18 @@ def main():
     parser.add_argument('--max-blocks', type=int, default=4000, help='Max blocks per request')
     parser.add_argument('--concurrency', type=int, default=10, help='Max concurrent requests')
     parser.add_argument('--retries', type=int, default=3, help='Max retries per request')
+    parser.add_argument('--db-path', default=None, help='SQLite database path for persistent storage & incremental sync')
+    parser.add_argument('--origin-blocks', type=int, default=0, help='Origin block number for round calculation')
+    parser.add_argument('--phase-blocks', type=int, default=0, help='Blocks per round for round calculation')
     
     args = parser.parse_args()
     
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Create db directory if db-path is specified
+    if args.db_path:
+        os.makedirs(os.path.dirname(args.db_path), exist_ok=True)
     
     config = ProcessConfig(
         contract_address=args.contract,
@@ -707,7 +930,10 @@ def main():
         max_blocks_per_request=args.max_blocks,
         max_concurrent_jobs=args.concurrency,
         max_retries=args.retries,
-        output_name=args.name
+        output_name=args.name,
+        db_path=args.db_path,
+        origin_blocks=args.origin_blocks,
+        phase_blocks=args.phase_blocks
     )
     
     success = asyncio.run(process_events(config))

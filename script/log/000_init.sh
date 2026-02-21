@@ -7,6 +7,7 @@ fi
 
 source ../network/$network/address.params 
 source ../network/$network/network.params
+source ../network/$network/LOVE20.params
 
 from_block=$originBlocks
 to_block=$(cast block-number --rpc-url $RPC_URL)
@@ -43,12 +44,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_PROCESSOR="$SCRIPT_DIR/event_processor.py"
 
 output_dir="./output/$network"
+db_dir="./db/$network"
 
 # Create output directory if it doesn't exist
 if [ ! -d "$output_dir" ]; then
   echo "📁 Creating output directory..."
   mkdir -p "$output_dir"
   echo "✅ Output directory created: $output_dir"
+fi
+
+# Create db directory if it doesn't exist
+if [ ! -d "$db_dir" ]; then
+  echo "📁 Creating db directory..."
+  mkdir -p "$db_dir"
+  echo "✅ DB directory created: $db_dir"
 fi
 
 # ============================================================================
@@ -289,7 +298,10 @@ fetch_and_convert_py(){
     --name "$contract_name" \
     --max-blocks "$maxBlocksPerRequest" \
     --concurrency "$maxConcurrentJobs" \
-    --retries "$maxRetries"
+    --retries "$maxRetries" \
+    --db-path "$db_dir/events.db" \
+    --origin-blocks "$originBlocks" \
+    --phase-blocks "$PHASE_BLOCKS"
 }
 
 # Legacy shell-based implementation (slower, kept for compatibility)
