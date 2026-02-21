@@ -321,8 +321,9 @@ show_in_eth(){
     fi
 
     # Convert wei to eth using bc for precise calculation
-    echo "scale=18; $wei_value / 1000000000000000000" | bc | sed 's/0*$//' | sed 's/\.$//'
-
+    local result
+    result=$(echo "scale=18; $wei_value / 1000000000000000000" | bc | sed 's/0*$//' | sed 's/\.$//')
+    [ -z "$result" ] && echo "0" || echo "$result"
 }
 echo "show_in_eth() loaded"
 
