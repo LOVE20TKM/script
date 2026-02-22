@@ -103,6 +103,45 @@ SELECT
 FROM events
 WHERE contract_name = 'love20TusdtPair' AND event_name = 'Swap';
 
+-- MintGovReward (LOVE20Mint) view
+CREATE VIEW IF NOT EXISTS v_mint_gov_reward AS
+SELECT
+    id,
+    contract_name,
+    round,
+    block_number,
+    tx_hash,
+    address,
+    json_extract(decoded_data, '$.tokenAddress') AS token_address,
+    json_extract(decoded_data, '$.account') AS account,
+    json_extract(decoded_data, '$.verifyReward') AS verify_reward_raw,
+    json_extract(decoded_data, '$.boostReward') AS boost_reward_raw,
+    json_extract(decoded_data, '$.burnReward') AS burn_reward_raw,
+    CAST(json_extract(decoded_data, '$.verifyReward') AS REAL) / 1e18 AS verify_reward,
+    CAST(json_extract(decoded_data, '$.boostReward') AS REAL) / 1e18 AS boost_reward,
+    CAST(json_extract(decoded_data, '$.burnReward') AS REAL) / 1e18 AS burn_reward,
+    created_at
+FROM events
+WHERE event_name = 'MintGovReward';
+
+-- MintActionReward (LOVE20Mint) view
+CREATE VIEW IF NOT EXISTS v_mint_action_reward AS
+SELECT
+    id,
+    contract_name,
+    round,
+    block_number,
+    tx_hash,
+    address,
+    json_extract(decoded_data, '$.tokenAddress') AS token_address,
+    json_extract(decoded_data, '$.actionId') AS action_id,
+    json_extract(decoded_data, '$.account') AS account,
+    json_extract(decoded_data, '$.reward') AS reward_raw,
+    CAST(json_extract(decoded_data, '$.reward') AS REAL) / 1e18 AS reward,
+    created_at
+FROM events
+WHERE event_name = 'MintActionReward';
+
 -- ClaimReward (IReward) view
 CREATE VIEW IF NOT EXISTS v_claim_reward AS
 SELECT
