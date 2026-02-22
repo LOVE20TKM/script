@@ -10,18 +10,16 @@ GROUP BY
 ORDER BY
   count DESC;
 
-select contract_name,count(distinct "to") as unique_to_addresses
-from v_transfer
-group by contract_name
-order by unique_to_addresses desc;
+-- per-round LOVE20 buy/sell stats (TUSDT pair / u pool only)
+SELECT
+  round,
+  COALESCE(SUM(love20_out_amount), 0) AS buy_total,
+  COALESCE(SUM(love20_in_amount), 0) AS sell_total,
+  COALESCE(SUM(love20_out_amount), 0) - COALESCE(SUM(love20_in_amount), 0) AS net_buy,
+  COUNT(DISTINCT CASE WHEN love20_out_amount > 0 THEN "to" END) AS buy_address_count,
+  COUNT(DISTINCT CASE WHEN love20_in_amount > 0 THEN "to" END) AS sell_address_count
+FROM v_love20_tusdt_swap
+WHERE round IS NOT NULL
+GROUP BY round
+ORDER BY round DESC;
 
-select round, count(distinct "to") as unique_to_addresses
-from v_transfer
-where contract_name = 'LOVE20'
-group by round
-order by round desc;
-
-select contract_name,count(distinct "from") as unique_from_addresses
-from v_transfer
-group by contract_name
-order by unique_from_addresses desc;
