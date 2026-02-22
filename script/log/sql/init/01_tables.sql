@@ -1,6 +1,5 @@
--- 同步状态表，按合约+事件记录同步进度
-DROP TABLE IF EXISTS sync_status;
-CREATE TABLE sync_status (
+-- sync_status: keep across runs for incremental sync (do not DROP)
+CREATE TABLE IF NOT EXISTS sync_status (
     contract_name TEXT NOT NULL,
     event_name    TEXT NOT NULL,
     last_block    INTEGER NOT NULL,

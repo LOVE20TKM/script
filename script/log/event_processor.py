@@ -189,8 +189,13 @@ def get_min_from_block_for_address(
     return min_from
 
 
-def save_events_to_db(db_path: str, decoded_events: list[dict], to_block: int) -> int:
-    """Batch insert decoded events and update per (contract_name, event_name) sync_status. Returns inserted count."""
+def save_events_to_db(
+    db_path: str,
+    decoded_events: list[dict],
+    to_block: int,
+    all_synced_keys: set[tuple[str, str]] | None = None,
+) -> int:
+    """Batch insert decoded events and update sync_status. Use to_block (processed range end) for last_block. Returns inserted count."""
     base_fields = {'blockNumber', 'transactionHash', 'transactionIndex', 'logIndex', 'address', 'round', 'event_name', 'contract_name'}
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
@@ -221,11 +226,11 @@ def save_events_to_db(db_path: str, decoded_events: list[dict], to_block: int) -
         except Exception as e:
             log(f"⚠️  Failed to insert event: {e}")
 
-    # Update sync_status for each (contract_name, event_name)
-    for (contract_name, event_name), max_block in event_max_block.items():
+    keys_to_update = event_max_block.keys() | (all_synced_keys or set())
+    for (contract_name, event_name) in keys_to_update:
         c.execute('''INSERT OR REPLACE INTO sync_status (contract_name, event_name, last_block, updated_at)
                     VALUES (?, ?, ?, ?)''',
-                  (contract_name, event_name, max_block, datetime.now().isoformat()))
+                  (contract_name, event_name, to_block, datetime.now().isoformat()))
 
     conn.commit()
     conn.close()
@@ -656,7 +661,6 @@ async def process_events(config: ProcessConfig) -> bool:
     
     # Identify contracts that actually need syncing
     contracts_to_sync = [c for c in contract_configs if c.from_block <= config.to_block]
-    
     if not contracts_to_sync:
         log(f"\n✅ All contracts are already up to date (to_block={config.to_block})")
     else:
@@ -666,11 +670,15 @@ async def process_events(config: ProcessConfig) -> bool:
         fetch_elapsed = (datetime.now() - fetch_start).total_seconds()
         log(f"✅ Fetched {len(raw_logs)} total logs in {fetch_elapsed:.2f}s")
         
+        all_synced_keys = {
+            (ed.contract_name, ed.name)
+            for c in contracts_to_sync
+            for ed in c.event_defs.values()
+        }
         if raw_logs:
             log("\n🔓 Decoding events dynamically by address and topic0...")
             decode_start = datetime.now()
             decoded_events = []
-            
             for i, raw_log in enumerate(raw_logs):
                 event = convert_rpc_log_to_event(raw_log)
                 decoded = decode_event(event, addr_topic_to_event_def)
@@ -679,19 +687,19 @@ async def process_events(config: ProcessConfig) -> bool:
                         decoded.get('blockNumber', 0), config.origin_blocks, config.phase_blocks
                     )
                     decoded_events.append(decoded)
-                
                 if (i + 1) % 5000 == 0:
                     log(f"   Decoded {i + 1}/{len(raw_logs)} events...")
-            
             decode_elapsed = (datetime.now() - decode_start).total_seconds()
             log(f"✅ Successfully decoded {len(decoded_events)} known events in {decode_elapsed:.2f}s")
             new_event_count = len(decoded_events)
-            
             log(f"\n💾 Saving {new_event_count} events to SQLite...")
-            inserted = save_events_to_db(config.db_path, decoded_events, config.to_block)
+            inserted = save_events_to_db(
+                config.db_path, decoded_events, config.to_block, all_synced_keys
+            )
             log(f"✅ Inserted {inserted} new rows (duplicates ignored)")
         else:
-            log("📌 No new events in this batch (sync_status unchanged)")
+            save_events_to_db(config.db_path, [], config.to_block, all_synced_keys)
+            log("📌 No new events in this batch (sync_status updated to to_block)")
     
     # Final report
     elapsed = (datetime.now() - start_time).total_seconds()

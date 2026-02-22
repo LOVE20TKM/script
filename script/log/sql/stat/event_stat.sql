@@ -9,13 +9,3 @@ GROUP BY
   event_name
 ORDER BY
   count DESC;
-
-SELECT
-  'v_erc20' as view_name,count(*) as count
-FROM
-  v_erc20
-UNION ALL
-SELECT
-  'v_TUSDT' as view_name,count(*) as count
-FROM
-  v_TUSDT
