@@ -1,0 +1,161 @@
+[
+  {
+    "name": "launch",
+    "address_env_var": "launchAddress",
+    "abi_files": ["../../abi/ILOVE20Launch.sol/ILOVE20Launch.json"]
+  },
+  {
+    "name": "submit",
+    "address_env_var": "submitAddress",
+    "abi_files": ["../../abi/ILOVE20Submit.sol/ILOVE20Submit.json"]
+  },
+  {
+    "name": "vote",
+    "address_env_var": "voteAddress",
+    "abi_files": ["../../abi/ILOVE20Vote.sol/ILOVE20Vote.json"]
+  },
+  {
+    "name": "verify",
+    "address_env_var": "verifyAddress",
+    "abi_files": ["../../abi/ILOVE20Verify.sol/ILOVE20Verify.json"]
+  },
+  {
+    "name": "stake",
+    "address_env_var": "stakeAddress",
+    "abi_files": ["../../abi/ILOVE20Stake.sol/ILOVE20Stake.json"]
+  },
+  {
+    "name": "mint",
+    "address_env_var": "mintAddress",
+    "abi_files": ["../../abi/ILOVE20Mint.sol/ILOVE20Mint.json"]
+  },
+  {
+    "name": "join",
+    "address_env_var": "joinAddress",
+    "abi_files": ["../../abi/ILOVE20Join.sol/ILOVE20Join.json"]
+  },
+  {
+    "name": "tokenFactory",
+    "address_env_var": "tokenFactoryAddress",
+    "abi_files": ["../../abi/ILOVE20TokenFactory.sol/ILOVE20TokenFactory.json"]
+  },
+  {
+    "name": "slToken",
+    "address_env_var": "slTokenAddress",
+    "abi_files": ["../../abi/ILOVE20SLToken.sol/ILOVE20SLToken.json"]
+  },
+  {
+    "name": "stToken",
+    "address_env_var": "stTokenAddress",
+    "abi_files": ["../../abi/ILOVE20STToken.sol/ILOVE20STToken.json"]
+  },
+  {
+    "name": "random",
+    "address_env_var": "randomAddress",
+    "abi_files": ["../../abi/ILOVE20Random.sol/ILOVE20Random.json"]
+  },
+  {
+    "name": "LOVE20",
+    "address_env_var": "firstTokenAddress",
+    "abi_files": ["../../abi/ILOVE20Token.sol/ILOVE20Token.json"]
+  },
+  {
+    "name": "TKM20",
+    "address_env_var": "rootParentTokenAddress",
+    "abi_files": ["../../abi/IERC20.sol/IERC20.json"]
+  },
+  {
+    "name": "TUSDT",
+    "address_env_var": "tusdtAddress",
+    "abi_files": ["../../abi/IERC20.sol/IERC20.json"]
+  },
+  {
+    "name": "center",
+    "address_env_var": "centerAddress",
+    "abi_files": ["../../abi/IExtensionCenter.sol/IExtensionCenter.json"]
+  },
+  {
+    "name": "group",
+    "address_env_var": "groupAddress",
+    "abi_files": ["../../abi/ILOVE20Group.sol/ILOVE20Group.json"]
+  },
+  {
+    "name": "groupManager",
+    "address_env_var": "groupManagerAddress",
+    "abi_files": ["../../abi/IGroupManager.sol/IGroupManager.json"]
+  },
+  {
+    "name": "groupJoin",
+    "address_env_var": "groupJoinAddress",
+    "abi_files": ["../../abi/IGroupJoin.sol/IGroupJoin.json"]
+  },
+  {
+    "name": "groupVerify",
+    "address_env_var": "groupVerifyAddress",
+    "abi_files": ["../../abi/IGroupVerify.sol/IGroupVerify.json"]
+  },
+  {
+    "name": "groupRecipients",
+    "address_env_var": "groupRecipientsAddress",
+    "abi_files": ["../../abi/IGroupRecipients.sol/IGroupRecipients.json"]
+  },
+  {
+    "name": "groupActionFactory",
+    "address_env_var": "groupActionFactoryAddress",
+    "abi_files": ["../../abi/IExtensionFactory.sol/IExtensionFactory.json"]
+  },
+  {
+    "name": "groupServiceFactory",
+    "address_env_var": "groupServiceFactoryAddress",
+    "abi_files": ["../../abi/IExtensionFactory.sol/IExtensionFactory.json"]
+  },
+  {
+    "name": "lpFactory",
+    "address_env_var": "lpFactoryAddress",
+    "abi_files": ["../../abi/IExtensionFactory.sol/IExtensionFactory.json"]
+  },
+  {
+    "name": "uniswapV2Factory",
+    "address_env_var": "uniswapV2FactoryAddress",
+    "abi_files": ["../../abi/IUniswapV2Factory.sol/IUniswapV2Factory.0.5.16.json"]
+  },
+  {
+    "name": "love20Tkm20Pair",
+    "address_env_var": "love20Tkm20PairAddress",
+    "abi_files": ["../../abi/IUniswapV2Pair.sol/IUniswapV2Pair.0.5.16.json"]
+  },
+  {
+    "name": "love20TusdtPair",
+    "address_env_var": "love20TusdtPairAddress",
+    "abi_files": ["../../abi/IUniswapV2Pair.sol/IUniswapV2Pair.0.5.16.json"]
+  },
+  {
+    "name": "ext24",
+    "address_env_var": "ext24Address",
+    "abi_files": ["../../abi/IReward.sol/IRewardEvents.json", "../../abi/ITokenJoin.sol/ITokenJoinEvents.json"]
+  },
+  {
+    "name": "ext25",
+    "address_env_var": "ext25Address",
+    "abi_files": ["../../abi/IReward.sol/IRewardEvents.json"]
+  },
+  {
+    "name": "ext26",
+    "address_env_var": "ext26Address",
+    "abi_files": ["../../abi/IReward.sol/IRewardEvents.json"]
+  },
+  {
+    "name": "ext27",
+    "address_env_var": "ext27Address",
+    "abi_files": ["../../abi/IReward.sol/IRewardEvents.json"]
+  },
+  {
+    "name": "ext28",
+    "address_env_var": "ext28Address",
+    "abi_files": [
+      "../../abi/IReward.sol/IRewardEvents.json",
+      "../../abi/IGroupService.sol/IGroupServiceEvents.json",
+      "../../abi/IJoin.sol/IJoinEvents.json"
+    ]
+  }
+]

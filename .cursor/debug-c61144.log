@@ -1,0 +1,4 @@
+{"hypothesisId": "C", "location": "event_processor.py", "message": "init_db start", "data": {"db_path": "./db/thinkium70001_public/events.db", "note": "01_tables.sql DROP TABLE sync_status - loses incremental state"}, "timestamp": 1771782870620}
+{"hypothesisId": "A", "location": "event_processor.py", "message": "raw_logs count after fetch", "data": {"raw_logs_count": 3752, "to_block": 65759591}, "timestamp": 1771782982633}
+{"hypothesisId": "B", "location": "event_processor.py", "message": "decode result", "data": {"decoded_count": 3247, "raw_count": 3752, "decode_fail_count": 505, "decode_fail_addr_missing": 0, "decode_fail_topic_missing": 505}, "timestamp": 1771782982761}
+{"hypothesisId": "D", "location": "event_processor.py", "message": "save_events_to_db result", "data": {"inserted": 3247, "decoded_count": 3247}, "timestamp": 1771782982785}
