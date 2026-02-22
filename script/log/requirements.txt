@@ -9,3 +9,6 @@ eth-utils>=2.0.0
 
 # Direct RPC calls
 httpx>=0.25.0
+
+# SQL export to XLSX
+openpyxl>=3.0.0
