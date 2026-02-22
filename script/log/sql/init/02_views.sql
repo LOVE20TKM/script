@@ -102,3 +102,25 @@ SELECT
     created_at
 FROM events
 WHERE contract_name = 'love20TusdtPair' AND event_name = 'Swap';
+
+-- ClaimReward (IReward) view
+CREATE VIEW IF NOT EXISTS v_claim_reward AS
+SELECT
+    id,
+    contract_name,
+    round,
+    block_number,
+    tx_hash,
+    tx_index,
+    log_index,
+    address,
+    json_extract(decoded_data, '$.tokenAddress') AS token_address,
+    json_extract(decoded_data, '$.actionId') AS action_id,
+    json_extract(decoded_data, '$.account') AS account,
+    json_extract(decoded_data, '$.mintAmount') AS mint_amount_raw,
+    json_extract(decoded_data, '$.burnAmount') AS burn_amount_raw,
+    CAST(json_extract(decoded_data, '$.mintAmount') AS REAL) / 1e18 AS mint_amount,
+    CAST(json_extract(decoded_data, '$.burnAmount') AS REAL) / 1e18 AS burn_amount,
+    created_at
+FROM events
+WHERE event_name = 'ClaimReward';
