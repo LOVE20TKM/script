@@ -9,9 +9,11 @@ set -a
 source ../network/$network/address.params
 source ../network/$network/network.params
 source ../network/$network/LOVE20.params
-for f in address.extension.center.params address.extension.group.params address.extension.lp.params address.group.params address.else.params; do
-  [ -f "../network/$network/$f" ] && source "../network/$network/$f"
-done
+source ../network/$network/address.extension.center.params
+source ../network/$network/address.extension.group.params
+source ../network/$network/address.extension.lp.params
+source ../network/$network/address.group.params
+source ../network/$network/address.else.params
 set +a
 
 export from_block=$originBlocks
