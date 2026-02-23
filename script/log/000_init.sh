@@ -9,7 +9,7 @@ set -a
 source ../network/$network/address.params
 source ../network/$network/network.params
 source ../network/$network/LOVE20.params
-for f in address.extension.center.params address.extension.group.params address.extension.lp.params address.group.params; do
+for f in address.extension.center.params address.extension.group.params address.extension.lp.params address.group.params address.else.params; do
   [ -f "../network/$network/$f" ] && source "../network/$network/$f"
 done
 set +a

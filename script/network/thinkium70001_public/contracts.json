@@ -157,5 +157,13 @@
       "../../abi/IGroupService.sol/IGroupServiceEvents.json",
       "../../abi/IJoin.sol/IJoinEvents.json"
     ]
+  },
+  {
+    "name": "hub",
+    "address_env_var": "hubAddress"
+  },
+  {
+    "name": "uniswapV2Router02",
+    "address_env_var": "uniswapV2Router02Address"
   }
 ]
