@@ -132,13 +132,46 @@ def calc_round(block_number: int, origin_blocks: int, phase_blocks: int) -> int 
     return (block_number - origin_blocks) // phase_blocks
 
 
-def init_db(db_path: str):
-    """Initialize DB by executing SQL files from script/log/sql/init"""
+def _resolve_address_name_pairs(config_file: str) -> list[tuple[str, str]]:
+    """Resolve (address, contract_name) pairs from contracts.json using env vars."""
+    with open(config_file, 'r') as f:
+        contracts_info = json.load(f)
+    pairs = []
+    for c in contracts_info:
+        name = c['name']
+        env_var = c.get('address_env_var')
+        if env_var:
+            raw = os.environ.get(env_var)
+        else:
+            raw = c.get('address')
+        if not raw:
+            continue
+        addr = to_checksum_address(raw)
+        pairs.append((addr, name))
+    return pairs
+
+
+def _build_contract_address_name_view_sql(config_file: str) -> str | None:
+    """Build CREATE VIEW SQL for address->name mapping from contracts.json."""
+    pairs = _resolve_address_name_pairs(config_file)
+    if not pairs:
+        return None
+    rows = []
+    for addr, name in pairs:
+        a = addr.replace("'", "''")
+        n = name.replace("'", "''")
+        rows.append(f"SELECT '{a}' AS address, '{n}' AS contract_name")
+    body = " UNION ALL ".join(rows)
+    return f"DROP VIEW IF EXISTS v_contract;\nCREATE VIEW v_contract AS\n{body};\n"
+
+
+def init_db(db_path: str, contracts_config_file: str | None = None):
+    """Initialize DB by executing SQL files from script/log/sql/init, then optionally create contract mapping view."""
     conn = sqlite3.connect(db_path)
-    
+
     script_dir = Path(__file__).resolve().parent
     sql_init_dir = script_dir / 'sql' / 'init'
-    
+
     if sql_init_dir.exists() and sql_init_dir.is_dir():
         sql_files = sorted(sql_init_dir.glob('*.sql'))
         for f in sql_files:
@@ -150,7 +183,18 @@ def init_db(db_path: str):
                 log(f"❌ Error executing {f.name}: {e}")
     else:
         log(f"⚠️ SQL init directory not found: {sql_init_dir}")
-        
+
+    if contracts_config_file:
+        view_sql = _build_contract_address_name_view_sql(contracts_config_file)
+        if view_sql:
+            log("   Creating v_contract from contracts config")
+            try:
+                conn.executescript(view_sql)
+            except Exception as e:
+                log(f"❌ Error creating v_contract: {e}")
+        else:
+            log("⚠️ No resolved addresses for v_contract (env vars may be missing)")
+
     conn.commit()
     conn.close()
 
@@ -598,7 +642,7 @@ async def process_events(config: ProcessConfig) -> bool:
         
     if config.db_path:
         log("📂 Initializing database...")
-        init_db(config.db_path)
+        init_db(config.db_path, config.config_file)
     else:
         log("❌ A database path (--db-path) is required to store events.")
         return False
