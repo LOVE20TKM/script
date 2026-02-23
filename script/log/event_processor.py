@@ -257,12 +257,13 @@ def save_events_to_db(
 
         decoded_data = {k: v for k, v in event.items() if k not in base_fields}
         decoded_json = json.dumps(decoded_data, default=str)
-        
+        round_val = event.get('round') or event.get('currentRound')
+
         try:
             c.execute('''INSERT OR IGNORE INTO events
-                        (contract_name, event_name, log_round, block_number, tx_hash, tx_index, log_index, address, decoded_data)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                      (contract_name, event_name, event.get('log_round'),
+                        (contract_name, event_name, log_round, round, block_number, tx_hash, tx_index, log_index, address, decoded_data)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                      (contract_name, event_name, event.get('log_round'), round_val,
                        block_num, event.get('transactionHash'),
                        event.get('transactionIndex'), event.get('logIndex'),
                        event.get('address'), decoded_json))

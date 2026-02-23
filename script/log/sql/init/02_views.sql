@@ -1,9 +1,11 @@
 -- 统一的 Transfer 视图，提取所有 ERC20/Token 合约的转账记录
-CREATE VIEW IF NOT EXISTS v_transfer AS
+DROP VIEW IF EXISTS v_transfer;
+CREATE VIEW v_transfer AS
 SELECT
     id,
     contract_name,
     log_round,
+    round,
     block_number,
     tx_hash,
     tx_index,
@@ -18,11 +20,13 @@ FROM events
 WHERE event_name = 'Transfer';
 
 -- 提取 Contribute 视图
-CREATE VIEW IF NOT EXISTS v_contribute AS
+DROP VIEW IF EXISTS v_contribute;
+CREATE VIEW v_contribute AS
 SELECT
     id,
     contract_name,
     log_round,
+    round,
     block_number,
     tx_hash,
     address,
@@ -34,10 +38,13 @@ FROM events
 WHERE event_name = 'Contribute';
 
 -- 提取 PairCreated (UniswapV2Factory) 视图
-CREATE VIEW IF NOT EXISTS v_pair_created AS
+DROP VIEW IF EXISTS v_pair_created;
+CREATE VIEW v_pair_created AS
 SELECT
     id,
     contract_name,
+    log_round,
+    round,
     block_number,
     tx_hash,
     json_extract(decoded_data, '$.token0') AS token0,
@@ -55,6 +62,7 @@ SELECT
     id,
     contract_name,
     log_round,
+    round,
     block_number,
     tx_hash,
     tx_index,
@@ -83,6 +91,7 @@ SELECT
     id,
     contract_name,
     log_round,
+    round,
     block_number,
     tx_hash,
     tx_index,
@@ -104,11 +113,13 @@ FROM events
 WHERE contract_name = 'love20TusdtPair' AND event_name = 'Swap';
 
 -- MintGovReward (LOVE20Mint) view
-CREATE VIEW IF NOT EXISTS v_mint_gov_reward AS
+DROP VIEW IF EXISTS v_mint_gov_reward;
+CREATE VIEW v_mint_gov_reward AS
 SELECT
     id,
     contract_name,
     log_round,
+    round,
     block_number,
     tx_hash,
     address,
@@ -125,11 +136,13 @@ FROM events
 WHERE event_name = 'MintGovReward';
 
 -- MintActionReward (LOVE20Mint) view
-CREATE VIEW IF NOT EXISTS v_mint_action_reward AS
+DROP VIEW IF EXISTS v_mint_action_reward;
+CREATE VIEW v_mint_action_reward AS
 SELECT
     id,
     contract_name,
     log_round,
+    round,
     block_number,
     tx_hash,
     address,
@@ -143,11 +156,13 @@ FROM events
 WHERE event_name = 'MintActionReward';
 
 -- ClaimReward (IReward) view
-CREATE VIEW IF NOT EXISTS v_claim_reward AS
+DROP VIEW IF EXISTS v_claim_reward;
+CREATE VIEW v_claim_reward AS
 SELECT
     id,
     contract_name,
     log_round,
+    round,
     block_number,
     tx_hash,
     tx_index,
