@@ -3,7 +3,7 @@ CREATE VIEW IF NOT EXISTS v_transfer AS
 SELECT
     id,
     contract_name,
-    round,
+    log_round,
     block_number,
     tx_hash,
     tx_index,
@@ -22,7 +22,7 @@ CREATE VIEW IF NOT EXISTS v_contribute AS
 SELECT
     id,
     contract_name,
-    round,
+    log_round,
     block_number,
     tx_hash,
     address,
@@ -54,7 +54,7 @@ CREATE VIEW v_love20_tkm20_swap AS
 SELECT
     id,
     contract_name,
-    round,
+    log_round,
     block_number,
     tx_hash,
     tx_index,
@@ -82,7 +82,7 @@ CREATE VIEW v_love20_tusdt_swap AS
 SELECT
     id,
     contract_name,
-    round,
+    log_round,
     block_number,
     tx_hash,
     tx_index,
@@ -108,7 +108,7 @@ CREATE VIEW IF NOT EXISTS v_mint_gov_reward AS
 SELECT
     id,
     contract_name,
-    round,
+    log_round,
     block_number,
     tx_hash,
     address,
@@ -129,7 +129,7 @@ CREATE VIEW IF NOT EXISTS v_mint_action_reward AS
 SELECT
     id,
     contract_name,
-    round,
+    log_round,
     block_number,
     tx_hash,
     address,
@@ -147,7 +147,7 @@ CREATE VIEW IF NOT EXISTS v_claim_reward AS
 SELECT
     id,
     contract_name,
-    round,
+    log_round,
     block_number,
     tx_hash,
     tx_index,

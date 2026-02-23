@@ -196,7 +196,7 @@ def save_events_to_db(
     all_synced_keys: set[tuple[str, str]] | None = None,
 ) -> int:
     """Batch insert decoded events and update sync_status. Use to_block (processed range end) for last_block. Returns inserted count."""
-    base_fields = {'blockNumber', 'transactionHash', 'transactionIndex', 'logIndex', 'address', 'round', 'event_name', 'contract_name'}
+    base_fields = {'blockNumber', 'transactionHash', 'transactionIndex', 'logIndex', 'address', 'log_round', 'event_name', 'contract_name'}
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
     inserted = 0
@@ -216,9 +216,9 @@ def save_events_to_db(
         
         try:
             c.execute('''INSERT OR IGNORE INTO events
-                        (contract_name, event_name, round, block_number, tx_hash, tx_index, log_index, address, decoded_data)
+                        (contract_name, event_name, log_round, block_number, tx_hash, tx_index, log_index, address, decoded_data)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                      (contract_name, event_name, event.get('round'),
+                      (contract_name, event_name, event.get('log_round'),
                        block_num, event.get('transactionHash'),
                        event.get('transactionIndex'), event.get('logIndex'),
                        event.get('address'), decoded_json))
@@ -683,7 +683,7 @@ async def process_events(config: ProcessConfig) -> bool:
                 event = convert_rpc_log_to_event(raw_log)
                 decoded = decode_event(event, addr_topic_to_event_def)
                 if decoded:
-                    decoded['round'] = calc_round(
+                    decoded['log_round'] = calc_round(
                         decoded.get('blockNumber', 0), config.origin_blocks, config.phase_blocks
                     )
                     decoded_events.append(decoded)
