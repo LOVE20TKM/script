@@ -84,7 +84,7 @@ FROM events
 WHERE contract_name = 'love20Tkm20Pair' AND event_name = 'Swap';
 
 -- LOVE20-TUSDT pair Swap (TUSDT=token0, LOVE20=token1)
--- love20_in/out: LOVE20 flow (18 decimals); tusdt_in/out: TUSDT flow (6 decimals)
+-- love20_in/out: LOVE20 flow (18 decimals); tusdt_in/out: TUSDT flow (18 decimals)
 DROP VIEW IF EXISTS v_love20_tusdt_swap;
 CREATE VIEW v_love20_tusdt_swap AS
 SELECT
@@ -105,8 +105,8 @@ SELECT
     json_extract(decoded_data, '$.amount0Out') AS tusdt_out,
     CAST(json_extract(decoded_data, '$.amount1In') AS REAL) / 1e18 AS love20_in_amount,
     CAST(json_extract(decoded_data, '$.amount1Out') AS REAL) / 1e18 AS love20_out_amount,
-    CAST(json_extract(decoded_data, '$.amount0In') AS REAL) / 1e6 AS tusdt_in_amount,
-    CAST(json_extract(decoded_data, '$.amount0Out') AS REAL) / 1e6 AS tusdt_out_amount,
+    CAST(json_extract(decoded_data, '$.amount0In') AS REAL) / 1e18 AS tusdt_in_amount,
+    CAST(json_extract(decoded_data, '$.amount0Out') AS REAL) / 1e18 AS tusdt_out_amount,
     (CAST(json_extract(decoded_data, '$.amount1In') AS REAL) > 0) AS is_sell_love20,
     created_at
 FROM events
