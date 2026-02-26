@@ -23,6 +23,30 @@ WHERE log_round IS NOT NULL
 GROUP BY log_round
 ORDER BY log_round DESC;
 
+-- last 7 rounds: per-address buy/sell details (TUSDT pair)
+WITH last_7_rounds AS (
+  SELECT log_round
+  FROM v_love20_tusdt_swap
+  WHERE log_round IS NOT NULL
+  GROUP BY log_round
+  ORDER BY log_round DESC
+  LIMIT 7
+)
+SELECT
+  v.log_round,
+  v."to" AS address,
+  COALESCE(SUM(v.tusdt_in_amount), 0) AS buy_tusdt,
+  COALESCE(SUM(v.tusdt_out_amount), 0) AS sell_tusdt,
+  COALESCE(SUM(v.love20_out_amount), 0) AS buy_love20,
+  COALESCE(SUM(v.love20_in_amount), 0) AS sell_love20,
+  COUNT(*) AS tx_count
+FROM v_love20_tusdt_swap v
+WHERE v.log_round IN (SELECT log_round FROM last_7_rounds)
+GROUP BY v.log_round, v."to"
+ORDER BY v.log_round DESC, buy_tusdt + sell_tusdt DESC;
+
+
+
 -- per-round mint address counts: action, gov, total
 SELECT
   r.log_round,
