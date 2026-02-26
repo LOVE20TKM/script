@@ -74,6 +74,7 @@ export maxConcurrentJobs=10  # Reduced concurrency to avoid RPC rate limiting
 # Script directory for Python processor
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PYTHON_PROCESSOR="$SCRIPT_DIR/event_processor.py"
+export BLOCK_PROCESSOR="$SCRIPT_DIR/block_processor.py"
 export CONFIG_FILE="$SCRIPT_DIR/../network/$network/contracts.json"
 
 export output_dir="./output/$network"

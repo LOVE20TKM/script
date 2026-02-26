@@ -31,3 +31,31 @@ CREATE INDEX IF NOT EXISTS idx_events_block ON events(block_number);
 CREATE INDEX IF NOT EXISTS idx_events_log_round ON events(log_round);
 CREATE INDEX IF NOT EXISTS idx_events_round ON events(round);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_events_unique ON events(tx_hash, log_index);
+
+-- blocks: block header metadata (fetched via eth_getBlockByNumber, maintained by block_processor)
+-- Constant on Thinkium: gas_limit(30M), difficulty(0x0), size(0), nonce(0x..), miner(0x0..), extra_data(0x), sha3_uncles
+-- Always NULL: base_fee_per_gas, total_difficulty
+-- Always 0 on Thinkium: gas_used
+CREATE TABLE IF NOT EXISTS blocks (
+    block_number     INTEGER PRIMARY KEY,
+    block_hash       TEXT,
+    parent_hash      TEXT,
+    timestamp        INTEGER NOT NULL,
+    gas_limit        INTEGER,
+    gas_used         INTEGER,
+    base_fee_per_gas INTEGER,
+    difficulty       TEXT,
+    total_difficulty TEXT,
+    size             INTEGER,
+    nonce            TEXT,
+    mix_hash         TEXT,
+    state_root       TEXT,
+    transactions_root TEXT,
+    receipts_root    TEXT,
+    miner            TEXT,
+    extra_data       TEXT,
+    sha3_uncles      TEXT,
+    tx_count         INTEGER,
+    created_at       TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_blocks_timestamp ON blocks(timestamp);

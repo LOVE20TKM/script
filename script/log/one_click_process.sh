@@ -35,13 +35,35 @@ $PYTHON_CMD "$PYTHON_PROCESSOR" \
   --origin-blocks "$originBlocks" \
   --phase-blocks "$PHASE_BLOCKS"
 
-exit_code=$?
-
-if [ $exit_code -eq 0 ]; then
+if [ $exit_code -ne 0 ]; then
   echo ""
-  echo "🎉 All event log processing completed!"
+  echo "❌ Error during event log processing."
+  return $exit_code
+fi
+
+echo ""
+echo "🎉 Event log processing completed!"
+echo ""
+echo "====================================================================="
+echo "📦 Supplementing block metadata (blocks table)..."
+echo "====================================================================="
+
+$PYTHON_CMD "$BLOCK_PROCESSOR" \
+  --rpc "$RPC_URL" \
+  --to-block "$to_block" \
+  --db-path "$db_dir/events.db" \
+  --origin-blocks "$originBlocks" \
+  --batch-size 500 \
+  --concurrency 20 \
+  --retries "$maxRetries"
+
+block_exit=$?
+if [ $block_exit -eq 0 ]; then
+  echo ""
+  echo "🎉 All processing completed!"
   echo "📊 Data is available in SQLite database: $db_dir/events.db"
 else
   echo ""
-  echo "❌ Error during event log processing."
+  echo "⚠️ Block processor returned error (events were saved successfully)."
 fi
+return $block_exit
