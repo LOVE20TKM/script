@@ -1,17 +1,4 @@
--- Excluded contract addresses for correlation analysis (DEX pairs, protocol contracts)
-DROP VIEW IF EXISTS v_contract;
-CREATE VIEW v_contract AS
-SELECT DISTINCT address
-FROM events
-WHERE contract_name IN (
-  'love20TusdtPair', 'love20Tkm20Pair',
-  'join', 'stake', 'mint', 'vote', 'verify', 'launch', 'submit', 'random',
-  'tokenFactory', 'slToken', 'stToken',
-  'uniswapV2Factory', 'lpFactory', 'uniswapV2Router02',
-  'center', 'group', 'groupManager', 'groupJoin', 'groupVerify',
-  'groupActionFactory', 'groupServiceFactory', 'groupRecipients',
-  'ext24', 'ext25', 'ext26', 'ext27', 'ext28', 'hub'
-);
+-- v_contract: created by event_processor from contracts.json (address + contract_name mapping)
 
 -- 统一的 Transfer 视图，提取所有 ERC20/Token 合约的转账记录
 DROP VIEW IF EXISTS v_transfer;

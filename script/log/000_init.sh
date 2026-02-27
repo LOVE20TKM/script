@@ -50,7 +50,7 @@ export stTokenAddress=$(cast_call $tokenAddress "stAddress()(address)" 2>/dev/nu
 export slTokenAddress=$(cast_call $tokenAddress "slAddress()(address)" 2>/dev/null | normalize_address)
 
 # Extension actions 24-28 (24: lpFactory, 25-27: groupActionFactory, 28: groupServiceFactory)
-for actionId in 24 25 26 27 28; do
+for actionId in 24 25 26 27 28 29; do
   addr=$(cast_call $centerAddress "extension(address,uint256)(address)" $firstTokenAddress $actionId 2>/dev/null | normalize_address)
   if [ -n "$addr" ] && [ "$addr" != "0x0000000000000000000000000000000000000000" ]; then
     export ext${actionId}Address=$addr

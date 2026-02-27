@@ -159,6 +159,11 @@
     ]
   },
   {
+    "name": "ext29",
+    "address_env_var": "ext29Address",
+    "abi_files": ["../../abi/IReward.sol/IRewardEvents.json"]
+  },
+  {
     "name": "hub",
     "address_env_var": "hubAddress"
   },
