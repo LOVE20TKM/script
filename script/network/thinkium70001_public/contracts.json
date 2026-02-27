@@ -62,7 +62,7 @@
   {
     "name": "TKM20",
     "address_env_var": "rootParentTokenAddress",
-    "abi_files": ["../../abi/IERC20.sol/IERC20.json"]
+    "abi_files": ["../../abi/IETH20.sol/IETH20.json"]
   },
   {
     "name": "TUSDT",
