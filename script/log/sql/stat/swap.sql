@@ -15,15 +15,7 @@ WHERE log_round IS NOT NULL
 GROUP BY log_round
 ORDER BY log_round DESC;
 
--- last 7 rounds: per-address details (TUSDT pair)
-WITH last_7_rounds AS (
-  SELECT log_round
-  FROM v_love20_tusdt_swap
-  WHERE log_round IS NOT NULL
-  GROUP BY log_round
-  ORDER BY log_round DESC
-  LIMIT 7
-)
+-- last 30 rounds: per-address details (TUSDT pair)
 SELECT
   v.log_round,
   v."to" AS address,
@@ -33,7 +25,8 @@ SELECT
   COALESCE(SUM(v.love20_in_amount), 0) AS love20_in,
   COUNT(*) AS tx_count
 FROM v_love20_tusdt_swap v
-WHERE v.log_round IN (SELECT log_round FROM last_7_rounds)
+WHERE v.log_round IS NOT NULL
+  AND v.log_round >= (SELECT MAX(log_round) FROM v_love20_tusdt_swap WHERE log_round IS NOT NULL) - 29
 GROUP BY v.log_round, v."to"
 ORDER BY v.log_round DESC, tusdt_in + tusdt_out DESC;
 
@@ -54,14 +47,6 @@ GROUP BY log_round
 ORDER BY log_round DESC;
 
 -- last 7 rounds: per-address details (TKM20 pair)
-WITH last_7_rounds AS (
-  SELECT log_round
-  FROM v_love20_tkm20_swap
-  WHERE log_round IS NOT NULL
-  GROUP BY log_round
-  ORDER BY log_round DESC
-  LIMIT 7
-)
 SELECT
   v.log_round,
   v."to" AS address,
@@ -71,6 +56,7 @@ SELECT
   COALESCE(SUM(v.love20_in_amount), 0) AS love20_in,
   COUNT(*) AS tx_count
 FROM v_love20_tkm20_swap v
-WHERE v.log_round IN (SELECT log_round FROM last_7_rounds)
+WHERE v.log_round IS NOT NULL
+  AND v.log_round >= (SELECT MAX(log_round) FROM v_love20_tkm20_swap WHERE log_round IS NOT NULL) - 6
 GROUP BY v.log_round, v."to"
 ORDER BY v.log_round DESC, tkm20_in + tkm20_out DESC;
