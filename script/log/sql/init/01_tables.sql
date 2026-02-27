@@ -59,3 +59,45 @@ CREATE TABLE IF NOT EXISTS blocks (
     created_at       TEXT DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_blocks_timestamp ON blocks(timestamp);
+
+-- transactions: full tx-level data, block context mirrors blocks
+CREATE TABLE IF NOT EXISTS transactions (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    block_number            INTEGER NOT NULL,
+    block_hash              TEXT,
+    block_timestamp         INTEGER,
+    tx_hash                 TEXT NOT NULL UNIQUE,
+    tx_index                INTEGER,
+    "from"                  TEXT NOT NULL,
+    "to"                    TEXT,
+    value_wei               TEXT NOT NULL,
+    amount                  REAL NOT NULL,
+    gas                     INTEGER,
+    gas_price               INTEGER,
+    max_fee_per_gas         INTEGER,
+    max_priority_fee_per_gas INTEGER,
+    type                    INTEGER,
+    chain_id                INTEGER,
+    input                   TEXT,
+    nonce                   INTEGER,
+    v                       INTEGER,
+    r                       TEXT,
+    s                       TEXT,
+    access_list             TEXT,
+    gas_used                INTEGER,
+    cumulative_gas_used     INTEGER,
+    status                  INTEGER,
+    contract_address        TEXT,
+    effective_gas_price     INTEGER,
+    created_at              TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_tx_block ON transactions(block_number);
+CREATE INDEX IF NOT EXISTS idx_tx_block_ts ON transactions(block_timestamp);
+CREATE INDEX IF NOT EXISTS idx_tx_from ON transactions("from");
+CREATE INDEX IF NOT EXISTS idx_tx_to ON transactions("to");
+
+CREATE TABLE IF NOT EXISTS transaction_sync (
+    id          INTEGER PRIMARY KEY CHECK (id = 1),
+    last_block  INTEGER NOT NULL,
+    updated_at  TEXT NOT NULL
+);

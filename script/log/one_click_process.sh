@@ -35,6 +35,7 @@ $PYTHON_CMD "$PYTHON_PROCESSOR" \
   --origin-blocks "$originBlocks" \
   --phase-blocks "$PHASE_BLOCKS"
 
+exit_code=$?
 if [ $exit_code -ne 0 ]; then
   echo ""
   echo "❌ Error during event log processing."

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-LOVE20 Block Processor - Fetches and maintains block header metadata.
+LOVE20 Block Processor - Fetches block metadata and transactions.
 
-Runs standalone after event_processor. Determines missing block range from blocks
-table, fetches via eth_getBlockByNumber (batch), and inserts/updates blocks.
-Writes all blocks including empty ones for contiguous coverage.
+Runs standalone after event_processor. Fetches via eth_getBlockByNumber(fullTx=true),
+inserts blocks and transactions. Supports backfill when transactions empty but blocks exist.
 """
 
 import argparse
 import asyncio
+import json
 import os
 import sqlite3
 import sys
@@ -56,15 +56,47 @@ def get_last_block_in_db(db_path: str) -> int | None:
         return None
 
 
+def get_last_transaction_block(db_path: str) -> int | None:
+    """Return MAX(block_number) from transactions, or None if empty."""
+    conn = sqlite3.connect(db_path)
+    try:
+        c = conn.execute("SELECT MAX(block_number) FROM transactions")
+        row = c.fetchone()
+        conn.close()
+        return row[0] if row and row[0] is not None else None
+    except sqlite3.OperationalError:
+        conn.close()
+        return None
+
+
+def get_gap_blocks(db_path: str) -> list[int]:
+    """Blocks with tx_count>0 but no transactions. Max 10000 to avoid huge fetches."""
+    conn = sqlite3.connect(db_path)
+    try:
+        c = conn.execute(
+            """SELECT b.block_number FROM blocks b
+               WHERE b.tx_count > 0
+                 AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.block_number = b.block_number)
+               ORDER BY b.block_number
+               LIMIT 10000"""
+        )
+        rows = c.fetchall()
+        conn.close()
+        return [r[0] for r in rows]
+    except sqlite3.OperationalError:
+        conn.close()
+        return []
+
+
 async def fetch_blocks_batch(
     client: httpx.AsyncClient,
     rpc_url: str,
     block_numbers: list[int],
     max_retries: int = 5,
 ) -> list[dict | None]:
-    """Fetch multiple blocks via JSON-RPC batch. Returns list aligned with block_numbers."""
+    """Fetch blocks with full transactions via JSON-RPC batch."""
     payload = [
-        {"jsonrpc": "2.0", "method": "eth_getBlockByNumber", "params": [hex(n), False], "id": i}
+        {"jsonrpc": "2.0", "method": "eth_getBlockByNumber", "params": [hex(n), True], "id": i}
         for i, n in enumerate(block_numbers)
     ]
     for attempt in range(max_retries):
@@ -103,6 +135,49 @@ def hex_to_int(h: str | None) -> int | None:
         return int(h, 16) if isinstance(h, str) else None
     except (ValueError, TypeError):
         return None
+
+
+def _hex_to_value(h) -> tuple[str, float]:
+    """Return (value_wei_str, amount_human)."""
+    wei = 0
+    try:
+        wei = int(h, 16) if isinstance(h, str) else int(h) if h else 0
+    except (ValueError, TypeError):
+        pass
+    return str(wei), wei / 1e18
+
+
+def _parse_tx(tx: dict, block_number: int, block_hash: str | None, block_timestamp: int | None) -> dict | None:
+    """Extract tx fields for DB insert. Returns None if tx is hash-only (fullTx=false)."""
+    if not isinstance(tx, dict) or "hash" not in tx:
+        return None
+    value_wei, amount = _hex_to_value(tx.get("value") or "0")
+    access_list = tx.get("accessList")
+    if access_list is not None and isinstance(access_list, list):
+        access_list = json.dumps(access_list) if access_list else None
+    return {
+        "block_number": block_number,
+        "block_hash": block_hash or tx.get("blockHash"),
+        "block_timestamp": block_timestamp,
+        "tx_hash": tx.get("hash"),
+        "tx_index": hex_to_int(tx.get("transactionIndex")),
+        "from": tx.get("from") or "",
+        "to": tx.get("to"),
+        "value_wei": value_wei,
+        "amount": amount,
+        "gas": hex_to_int(tx.get("gas")),
+        "gas_price": hex_to_int(tx.get("gasPrice")),
+        "max_fee_per_gas": hex_to_int(tx.get("maxFeePerGas")),
+        "max_priority_fee_per_gas": hex_to_int(tx.get("maxPriorityFeePerGas")),
+        "type": hex_to_int(tx.get("type")),
+        "chain_id": hex_to_int(tx.get("chainId")),
+        "input": tx.get("input"),
+        "nonce": hex_to_int(tx.get("nonce")),
+        "v": hex_to_int(tx.get("v")),
+        "r": tx.get("r"),
+        "s": tx.get("s"),
+        "access_list": access_list,
+    }
 
 
 def save_blocks(db_path: str, blocks: list[dict]) -> int:
@@ -160,6 +235,79 @@ def save_blocks(db_path: str, blocks: list[dict]) -> int:
     return inserted
 
 
+def save_transactions(db_path: str, blocks: list[dict]) -> int:
+    """Insert transactions from blocks (fullTx). Returns inserted count."""
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    inserted = 0
+    ins = """INSERT OR IGNORE INTO transactions
+        (block_number, block_hash, block_timestamp, tx_hash, tx_index, "from", "to",
+         value_wei, amount, gas, gas_price, max_fee_per_gas, max_priority_fee_per_gas,
+         type, chain_id, input, nonce, v, r, s, access_list, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+    for b in blocks:
+        if not b:
+            continue
+        num = hex_to_int(b.get("number"))
+        if num is None:
+            continue
+        bhash = b.get("hash")
+        ts = hex_to_int(b.get("timestamp"))
+        txs = b.get("transactions") or []
+        if not isinstance(txs, list):
+            continue
+        for tx in txs:
+            row = _parse_tx(tx, num, bhash, ts)
+            if not row:
+                continue
+            try:
+                c.execute(
+                    ins,
+                    (
+                        row["block_number"],
+                        row["block_hash"],
+                        row["block_timestamp"],
+                        row["tx_hash"],
+                        row["tx_index"],
+                        row["from"],
+                        row["to"],
+                        row["value_wei"],
+                        row["amount"],
+                        row["gas"],
+                        row["gas_price"],
+                        row["max_fee_per_gas"],
+                        row["max_priority_fee_per_gas"],
+                        row["type"],
+                        row["chain_id"],
+                        row["input"],
+                        row["nonce"],
+                        row["v"],
+                        row["r"],
+                        row["s"],
+                        row["access_list"],
+                        datetime.now().isoformat(),
+                    ),
+                )
+                if c.rowcount > 0:
+                    inserted += 1
+            except Exception as e:
+                log(f"⚠️  Failed to insert tx {row.get('tx_hash')}: {e}")
+    conn.commit()
+    conn.close()
+    return inserted
+
+
+def update_transaction_sync(db_path: str, last_block: int):
+    """Update transaction_sync with last processed block."""
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT OR REPLACE INTO transaction_sync (id, last_block, updated_at) VALUES (1, ?, ?)",
+        (last_block, datetime.now().isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+
 async def run(
     rpc_url: str,
     to_block: int,
@@ -168,6 +316,7 @@ async def run(
     batch_size: int = 100,
     max_concurrent: int = 5,
     max_retries: int = 5,
+    skip_gap_fill: bool = False,
 ) -> bool:
     log("")
     log("━" * 50)
@@ -178,60 +327,109 @@ async def run(
     os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
     init_db(db_path)
 
-    last = get_last_block_in_db(db_path)
-    from_block = (last + 1) if last is not None else origin_blocks
+    last_block = get_last_block_in_db(db_path)
+    last_tx_block = get_last_transaction_block(db_path)
 
-    if from_block > to_block:
-        log(f"✅ Blocks already up to date (last={last}, to_block={to_block})")
-        return True
+    if last_tx_block is None:
+        from_block = origin_blocks
+        to_block_eff = min(last_block, to_block) if last_block is not None else to_block
+        if from_block > to_block_eff:
+            log(f"✅ Nothing to backfill (blocks empty or single block)")
+        else:
+            log(f"📥 Backfilling transactions for blocks {from_block} → {to_block_eff}")
+    else:
+        from_block = last_tx_block + 1
+        to_block_eff = to_block
+        if from_block > to_block_eff:
+            log(f"✅ Already up to date (last_tx={last_tx_block}, to_block={to_block_eff})")
 
-    total = to_block - from_block + 1
-    log(f"📦 Fetching blocks {from_block} → {to_block} ({total:,} blocks)")
-
-    ranges = []
-    cur = from_block
-    while cur <= to_block:
-        end = min(cur + batch_size - 1, to_block)
-        ranges.append((cur, end))
-        cur = end + 1
+    need_main_sync = (
+        (last_tx_block is None and from_block <= to_block_eff)
+        or (last_tx_block is not None and from_block <= to_block_eff)
+    )
+    total = to_block_eff - from_block + 1 if need_main_sync else 0
 
     limits = httpx.Limits(max_connections=max_concurrent + 20, max_keepalive_connections=50)
     timeout = httpx.Timeout(60.0, connect=10.0)
-    total_inserted = 0
-    write_lock = asyncio.Lock()
+    total_blocks = 0
+    total_txs = 0
 
     async with httpx.AsyncClient(limits=limits, timeout=timeout) as client:
-        sem = asyncio.Semaphore(max_concurrent)
+        if need_main_sync:
+            log(f"📦 Fetching blocks {from_block} → {to_block_eff} ({total:,} blocks)")
+            ranges = []
+            cur = from_block
+            while cur <= to_block_eff:
+                end = min(cur + batch_size - 1, to_block_eff)
+                ranges.append((cur, end))
+                cur = end + 1
+            write_lock = asyncio.Lock()
+            sem = asyncio.Semaphore(max_concurrent)
 
-        async def fetch_and_save(lo: int, hi: int) -> int:
-            async with sem:
-                nums = list(range(lo, hi + 1))
-                results = await fetch_blocks_batch(client, rpc_url, nums, max_retries)
-                blocks = [r for r in results if r is not None]
-            if blocks:
-                async with write_lock:
-                    return save_blocks(db_path, blocks)
-            return 0
+            async def fetch_and_save(lo: int, hi: int) -> tuple[int, int]:
+                async with sem:
+                    nums = list(range(lo, hi + 1))
+                    results = await fetch_blocks_batch(client, rpc_url, nums, max_retries)
+                    blocks = [r for r in results if r is not None]
+                if blocks:
+                    async with write_lock:
+                        blk_count = save_blocks(db_path, blocks)
+                        tx_count = save_transactions(db_path, blocks)
+                        return blk_count, tx_count
+                return 0, 0
 
-        start_time = datetime.now()
-        tasks = [asyncio.create_task(fetch_and_save(lo, hi)) for lo, hi in ranges]
-        done = 0
-        for coro in asyncio.as_completed(tasks):
-            total_inserted += await coro
-            done += 1
-            if done % 100 == 0 or done == len(ranges):
-                elapsed = (datetime.now() - start_time).total_seconds()
-                rate = total_inserted / elapsed if elapsed > 0 else 0
-                log(f"   Progress: {done}/{len(ranges)} ranges | {total_inserted:,} blocks | {rate:.0f} blocks/s | {elapsed:.1f}s")
+            start_time = datetime.now()
+            tasks = [asyncio.create_task(fetch_and_save(lo, hi)) for lo, hi in ranges]
+            done = 0
+            for coro in asyncio.as_completed(tasks):
+                blk, tx = await coro
+                total_blocks += blk
+                total_txs += tx
+                done += 1
+                if done % 100 == 0 or done == len(ranges):
+                    elapsed = (datetime.now() - start_time).total_seconds()
+                    rate = total_blocks / elapsed if elapsed > 0 else 0
+                    log(f"   Progress: {done}/{len(ranges)} ranges | {total_blocks:,} blocks | {total_txs:,} txs | {rate:.0f} blocks/s | {elapsed:.1f}s")
+            update_transaction_sync(db_path, to_block_eff)
+            elapsed = (datetime.now() - start_time).total_seconds()
+            log("")
+            log("📊 Block processing complete")
+            log(f"✅ Inserted {total_blocks:,} blocks, {total_txs:,} transactions in {elapsed:.2f}s")
+        else:
+            log("")
 
-    elapsed = (datetime.now() - start_time).total_seconds()
-    log("")
-    log("━" * 50)
-    log("📊 Block processing complete")
-    log("━" * 50)
-    log(f"✅ Inserted {total_inserted:,} blocks in {elapsed:.2f}s")
+        if not skip_gap_fill:
+            await run_gap_fill(client, rpc_url, db_path, max_retries)
+
     log(f"📁 DB: {db_path}")
     return True
+
+
+async def run_gap_fill(
+    client: httpx.AsyncClient,
+    rpc_url: str,
+    db_path: str,
+    max_retries: int = 5,
+) -> int:
+    """Re-fetch blocks with tx_count>0 but no transactions. Returns filled count."""
+    gaps = get_gap_blocks(db_path)
+    if not gaps:
+        return 0
+    log(f"")
+    log(f"🔧 Filling {len(gaps)} gap blocks (tx_count>0 but no transactions)...")
+    batch_size = 50
+    total_txs = 0
+    for i in range(0, len(gaps), batch_size):
+        batch = gaps[i : i + batch_size]
+        results = await fetch_blocks_batch(client, rpc_url, batch, max_retries)
+        blocks = [r for r in results if r is not None]
+        if blocks:
+            total_txs += save_transactions(db_path, blocks)
+        if (i + batch_size) % 500 < batch_size or i + batch_size >= len(gaps):
+            log(f"   Gap fill: {min(i + batch_size, len(gaps))}/{len(gaps)} blocks, {total_txs} txs")
+    if gaps:
+        log(f"✅ Gap fill complete: {total_txs} transactions from {len(gaps)} blocks")
+    return total_txs
 
 
 def main():
@@ -243,6 +441,7 @@ def main():
     parser.add_argument("--batch-size", type=int, default=500, help="Blocks per RPC batch request")
     parser.add_argument("--concurrency", type=int, default=20, help="Concurrent batch requests")
     parser.add_argument("--retries", type=int, default=5, help="Max retries per batch")
+    parser.add_argument("--skip-gap-fill", action="store_true", help="Skip filling gap blocks")
     args = parser.parse_args()
 
     success = asyncio.run(
@@ -254,6 +453,7 @@ def main():
             batch_size=args.batch_size,
             max_concurrent=args.concurrency,
             max_retries=args.retries,
+            skip_gap_fill=args.skip_gap_fill,
         )
     )
     sys.exit(0 if success else 1)
