@@ -30,7 +30,7 @@ def extract_select_statements(sql_content: str) -> list[str]:
                 continue
             lines.append(line)
         stmt = '\n'.join(lines).strip()
-        if stmt.upper().startswith('SELECT'):
+        if stmt.upper().startswith('SELECT') or stmt.upper().startswith('WITH'):
             statements.append(stmt)
     return statements
 
