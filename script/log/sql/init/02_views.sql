@@ -114,6 +114,37 @@ SELECT
 FROM events
 WHERE contract_name = 'love20TusdtPair' AND event_name = 'Swap';
 
+-- LOVE20-TUSDT pair Liquidity (Mint/Burn) view
+-- tusdt_amount: TUSDT amount (token0); love20_amount: LOVE20 amount (token1)
+DROP VIEW IF EXISTS v_liquidity_tusdt_love20;
+CREATE VIEW v_liquidity_tusdt_love20 AS
+SELECT
+    e.id,
+    -- e.contract_name,
+    e.log_round,
+    -- e.round,
+    -- e.block_number,
+    -- e.tx_hash,
+    -- e.tx_index,
+    -- e.log_index,
+    -- e.address,
+    -- e.event_name, 
+    CASE 
+        WHEN e.event_name = 'Mint' THEN 1  
+        ELSE -1  
+    END AS amount_sign,
+    -- json_extract(e.decoded_data, '$.sender') AS sender
+    t."from" AS user,
+    CASE WHEN e.event_name = 'Mint' THEN NULL ELSE json_extract(e.decoded_data, '$.to') END AS "to",
+    -- json_extract(e.decoded_data, '$.amount0') AS tusdt_amount_raw,
+    -- json_extract(e.decoded_data, '$.amount1') AS love20_amount_raw,
+    CAST(json_extract(e.decoded_data, '$.amount0') AS REAL) / 1e18 AS tusdt_amount,
+    CAST(json_extract(e.decoded_data, '$.amount1') AS REAL) / 1e18 AS love20_amount,
+    e.created_at
+FROM events e
+LEFT JOIN transactions t ON e.tx_hash = t.tx_hash
+WHERE e.contract_name = 'love20TusdtPair' AND e.event_name IN ('Mint', 'Burn');
+
 -- MintGovReward (LOVE20Mint) view
 DROP VIEW IF EXISTS v_mint_gov_reward;
 CREATE VIEW v_mint_gov_reward AS
@@ -180,3 +211,5 @@ SELECT
     created_at
 FROM events
 WHERE event_name = 'ClaimReward';
+
+
