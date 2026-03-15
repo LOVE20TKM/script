@@ -18,28 +18,28 @@ echo "abstentionScore: $abstentionScore"
 echo "scores: $scores"
 echo "num: $num"
 
-randomSeed=$(cast_call $randomAddress "randomSeed(uint256)(uint256)" $round | awk '{print $1}')
+randomSeed=$(call ILOVE20Random $randomAddress randomSeed $round | awk '{print $1}')
 echo "randomSeed: $randomSeed"
 
 echo "Get random accounts"
-cast_call $joinAddress "randomAccounts(address,uint256,uint256)(address[])" $tokenAddress $round $actionId
+call ILOVE20Join $joinAddress randomAccounts $tokenAddress $round $actionId
 
 echo "score before"
-cast_call $verifyAddress "score(address,uint256)(uint256)" $tokenAddress $round
+call ILOVE20Verify $verifyAddress score $tokenAddress $round
 
 echo "scoreWithReward before"
-cast_call $verifyAddress "scoreWithReward(address,uint256)(uint256)" $tokenAddress $round
+call ILOVE20Verify $verifyAddress scoreWithReward $tokenAddress $round
 
 echo "verify"
 echo "----------------------------------------"
-cast_send $verifyAddress "verify(address,uint256,uint256,uint256[])" $tokenAddress $actionId $abstentionScore "$scores"
+send ILOVE20Verify $verifyAddress verify $tokenAddress $actionId $abstentionScore "$scores"
 echo "----------------------------------------"
 
 echo "score after"
-cast_call $verifyAddress "score(address,uint256)(uint256)" $tokenAddress $round
+call ILOVE20Verify $verifyAddress score $tokenAddress $round
 
 echo "scoreWithReward after"
-cast_call $verifyAddress "scoreWithReward(address,uint256)(uint256)" $tokenAddress $round
+call ILOVE20Verify $verifyAddress scoreWithReward $tokenAddress $round
 
 
 next_phase_waiting_blocks $verifyAddress

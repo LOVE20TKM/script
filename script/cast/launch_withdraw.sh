@@ -6,7 +6,7 @@ echo "parent token balance before: $(balance_of $parentTokenAddress $ACCOUNT_ADD
 
 echo "withdraw"
 echo "----------------------------------------"
-cast_send $launchAddress "withdraw(address)($uint256)" $tokenAddress
+send ILOVE20Launch $launchAddress withdraw $tokenAddress
 echo "----------------------------------------"
 
 echo "parent token balance after:"

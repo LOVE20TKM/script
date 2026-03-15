@@ -7,85 +7,85 @@ echo "===================="
 # ------ Read Functions ------
 
 echo "Vote address:"
-cast_call $mintAddress "voteAddress()(address)"
+call ILOVE20Mint $mintAddress voteAddress
 
 echo "Verify address:"
-cast_call $mintAddress "verifyAddress()(address)"
+call ILOVE20Mint $mintAddress verifyAddress
 
 echo "Stake address:"
-cast_call $mintAddress "stakeAddress()(address)"
+call ILOVE20Mint $mintAddress stakeAddress
 
 echo "Action reward min vote per thousand:"
-cast_call $mintAddress "ACTION_REWARD_MIN_VOTE_PER_THOUSAND()(uint256)"
+call ILOVE20Mint $mintAddress ACTION_REWARD_MIN_VOTE_PER_THOUSAND
 
 echo "Round reward gov per thousand:"
-cast_call $mintAddress "ROUND_REWARD_GOV_PER_THOUSAND()(uint256)"
+call ILOVE20Mint $mintAddress ROUND_REWARD_GOV_PER_THOUSAND
 
 echo "Round reward action per thousand:"
-cast_call $mintAddress "ROUND_REWARD_ACTION_PER_THOUSAND()(uint256)"
+call ILOVE20Mint $mintAddress ROUND_REWARD_ACTION_PER_THOUSAND
 
 echo "Max gov boost reward multiplier:"
-cast_call $mintAddress "MAX_GOV_BOOST_REWARD_MULTIPLIER()(uint256)"
+call ILOVE20Mint $mintAddress MAX_GOV_BOOST_REWARD_MULTIPLIER
 
 echo "Is action id with reward for tokenAddress:"
-cast_call $mintAddress "isActionIdWithReward(address,uint256,uint256)(bool)" $tokenAddress $round $actionId
+call ILOVE20Mint $mintAddress isActionIdWithReward $tokenAddress $round $actionId
 
 echo "Reward reserved for tokenAddress:"
-cast_call $mintAddress "rewardReserved(address)(uint256)" $tokenAddress
+call ILOVE20Mint $mintAddress rewardReserved $tokenAddress
 
 echo "Reward minted for tokenAddress:"
-cast_call $mintAddress "rewardMinted(address)(uint256)" $tokenAddress
+call ILOVE20Mint $mintAddress rewardMinted $tokenAddress
 
 echo "Reward burned for tokenAddress:"
-cast_call $mintAddress "rewardBurned(address)(uint256)" $tokenAddress
+call ILOVE20Mint $mintAddress rewardBurned $tokenAddress
 
 echo "Is reward prepared for tokenAddress:"
-cast_call $mintAddress "isRewardPrepared(address,uint256)(bool)" $tokenAddress $round
+call ILOVE20Mint $mintAddress isRewardPrepared $tokenAddress $round
 
 echo "Reward available for tokenAddress:"
-cast_call $mintAddress "rewardAvailable(address)(uint256)" $tokenAddress
+call ILOVE20Mint $mintAddress rewardAvailable $tokenAddress
 
 echo "Reserved available for tokenAddress:"
-cast_call $mintAddress "reservedAvailable(address)(uint256)" $tokenAddress
+call ILOVE20Mint $mintAddress reservedAvailable $tokenAddress
 
 echo "Calculate round gov reward for tokenAddress:"
-cast_call $mintAddress "calculateRoundGovReward(address)(uint256)" $tokenAddress
+call ILOVE20Mint $mintAddress calculateRoundGovReward $tokenAddress
 
 echo "Gov reward for tokenAddress:"
-cast_call $mintAddress "govReward(address,uint256)(uint256)" $tokenAddress $round
+call ILOVE20Mint $mintAddress govReward $tokenAddress $round
 
 echo "Boost reward burned for tokenAddress:"
-cast_call $mintAddress "boostRewardBurnCheckeded(address,uint256)(bool)" $tokenAddress $round
+call ILOVE20Mint $mintAddress boostRewardBurnCheckeded $tokenAddress $round
 
 echo "Gov reward minted by account for tokenAddress:"
-cast_call $mintAddress "govRewardMintedByAccount(address,uint256,address)(uint256)" $tokenAddress $round $ACCOUNT_ADDRESS
+call ILOVE20Mint $mintAddress govRewardMintedByAccount $tokenAddress $round $ACCOUNT_ADDRESS
 
 echo "Gov verify reward for tokenAddress:"
-cast_call $mintAddress "govVerifyReward(address,uint256)(uint256)" $tokenAddress $round
+call ILOVE20Mint $mintAddress govVerifyReward $tokenAddress $round
 
 echo "Gov boost reward for tokenAddress:"
-cast_call $mintAddress "govBoostReward(address,uint256)(uint256)" $tokenAddress $round
+call ILOVE20Mint $mintAddress govBoostReward $tokenAddress $round
 
 echo "Gov reward by account for tokenAddress:"
-cast_call $mintAddress "govRewardByAccount(address,uint256,address)((uint256,uint256,uint256,bool))" $tokenAddress $round $ACCOUNT_ADDRESS
+call ILOVE20Mint $mintAddress govRewardByAccount $tokenAddress $round $ACCOUNT_ADDRESS
 
 echo "Calculate round action reward for tokenAddress:"
-cast_call $mintAddress "calculateRoundActionReward(address)(uint256)" $tokenAddress
+call ILOVE20Mint $mintAddress calculateRoundActionReward $tokenAddress
 
 echo "Action reward for tokenAddress:"
-cast_call $mintAddress "actionReward(address,uint256)(uint256)" $tokenAddress $round
+call ILOVE20Mint $mintAddress actionReward $tokenAddress $round
 
 echo "Abstention action reward burned for tokenAddress:"
-cast_call $mintAddress "actionRewardBurnChecked(address,uint256)(bool)" $tokenAddress $round
+call ILOVE20Mint $mintAddress actionRewardBurnChecked $tokenAddress $round
 
 echo "Action reward minted by account for tokenAddress:"
-cast_call $mintAddress "actionRewardMintedByAccount(address,uint256,uint256,address)(uint256)" $tokenAddress $round $actionId $ACCOUNT_ADDRESS
+call ILOVE20Mint $mintAddress actionRewardMintedByAccount $tokenAddress $round $actionId $ACCOUNT_ADDRESS
 
 echo "Action reward by action id by account for tokenAddress:"
-cast_call $mintAddress "actionRewardByActionIdByAccount(address,uint256,uint256,address)((uint256,bool))" $tokenAddress $round $actionId $ACCOUNT_ADDRESS
+call ILOVE20Mint $mintAddress actionRewardByActionIdByAccount $tokenAddress $round $actionId $ACCOUNT_ADDRESS
 
 echo "Num of mint gov reward by account for tokenAddress:"
-cast_call $mintAddress "numOfMintGovRewardByAccount(address,address)(uint256)" $tokenAddress $ACCOUNT_ADDRESS
+call ILOVE20Mint $mintAddress numOfMintGovRewardByAccount $tokenAddress $ACCOUNT_ADDRESS
 
 echo "===================="
 echo "Mint Query Complete"

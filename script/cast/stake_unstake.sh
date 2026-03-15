@@ -6,42 +6,42 @@ echo "stake status before"
 stake_status $tokenAddress $ACCOUNT_ADDRESS
 
 echo "get slAddress"
-slAddress=$(cast_call $tokenAddress "slAddress()(address)")
+slAddress=$(call ILOVE20Token $tokenAddress slAddress)
 echo $slAddress
 
 echo "get sl token balance"
-slBalance=$(cast_call $slAddress "balanceOf(address)(uint256)" $ACCOUNT_ADDRESS | awk '{print $1}')
+slBalance=$(call ILOVE20SLToken $slAddress balanceOf $ACCOUNT_ADDRESS | awk '{print $1}')
 echo $slBalance
 
 echo "approve sl token"
 echo "----------------------------------------"
-cast_send $slAddress "approve(address,uint256)" $stakeAddress $slBalance
+send ILOVE20SLToken $slAddress approve $stakeAddress $slBalance
 echo "----------------------------------------"
 
 echo "get stAddress"
-stAddress=$(cast_call $tokenAddress "stAddress()(address)")
+stAddress=$(call ILOVE20Token $tokenAddress stAddress)
 echo $stAddress
 
 echo "get st token balance"
-stBalance=$(cast_call $stAddress "balanceOf(address)(uint256)" $ACCOUNT_ADDRESS | awk '{print $1}')
+stBalance=$(call ILOVE20STToken $stAddress balanceOf $ACCOUNT_ADDRESS | awk '{print $1}')
 echo $stBalance
 
 
 echo "approve st token"
 echo "----------------------------------------"
-cast_send $stAddress "approve(address,uint256)" $stakeAddress $stBalance
+send ILOVE20STToken $stAddress approve $stakeAddress $stBalance
 echo "----------------------------------------"
 
 echo "unstake"
 echo "----------------------------------------"
-cast_send $stakeAddress "unstake(address)" $tokenAddress 
+send ILOVE20Stake $stakeAddress unstake $tokenAddress 
 echo "----------------------------------------"
 
 
-slBalance=$(cast_call $slAddress "balanceOf(address)(uint256)" $ACCOUNT_ADDRESS)
+slBalance=$(call ILOVE20SLToken $slAddress balanceOf $ACCOUNT_ADDRESS)
 echo $slBalance
 
-stBalance=$(cast_call $stAddress "balanceOf(address)(uint256)" $ACCOUNT_ADDRESS)
+stBalance=$(call ILOVE20STToken $stAddress balanceOf $ACCOUNT_ADDRESS)
 echo $stBalance
 
 echo "stake status after"

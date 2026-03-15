@@ -8,22 +8,22 @@ echo "actionId: $actionId"
 current_round $joinAddress
 
 echo "amountByActionIdByAccount before"
-cast_call $joinAddress "amountByActionIdByAccount(address,uint256,address)(uint256)" $tokenAddress $actionId $ACCOUNT_ADDRESS
+call ILOVE20Join $joinAddress amountByActionIdByAccount $tokenAddress $actionId $ACCOUNT_ADDRESS
 
 echo "balance of account before"
-cast_call $tokenAddress "balanceOf(address)(uint256)" $ACCOUNT_ADDRESS
+call ILOVE20Token $tokenAddress balanceOf $ACCOUNT_ADDRESS
 
 # Withdraw stake
 echo "Withdraw staked amount"
 echo "----------------------------------------"
-cast_send $joinAddress "withdraw(address,uint256)" $tokenAddress $actionId
+send ILOVE20Join $joinAddress withdraw $tokenAddress $actionId
 echo "----------------------------------------"
 
 
 echo "amountByActionIdByAccount after"
-cast_call $joinAddress "amountByActionIdByAccount(address,uint256,address)(uint256)" $tokenAddress $actionId $ACCOUNT_ADDRESS
+call ILOVE20Join $joinAddress amountByActionIdByAccount $tokenAddress $actionId $ACCOUNT_ADDRESS
 
 echo "balance of account after"
-cast_call $tokenAddress "balanceOf(address)(uint256)" $ACCOUNT_ADDRESS
+call ILOVE20Token $tokenAddress balanceOf $ACCOUNT_ADDRESS
 
 

@@ -1,4 +1,4 @@
-newActionId=$(cast_call $submitAddress "actionsCount(address)(uint256)" $tokenAddress)
+newActionId=$(call ILOVE20Submit $submitAddress actionsCount $tokenAddress)
 
 minStake=10
 maxRandomAccounts=3
@@ -22,18 +22,18 @@ echo "verificationKeys: $verificationKeys"
 
 
 echo "action count before"
-cast_call $submitAddress "actionsCount(address)(uint256)" $tokenAddress
+call ILOVE20Submit $submitAddress actionsCount $tokenAddress
 
 
 echo "Submit new action"
 echo "----------------------------------------"
-cast_send $submitAddress "submitNewAction(address,(uint256,uint256,address,string,string,string[],string[]))" \
+send ILOVE20Submit $submitAddress submitNewAction \
 $tokenAddress \
 "($minStake,$maxRandomAccounts,$whiteListAddress,$action,$verificationRule,$verificationKeys,$verificationInfoGuides)"
 echo "----------------------------------------"
 
 echo "action count after"
-actionNum=$(cast_call $submitAddress "actionsCount(address)(uint256)" $tokenAddress)
+actionNum=$(call ILOVE20Submit $submitAddress actionsCount $tokenAddress)
 echo "actionNum: $actionNum"
 
 

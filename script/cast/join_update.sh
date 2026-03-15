@@ -14,14 +14,14 @@ echo "round: $round"
 echo "verificationKey: $verificationKey"
 
 echo "verificationInfo before"
-cast_call $joinAddress "verificationInfo(address,address,uint256,string)(string)" $tokenAddress $ACCOUNT_ADDRESS $actionId $verificationKey
+call ILOVE20Join $joinAddress verificationInfo $tokenAddress $ACCOUNT_ADDRESS $actionId $verificationKey
 
 
 # Update verification information
 echo "updateVerificationInfo"
 echo "----------------------------------------"
-cast_send $joinAddress "updateVerificationInfo(address,uint256,string[],string[])" $tokenAddress $actionId $verificationKeys $verificationInfos
+send ILOVE20Join $joinAddress updateVerificationInfo $tokenAddress $actionId $verificationKeys $verificationInfos
 echo "----------------------------------------"
 
 echo "verificationInfo after"
-cast_call $joinAddress "verificationInfo(address,address,uint256,string)(string)" $tokenAddress $ACCOUNT_ADDRESS $actionId $verificationKey
+call ILOVE20Join $joinAddress verificationInfo $tokenAddress $ACCOUNT_ADDRESS $actionId $verificationKey

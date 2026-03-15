@@ -32,12 +32,6 @@ source "$base_dir/address.extension.group.params"
 source "$base_dir/address.extension.lp.params"
 source "$base_dir/address.group.params"
 
-# ------ Request keystore password ------
-echo -e "\nPlease enter keystore password (for $KEYSTORE_ACCOUNT):"
-read -s KEYSTORE_PASSWORD
-export KEYSTORE_PASSWORD
-echo "Password saved, will not be requested again in this session"
-
 # ------ user defined variables ------ 
 ZERO_ADDRESS="0x0000000000000000000000000000000000000000"
 tokenAddress=$firstTokenAddress 
@@ -53,6 +47,18 @@ parentTokenAmountForLP=50000
 
 tokenSymbolForDeploy="CHILD1"
 
+ensure_keystore_password() {
+    if [ -n "$KEYSTORE_PASSWORD" ]; then
+        return 0
+    fi
+
+    echo -e "\nPlease enter keystore password (for $KEYSTORE_ACCOUNT):"
+    read -s KEYSTORE_PASSWORD
+    export KEYSTORE_PASSWORD
+    echo "Password saved, will not be requested again in this session"
+}
+echo "ensure_keystore_password() loaded"
+
 
 # ------ functions ------
 cast_send() {
@@ -61,7 +67,7 @@ cast_send() {
     shift 2
     local args=("$@")
 
-    # echo "Executing cast send: $address $function_signature ${args[@]}"
+    ensure_keystore_password
     cast send "$address" \
         "$function_signature" \
         "${args[@]}" \
@@ -78,13 +84,10 @@ cast_call() {
     shift 2
     local args=("$@")
 
-    # echo "Executing cast call: $address $function_signature ${args[@]}"
     cast call "$address" \
         "$function_signature" \
         "${args[@]}" \
-        --rpc-url "$RPC_URL" \
-        --account "$KEYSTORE_ACCOUNT" \
-        --password "$KEYSTORE_PASSWORD"
+        --rpc-url "$RPC_URL"
 }
 echo "cast_call() loaded"
 
@@ -104,13 +107,19 @@ abi_sig_for_function() {
   local fn=$2
   local argc=$3
   jq -r --arg fn "$fn" --argjson argc "$argc" '
+    def canonical_type:
+      if (.type | startswith("tuple")) then
+        "(" + ([.components[] | canonical_type] | join(",")) + ")" + (.type | sub("^tuple"; ""))
+      else
+        .type
+      end;
     [.abi[]? | select(.type == "function" and .name == $fn)]
     | if length == 0 then error("function not found: " + $fn)
       elif length == 1 then .[0]
       else ([.[] | select((.inputs | length) == $argc)] | if length >= 1 then .[0] else error("multiple overloads for " + $fn + ", none match argc " + ($argc | tostring)) end)
       end
-    | (.name + "(" + ([.inputs[].type] | join(",")) + ")") as $base
-    | (if (.outputs | length) > 0 then $base + "(" + ([.outputs[].type] | join(",")) + ")" else $base end)
+    | (.name + "(" + ([.inputs[] | canonical_type] | join(",")) + ")") as $base
+    | (if (.outputs | length) > 0 then $base + "(" + ([.outputs[] | canonical_type] | join(",")) + ")" else $base end)
   ' "$abi_file"
 }
 # call IXXX $contractAddress functionName param1 param2 ...
@@ -119,7 +128,19 @@ call() {
   local address=$2
   local fn=$3
   shift 3
-  local args=("$@")
+  local raw_args=("$@")
+  local args=()
+  local cast_opts=()
+  local seen_opt=false
+  local arg
+  for arg in "${raw_args[@]}"; do
+    if [ "$seen_opt" = true ] || [[ "$arg" == --* ]]; then
+      seen_opt=true
+      cast_opts+=("$arg")
+    else
+      args+=("$arg")
+    fi
+  done
   local abi_file
   abi_file=$(abi_path_for_interface "$iface")
   if [ ! -f "$abi_file" ]; then
@@ -128,7 +149,11 @@ call() {
   fi
   local sig
   sig=$(abi_sig_for_function "$abi_file" "$fn" "${#args[@]}")
-  cast_call "$address" "$sig" "${args[@]}"
+
+  cast_call "$address" \
+    "$sig" \
+    "${args[@]}" \
+    "${cast_opts[@]}"
 }
 echo "call() loaded"
 # send IXXX $contractAddress functionName param1 param2 ...
@@ -137,7 +162,19 @@ send() {
   local address=$2
   local fn=$3
   shift 3
-  local args=("$@")
+  local raw_args=("$@")
+  local args=()
+  local cast_opts=()
+  local seen_opt=false
+  local arg
+  for arg in "${raw_args[@]}"; do
+    if [ "$seen_opt" = true ] || [[ "$arg" == --* ]]; then
+      seen_opt=true
+      cast_opts+=("$arg")
+    else
+      args+=("$arg")
+    fi
+  done
   local abi_file
   abi_file=$(abi_path_for_interface "$iface")
   if [ ! -f "$abi_file" ]; then
@@ -146,7 +183,11 @@ send() {
   fi
   local sig
   sig=$(abi_sig_for_function "$abi_file" "$fn" "${#args[@]}")
-  cast_send "$address" "$sig" "${args[@]}"
+
+  cast_send "$address" \
+    "$sig" \
+    "${args[@]}" \
+    "${cast_opts[@]}"
 }
 echo "send() loaded"
 
@@ -204,24 +245,24 @@ echo "abi_help() loaded"
 extension_address() {
     local tokenAddress=$1
     local actionId=$2
-    cast_call $centerAddress "extension(address,uint256)(address)" $tokenAddress $actionId
+    call IExtensionCenter $centerAddress extension $tokenAddress $actionId
 }
 echo "extension_address() loaded"
 
-# reward by account from extension (extension, round, account) -> first return value of rewardByAccount
+# reward by account from extension reward surface (extension, round, account)
 extension_rewardByAccount() {
     local extension=$1
     local round=$2
     local account=$3
-    cast_call $extension "rewardByAccount(uint256,address)(uint256,uint256,bool)" $round $account | head -1 | awk '{print $1}'
+    call IReward $extension rewardByAccount $round $account | head -1 | awk '{print $1}'
 }
 echo "extension_rewardByAccount() loaded"
 
-# send claimReward on extension (extension, round)
+# send claimReward on extension reward surface (extension, round)
 send_extension_claimReward() {
     local extension=$1
     local round=$2
-    cast_send $extension "claimReward(uint256)" $round
+    send IReward $extension claimReward $round
 }
 echo "send_extension_claimReward() loaded"
 
@@ -232,7 +273,7 @@ send_extension_claimReward_byActionId() {
     local round=$3
     local ext
     ext=$(extension_address $tokenAddress $actionId)
-    cast_send $ext "claimReward(uint256)" $round
+    send IReward $ext claimReward $round
 }
 echo "send_extension_claimReward_byActionId() loaded"
 
@@ -252,6 +293,7 @@ echo "reset_KEYSTORE_PASSWORD() loaded"
 
 load_keystore(){
     export KEYSTORE_ACCOUNT=$1
+    ensure_keystore_password
     export ACCOUNT_ADDRESS=$(cast wallet address $(cast wallet decrypt-keystore --unsafe-password $KEYSTORE_PASSWORD $KEYSTORE_ACCOUNT | grep -o '0x[a-fA-F0-9]\{64\}'))
     echo "$ACCOUNT_ADDRESS"
 }
@@ -342,7 +384,7 @@ next_phase_waiting_blocks(){
         return 1
     fi
 
-    local current_round=$(cast_call $contract_address "currentRound()(uint256)" | awk '{print $1}')
+    local current_round=$(call IPhase $contract_address currentRound | awk '{print $1}')
     printf "current_round: %s\n" $current_round
     local current_block=$(cast block latest --field number --rpc-url $RPC_URL)
     printf "current_block: %s\n" $current_block
@@ -354,7 +396,7 @@ next_phase_waiting_blocks(){
     fi
 
     # Get origin_blocks and remove any scientific notation format and trailing spaces
-    local origin_blocks=$(cast_call $contract_address "originBlocks()(uint256)" | sed 's/\[.*\]//' | tr -d ' ')
+    local origin_blocks=$(call IPhase $contract_address originBlocks | sed 's/\[.*\]//' | tr -d ' ')
     printf "origin_blocks: %s\n" $origin_blocks
 
     # Ensure origin_blocks is a number
@@ -389,7 +431,7 @@ echo "next_phase_waiting_blocks() loaded"
 
 current_round(){
     local contract_address=$1
-    cast_call $contract_address "currentRound()(uint256)"
+    call IPhase $contract_address currentRound
 }
 echo "current_round() loaded"
 
@@ -398,7 +440,7 @@ echo "current_round() loaded"
 launch_info(){
     local token_address=$1
     echo "token_address: $token_address"
-    cast_call $launchAddress "launchInfo(address)((address,uint256,uint256,uint256,uint256,uint256,uint256,bool,uint256,uint256,uint256))" $token_address --json | jq -r '.[0] | gsub("[() ]";"") | split(",") | {
+    call ILOVE20Launch $launchAddress launchInfo $token_address --json | jq -r '.[0] | gsub("[() ]";"") | split(",") | {
         parentTokenAddress: .[0],
         parentTokenFundraisingGoal: .[1],
         secondHalfMinBlocks: .[2],
@@ -413,7 +455,7 @@ launch_info(){
     }' | jq
 }
 launch_info_by_index(){
-    local token_address=$(cast_call $launchAddress "tokensAtIndex(uint256)(address)" $1)
+    local token_address=$(call ILOVE20Launch $launchAddress tokensAtIndex $1)
     launch_info $token_address
 }
 echo "launch_info() loaded"
@@ -424,7 +466,7 @@ stake_status(){
     local account_address=$2
     local slAmount stAmount promisedWaitingPhases requestedUnstakeRound govVotes
     
-    cast_call $stakeAddress "accountStakeStatus(address,address)(int256,uint256,uint256,uint256,uint256)" $token_address $account_address | {
+    call ILOVE20Stake $stakeAddress accountStakeStatus $token_address $account_address | {
         read slAmount
         read stAmount
         read promisedWaitingPhases
@@ -448,12 +490,12 @@ gov_status(){
     local voteRound=$(current_round $voteAddress)
     local verifyRound=$(current_round $verifyAddress)
 
-    local validGovVotes=$(cast_call $stakeAddress "validGovVotes(address,address)(uint256)" $token_address $account_address)
-    local voted=$(cast_call $voteAddress "votesNumByAccount(address,uint256,address)(uint256)" $token_address $voteRound $account_address)
+    local validGovVotes=$(call ILOVE20Stake $stakeAddress validGovVotes $token_address $account_address)
+    local voted=$(call ILOVE20Vote $voteAddress votesNumByAccount $token_address $voteRound $account_address)
 
 
-    local expectedVerified=$(cast_call $voteAddress "votesNumByAccount(address,uint256,address)(uint256)" $token_address $verifyRound $account_address)
-    local verified=$(cast_call $verifyAddress "scoreByVerifier(address,uint256,address)(uint256)" $token_address $verifyRound $account_address)
+    local expectedVerified=$(call ILOVE20Vote $voteAddress votesNumByAccount $token_address $verifyRound $account_address)
+    local verified=$(call ILOVE20Verify $verifyAddress scoreByVerifier $token_address $verifyRound $account_address)
 
     local vote_status=""
     local verify_status=""
@@ -475,7 +517,7 @@ action_info(){
     local action_id=$1
     echo "action_id: $action_id"
 
-    cast_call $submitAddress "actionInfo(address,uint256)(tuple(tuple(uint256,address,uint256),tuple(uint256,uint256,address,string,string,string[],string[])))" $tokenAddress $action_id | sed 's/^((//' | sed 's/))$//' | awk -F'), \\(' '{
+    call ILOVE20Submit $submitAddress actionInfo $tokenAddress $action_id | sed 's/^((//' | sed 's/))$//' | awk -F'), \\(' '{
         split($1, head, ", ");
         split($2, body, ", ");
         print "ActionHead:";
@@ -518,8 +560,8 @@ join_status() {
   local token_address=$1
   local action_id=$2
 
-  local num_of_accounts=$(cast_call $joinAddress "numOfAccounts(address,uint256)(uint256)" $token_address $action_id | awk '{print $1}')
-  local amount_by_action_id=$(cast_call $joinAddress "amountByActionId(address,uint256)(uint256) " $token_address $action_id | show_in_eth)
+  local num_of_accounts=$(call ILOVE20Join $joinAddress numOfAccounts $token_address $action_id | awk '{print $1}')
+  local amount_by_action_id=$(call ILOVE20Join $joinAddress amountByActionId $token_address $action_id | show_in_eth)
 
   echo "numOfAccounts: $num_of_accounts"
   echo "amountByActionId: $amount_by_action_id"
@@ -529,8 +571,8 @@ join_status() {
   fi
 
   for ((i=1; i<= num_of_accounts; i++)); do
-    local account=$(cast_call $joinAddress "indexToAccount(address,uint256,uint256)(address)" $token_address $action_id $i)
-    local amount_by_action_id_by_account=$(cast_call $joinAddress "amountByActionIdByAccount(address,uint256,address)(uint256)" $token_address $action_id $account | show_in_eth)
+    local account=$(call ILOVE20Join $joinAddress indexToAccount $token_address $action_id $i)
+    local amount_by_action_id_by_account=$(call ILOVE20Join $joinAddress amountByActionIdByAccount $token_address $action_id $account | show_in_eth)
     
     echo "$i $account $amount_by_action_id_by_account"
   done
@@ -566,7 +608,7 @@ account_status() {
   echo "balanceSL: $balanceSL"
 
   local balanceSL_wei=$(balance_of_wei $slTokenAddress $account_address)
-  local sl_amounts=$(cast_call $slTokenAddress "tokenAmountsBySlAmount(uint256)(uint256,uint256)" $balanceSL_wei)
+  local sl_amounts=$(call ILOVE20SLToken $slTokenAddress tokenAmountsBySlAmount $balanceSL_wei)
   local tokenAmountForSL=$(echo "$sl_amounts" | awk 'NR==1 {print $1}' | show_in_eth)
   local parentAmountForSL=$(echo "$sl_amounts" | awk 'NR==2 {print $1}' | show_in_eth)
   echo "tokenAmountForSL: $tokenAmountForSL"
@@ -584,10 +626,10 @@ account_status() {
     echo "accountLP: $accountLP"
     
     if [ "$(echo "$accountLP > 0" | bc)" -eq 1 ]; then
-      local totalLP=$(cast_call $tusdtPairAddress "totalSupply()(uint256)" | show_in_eth)
+      local totalLP=$(call IUniswapV2Pair $tusdtPairAddress totalSupply | show_in_eth)
       
       if [ "$(echo "$totalLP > 0" | bc)" -eq 1 ]; then
-        local reserves=$(cast_call $tusdtPairAddress "getReserves()(uint112,uint112,uint32)")
+        local reserves=$(call IUniswapV2Pair $tusdtPairAddress getReserves)
         local reserveTusdt=$(echo "$reserves" | sed -n '1p' | awk '{print $1}' | show_in_eth)
         local reserveToken=$(echo "$reserves" | sed -n '2p' | awk '{print $1}' | show_in_eth)
         
@@ -612,8 +654,8 @@ account_status() {
   echo "--------------------"
   echo "Action Status"
   echo "--------------------"
-  local amount_by_account=$(cast_call $joinAddress "amountByAccount(address,address)(uint256)" $token_address $account_address | show_in_eth)
-  local action_ids_by_account=$(cast_call $joinAddress "actionIdsByAccount(address,address)(uint256[])" $token_address $account_address)
+  local amount_by_account=$(call ILOVE20Join $joinAddress amountByAccount $token_address $account_address | show_in_eth)
+  local action_ids_by_account=$(call ILOVE20Join $joinAddress actionIdsByAccount $token_address $account_address)
 
 
   echo "amountByAccount: $amount_by_account"
@@ -628,8 +670,8 @@ account_status() {
     for action_id in $(echo "$action_ids_clean" | tr ',' ' '); do
       action_id=$(echo "$action_id" | xargs)
       if [ -n "$action_id" ]; then
-        local amount_by_action_id_by_account=$(cast_call $joinAddress "amountByActionIdByAccount(address,uint256,address)(uint256)" $token_address $action_id $account_address | show_in_eth)
-        local action_reward_result=$(cast_call $mintAddress "actionRewardByActionIdByAccount(address,uint256,uint256,address)(uint256,bool)" $token_address $mint_round $action_id $account_address)
+        local amount_by_action_id_by_account=$(call ILOVE20Join $joinAddress amountByActionIdByAccount $token_address $action_id $account_address | show_in_eth)
+        local action_reward_result=$(call ILOVE20Mint $mintAddress actionRewardByActionIdByAccount $token_address $mint_round $action_id $account_address)
         local action_reward=$(echo "$action_reward_result" | sed -n '1p' | awk '{print $1}' | show_in_eth)
         echo "$action_id, $amount_by_action_id_by_account [$mint_round]$action_reward"
       fi
@@ -641,14 +683,14 @@ echo "account_status() loaded"
 balance_of(){
     local token_address=$1
     local account_address=$2
-    cast_call $token_address "balanceOf(address)(uint256)" $account_address | awk '{printf "%.6f\n", $1 / 10^18}'
+    call IERC20 $token_address balanceOf $account_address | awk '{printf "%.6f\n", $1 / 10^18}'
 }
 echo "balance_of() loaded"
 
 balance_of_wei(){
     local token_address=$1
     local account_address=$2
-    cast_call $token_address "balanceOf(address)(uint256)" $account_address | awk '{print $1}'
+    call IERC20 $token_address balanceOf $account_address | awk '{print $1}'
 }
 echo "balance_of_wei() loaded"
 
@@ -682,6 +724,7 @@ send_eth_in_wei(){
         return 0
     fi
 
+    ensure_keystore_password
     cast send $address --value $amount_in_wei --rpc-url $RPC_URL --account $KEYSTORE_ACCOUNT --password $KEYSTORE_PASSWORD --legacy
 }
 echo "send_eth_in_wei() loaded"
@@ -704,7 +747,7 @@ send_token_in_wei(){
         return 0
     fi
 
-    cast_send $token_address "transfer(address,uint256)" $account_address $amount_in_wei
+    send IERC20 $token_address transfer $account_address $amount_in_wei
 }
 echo "send_token_in_wei() loaded"
 
@@ -782,7 +825,7 @@ echo "tokenAddress: $tokenAddress"
 echo "parentTokenAmountForContribute: $parentTokenAmountForContribute"
 
 echo "------ calculated variables ------";
-parentTokenAddress=$(cast_call $tokenAddress "parentTokenAddress()(address)")
+parentTokenAddress=$(call ILOVE20Token $tokenAddress parentTokenAddress)
 echo "parentTokenAddress: $parentTokenAddress"
 
 launch_info $tokenAddress
@@ -807,9 +850,9 @@ echo "randomAddress: $randomAddress"
 echo "verifyAddress: $verifyAddress"
 echo "mintAddress: $mintAddress"
 echo "firstTokenAddress: $firstTokenAddress"
-slTokenAddress=$(cast_call $firstTokenAddress "slAddress()(address)")
+slTokenAddress=$(call ILOVE20Token $firstTokenAddress slAddress)
 echo "firstSLTokenAddress: $slTokenAddress"
-stTokenAddress=$(cast_call $firstTokenAddress "stAddress()(address)")
+stTokenAddress=$(call ILOVE20Token $firstTokenAddress stAddress)
 echo "firstSTTokenAddress: $stTokenAddress"
 
 echo "------ $base_dir/WETH.params loaded ------";
@@ -818,7 +861,7 @@ echo "WETH_SYMBOL: $WETH_SYMBOL"
 
 echo "------ uniswap related variables loaded ------";
 echo "uniswap tusdt pair address"
-tusdtPairAddress=$(cast_call $uniswapV2FactoryAddress "getPair(address,address)(address)" $tokenAddress $tusdtAddress)
+tusdtPairAddress=$(call IUniswapV2Factory $uniswapV2FactoryAddress getPair $tokenAddress $tusdtAddress)
 echo "tusdtPairAddress: $tusdtPairAddress"
 
 echo "------ $base_dir/LOVE20.params loaded ------";
@@ -847,17 +890,17 @@ echo "MAX_GOV_BOOST_REWARD_MULTIPLIER: $MAX_GOV_BOOST_REWARD_MULTIPLIER"
 core_data(){
     local show_labels=${1:-false}  # 默认只显示数字，传入true则显示指标名称和数字
     
-    dailyGovReward=$(cast_call $mintAddress "calculateRoundGovReward(address)(uint256)" $tokenAddress | show_in_eth)
-    totalToken=$(cast_call $tokenAddress "totalSupply()(uint256)" | show_in_eth)
-    totalTusdt=$(cast_call $tusdtPairAddress "totalSupply()(uint256)" | show_in_eth)
-    result=$(cast_call $tusdtPairAddress "getReserves()(uint112,uint112,uint32)");
+    dailyGovReward=$(call ILOVE20Mint $mintAddress calculateRoundGovReward $tokenAddress | show_in_eth)
+    totalToken=$(call ILOVE20Token $tokenAddress totalSupply | show_in_eth)
+    totalTusdt=$(call IUniswapV2Pair $tusdtPairAddress totalSupply | show_in_eth)
+    result=$(call IUniswapV2Pair $tusdtPairAddress getReserves);
     reserveTusdt=$(echo "$result" | sed -n '1p' | awk '{print $1}' | show_in_eth)
     reserveToken=$(echo "$result" | sed -n '2p' | awk '{print $1}' | show_in_eth)
 
-    totalGovVotes=$(cast_call $stakeAddress "govVotesNum(address)(uint256)" $tokenAddress | show_in_eth)
-    totalStToken=$(cast_call $stTokenAddress "totalSupply()(uint256)" | show_in_eth)
-    totalSlToken=$(cast_call $slTokenAddress "totalSupply()(uint256)" | show_in_eth)
-    result=$(cast_call $slTokenAddress "tokenAmounts()(uint256,uint256,uint256,uint256)");
+    totalGovVotes=$(call ILOVE20Stake $stakeAddress govVotesNum $tokenAddress | show_in_eth)
+    totalStToken=$(call ILOVE20STToken $stTokenAddress totalSupply | show_in_eth)
+    totalSlToken=$(call ILOVE20SLToken $slTokenAddress totalSupply | show_in_eth)
+    result=$(call ILOVE20SLToken $slTokenAddress tokenAmounts);
     slTokenAmount=$(echo "$result" | sed -n '1p' | awk '{print $1}' | show_in_eth)
     slParentTokenAmount=$(echo "$result" | sed -n '2p' | awk '{print $1}' | show_in_eth)
 
@@ -898,16 +941,12 @@ echo "core_data() loaded"
 help() {
     echo -e "\n\033[32m=== Available Functions ===\033[0m"
     echo -e "\033[33mCore Functions:\033[0m"
-    echo "  cast_send(address, function_signature, args...)     - Send transaction to contract"
-    echo "  cast_call(address, function_signature, args...)     - Call contract function (view)"
-    echo "  cast_receipt(tx_hash)                              - Get transaction receipt"
-    echo "  reset_KEYSTORE_PASSWORD()                          - Reset keystore password"
-    echo "  load_keystore(keystore_account)                    - Load keystore account"
-    
-    echo -e "\n\033[33mInterface call/send (abi/*.sol):\033[0m"
     echo "  call IXXX contractAddress functionName [args...]   - View call using ABI from abi/IXXX.sol/"
     echo "  send IXXX contractAddress functionName [args...]   - Send tx using ABI from abi/IXXX.sol/"
     echo "  abi_help IXXX [keyword]                            - List callable functions with examples (filter by keyword)"
+    echo "  cast_receipt(tx_hash)                              - Get transaction receipt"
+    echo "  reset_KEYSTORE_PASSWORD()                          - Reset keystore password"
+    echo "  load_keystore(keystore_account)                    - Load keystore account"
     echo "  e.g. call ILOVE20Vote \$voteAddress votesNum \$tokenAddress \$round"
     echo "  e.g. send ILOVE20Vote \$voteAddress vote \$tokenAddress \"[\$actionId]\" \"[\$voteAmount]\""
     echo "  e.g. abi_help ILOVE20Vote vote                     - List ILOVE20Vote functions whose name contains \"vote\""

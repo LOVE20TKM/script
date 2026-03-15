@@ -1,7 +1,7 @@
 voteAmount=100
 
 #actionId=0
-round=$(cast_call $voteAddress "currentRound()(uint256)" $tokenAddress)
+round=$(call ILOVE20Vote $voteAddress currentRound $tokenAddress)
 
 echo "===================="
 echo "        vote        "
@@ -12,27 +12,27 @@ echo "actionId: $actionId"
 echo "voteAmount: $voteAmount"
 
 echo "votesNum before"
-cast_call $voteAddress "votesNum(address,uint256)(uint256)" $tokenAddress $round
+call ILOVE20Vote $voteAddress votesNum $tokenAddress $round
 
 echo "votesNumByActionId before"
-cast_call $voteAddress "votesNumByActionId(address,uint256,uint256)(uint256)" $tokenAddress $round $actionId
+call ILOVE20Vote $voteAddress votesNumByActionId $tokenAddress $round $actionId
 
 echo "votesNumByAccountByActionId before"
-cast_call $voteAddress "votesNumByAccountByActionId(address,uint256,address,uint256)(uint256)" $tokenAddress $round $ACCOUNT_ADDRESS $actionId
+call ILOVE20Vote $voteAddress votesNumByAccountByActionId $tokenAddress $round $ACCOUNT_ADDRESS $actionId
 
 
 echo "vote action"
 echo "----------------------------------------"
-cast_send $voteAddress "vote(address,uint256[],uint256[])" $tokenAddress "[$actionId]" "[$voteAmount]"
+send ILOVE20Vote $voteAddress vote $tokenAddress "[$actionId]" "[$voteAmount]"
 echo "----------------------------------------"
 
 echo "votesNum after"
-cast_call $voteAddress "votesNum(address,uint256)(uint256)" $tokenAddress $round
+call ILOVE20Vote $voteAddress votesNum $tokenAddress $round
 
 echo "votesNumByActionId after"
-cast_call $voteAddress "votesNumByActionId(address,uint256,uint256)(uint256)" $tokenAddress $round $actionId
+call ILOVE20Vote $voteAddress votesNumByActionId $tokenAddress $round $actionId
 
 echo "votesNumByAccountByActionId after"
-cast_call $voteAddress "votesNumByAccountByActionId(address,uint256,address,uint256)(uint256)" $tokenAddress $round $ACCOUNT_ADDRESS $actionId
+call ILOVE20Vote $voteAddress votesNumByAccountByActionId $tokenAddress $round $ACCOUNT_ADDRESS $actionId
 
 next_phase_waiting_blocks $voteAddress

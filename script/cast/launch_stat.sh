@@ -5,21 +5,21 @@ echo "===================="
 launch_info $tokenAddress
 
 echo "launchingTokensCount"
-cast_call $launchAddress "launchingTokensCount()(uint256)"
+call ILOVE20Launch $launchAddress launchingTokensCount
 
 echo "childTokensCount"
-cast_call $launchAddress "childTokensCount(address)(uint256)" $parentTokenAddress
+call ILOVE20Launch $launchAddress childTokensCount $parentTokenAddress
 
 
 echo "launchedTokensCount"
-cast_call $launchAddress "launchedTokensCount()(uint256)"
+call ILOVE20Launch $launchAddress launchedTokensCount
 
 echo "launchingChildTokensCount"
-cast_call $launchAddress "launchingChildTokensCount(address)(uint256)" $parentTokenAddress
+call ILOVE20Launch $launchAddress launchingChildTokensCount $parentTokenAddress
 
 echo "launchedChildTokensCount"
-cast_call $launchAddress "launchedChildTokensCount(address)(uint256)" $parentTokenAddress
+call ILOVE20Launch $launchAddress launchedChildTokensCount $parentTokenAddress
 
 echo "participatedTokensCount"
-cast_call $launchAddress "participatedTokensCount(address)(uint256)" $ACCOUNT_ADDRESS
+call ILOVE20Launch $launchAddress participatedTokensCount $ACCOUNT_ADDRESS
 

@@ -1,8 +1,8 @@
-round=$(cast_call $verifyAddress "currentRound()(uint256)")
+round=$(call ILOVE20Verify $verifyAddress currentRound)
 
 echo "===================="
 echo "        random      "
 echo "===================="
 
 echo "round: $round"
-echo "randomSeed: $(cast_call $randomAddress "randomSeed(uint256)" $round)"
+echo "randomSeed: $(call ILOVE20Random $randomAddress randomSeed $round)"

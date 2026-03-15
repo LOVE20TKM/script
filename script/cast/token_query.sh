@@ -7,100 +7,97 @@ echo "===================="
 # ------ Read Functions ------
 
 echo "Token name:"
-cast_call $firstTokenAddress "name()(string)"
+call ILOVE20Token $firstTokenAddress name
 
 echo "Token symbol:"
-cast_call $firstTokenAddress "symbol()(string)"
+call ILOVE20Token $firstTokenAddress symbol
 
 echo "Token decimals:"
-cast_call $firstTokenAddress "decimals()(uint8)"
+call ILOVE20Token $firstTokenAddress decimals
 
 echo "Total supply:"
-cast_call $firstTokenAddress "totalSupply()(uint256)"
+call ILOVE20Token $firstTokenAddress totalSupply
 
 echo "Max supply:"
-cast_call $firstTokenAddress "maxSupply()(uint256)"
+call ILOVE20Token $firstTokenAddress maxSupply
 
 echo "Minter address:"
-cast_call $firstTokenAddress "minter()(address)"
+call ILOVE20Token $firstTokenAddress minter
 
 echo "Parent token address:"
-cast_call $firstTokenAddress "parentTokenAddress()(address)"
+call ILOVE20Token $firstTokenAddress parentTokenAddress
 
 echo "SL token address:"
-cast_call $firstTokenAddress "slAddress()(address)"
+call ILOVE20Token $firstTokenAddress slAddress
 
 echo "ST token address:"
-cast_call $firstTokenAddress "stAddress()(address)"
-
-echo "Initialized status:"
-cast_call $firstTokenAddress "initialized()(bool)"
+call ILOVE20Token $firstTokenAddress stAddress
 
 echo "Parent pool amount:"
-cast_call $firstTokenAddress "parentPool()(uint256)"
+call ILOVE20Token $firstTokenAddress parentPool
 
 echo "Balance of current account:"
-cast_call $firstTokenAddress "balanceOf(address)(uint256)" $ACCOUNT_ADDRESS
+call ILOVE20Token $firstTokenAddress balanceOf $ACCOUNT_ADDRESS
 
 echo "Balance of launch address:"
-cast_call $firstTokenAddress "balanceOf(address)(uint256)" $launchAddress
+call ILOVE20Token $firstTokenAddress balanceOf $launchAddress
 
 echo "Balance of stake address:"
-cast_call $firstTokenAddress "balanceOf(address)(uint256)" $stakeAddress
+call ILOVE20Token $firstTokenAddress balanceOf $stakeAddress
 
 echo "Balance of vote address:"
-cast_call $firstTokenAddress "balanceOf(address)(uint256)" $voteAddress
+call ILOVE20Token $firstTokenAddress balanceOf $voteAddress
 
 echo "Balance of join address:"
-cast_call $firstTokenAddress "balanceOf(address)(uint256)" $joinAddress
+call ILOVE20Token $firstTokenAddress balanceOf $joinAddress
 
 echo "Balance of verify address:"
-cast_call $firstTokenAddress "balanceOf(address)(uint256)" $verifyAddress
+call ILOVE20Token $firstTokenAddress balanceOf $verifyAddress
 
 echo "Balance of mint address:"
-cast_call $firstTokenAddress "balanceOf(address)(uint256)" $mintAddress
+call ILOVE20Token $firstTokenAddress balanceOf $mintAddress
 
 echo "Balance of random address:"
-cast_call $firstTokenAddress "balanceOf(address)(uint256)" $randomAddress
+call ILOVE20Token $firstTokenAddress balanceOf $randomAddress
 
 echo "Balance of submit address:"
-cast_call $firstTokenAddress "balanceOf(address)(uint256)" $submitAddress
+call ILOVE20Token $firstTokenAddress balanceOf $submitAddress
 
 echo "Balance of token factory address:"
-cast_call $firstTokenAddress "balanceOf(address)(uint256)" $tokenFactoryAddress
+call ILOVE20Token $firstTokenAddress balanceOf $tokenFactoryAddress
 
 echo "Balance of root parent token address:"
-cast_call $firstTokenAddress "balanceOf(address)(uint256)" $rootParentTokenAddress
+call ILOVE20Token $firstTokenAddress balanceOf $rootParentTokenAddress
 
 echo "Allowance for launch address:"
-cast_call $firstTokenAddress "allowance(address,address)(uint256)" $ACCOUNT_ADDRESS $launchAddress
+call ILOVE20Token $firstTokenAddress allowance $ACCOUNT_ADDRESS $launchAddress
 
 echo "Allowance for stake address:"
-cast_call $firstTokenAddress "allowance(address,address)(uint256)" $ACCOUNT_ADDRESS $stakeAddress
+call ILOVE20Token $firstTokenAddress allowance $ACCOUNT_ADDRESS $stakeAddress
 
 echo "Allowance for vote address:"
-cast_call $firstTokenAddress "allowance(address,address)(uint256)" $ACCOUNT_ADDRESS $voteAddress
+call ILOVE20Token $firstTokenAddress allowance $ACCOUNT_ADDRESS $voteAddress
 
 echo "Allowance for join address:"
-cast_call $firstTokenAddress "allowance(address,address)(uint256)" $ACCOUNT_ADDRESS $joinAddress
+call ILOVE20Token $firstTokenAddress allowance $ACCOUNT_ADDRESS $joinAddress
 
 echo "Allowance for verify address:"
-cast_call $firstTokenAddress "allowance(address,address)(uint256)" $ACCOUNT_ADDRESS $verifyAddress
+call ILOVE20Token $firstTokenAddress allowance $ACCOUNT_ADDRESS $verifyAddress
 
 echo "Allowance for mint address:"
-cast_call $firstTokenAddress "allowance(address,address)(uint256)" $ACCOUNT_ADDRESS $mintAddress
+call ILOVE20Token $firstTokenAddress allowance $ACCOUNT_ADDRESS $mintAddress
 
 echo "Allowance for random address:"
-cast_call $firstTokenAddress "allowance(address,address)(uint256)" $ACCOUNT_ADDRESS $randomAddress
+call ILOVE20Token $firstTokenAddress allowance $ACCOUNT_ADDRESS $randomAddress
 
 echo "Allowance for submit address:"
-cast_call $firstTokenAddress "allowance(address,address)(uint256)" $ACCOUNT_ADDRESS $submitAddress
+call ILOVE20Token $firstTokenAddress allowance $ACCOUNT_ADDRESS $submitAddress
 
 echo "Allowance for token factory address:"
-cast_call $firstTokenAddress "allowance(address,address)(uint256)" $ACCOUNT_ADDRESS $tokenFactoryAddress
+call ILOVE20Token $firstTokenAddress allowance $ACCOUNT_ADDRESS $tokenFactoryAddress
 
 echo "Allowance for root parent token address:"
-cast_call $firstTokenAddress "allowance(address,address)(uint256)" $ACCOUNT_ADDRESS $rootParentTokenAddress
+call ILOVE20Token $firstTokenAddress allowance $ACCOUNT_ADDRESS $rootParentTokenAddress
 
 echo "===================="
 echo "Token Query Complete"

@@ -7,32 +7,32 @@ echo "===================="
 echo "amountForBurn: $amountForBurn"
 
 echo "totalSupply before"
-cast_call $tokenAddress "totalSupply()(uint256)"
+call ILOVE20Token $tokenAddress totalSupply
 
 echo "balance of tokenAddress before"
-cast_call $tokenAddress "balanceOf(address)(uint256)" $ACCOUNT_ADDRESS
+call ILOVE20Token $tokenAddress balanceOf $ACCOUNT_ADDRESS
 
 echo "balance of parentTokenAddress before"
-cast_call $parentTokenAddress "balanceOf(address)(uint256)" $ACCOUNT_ADDRESS
+call ILOVE20Token $parentTokenAddress balanceOf $ACCOUNT_ADDRESS
 
 echo "parent pool before"
-cast_call $tokenAddress "parentPool()(uint256)"
+call ILOVE20Token $tokenAddress parentPool
 
 echo "burn for parent token"
 echo "----------------------------------------"
-cast_send $tokenAddress "burnForParentToken(uint256)(uint256)" $amountForBurn
+send ILOVE20Token $tokenAddress burnForParentToken $amountForBurn
 echo "----------------------------------------"
 
 echo "totalSupply after"
-cast_call $tokenAddress "totalSupply()(uint256)"
+call ILOVE20Token $tokenAddress totalSupply
 
 echo "balance of tokenAddress after"
-cast_call $tokenAddress "balanceOf(address)(uint256)" $ACCOUNT_ADDRESS
+call ILOVE20Token $tokenAddress balanceOf $ACCOUNT_ADDRESS
 
 echo "balance of parentTokenAddress after"
-cast_call $parentTokenAddress "balanceOf(address)(uint256)" $ACCOUNT_ADDRESS
+call ILOVE20Token $parentTokenAddress balanceOf $ACCOUNT_ADDRESS
 
 echo "parent pool after"
-cast_call $tokenAddress "parentPool()(uint256)"
+call ILOVE20Token $tokenAddress parentPool
 
 

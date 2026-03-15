@@ -7,19 +7,19 @@ echo "===================="
 # ------ Read Functions ------
 
 echo "Modifier address:"
-cast_call $randomAddress "modifierAddress()(address)"
+call ILOVE20Random $randomAddress modifierAddress
 
 echo "Previous random seed:"
-cast_call $randomAddress "prevRandomSeed()(uint256)"
+call ILOVE20Random $randomAddress prevRandomSeed
 
 echo "Random seed for round 0:"
-cast_call $randomAddress "randomSeed(uint256)(uint256)" 0
+call ILOVE20Random $randomAddress randomSeed 0
 
 echo "Random seed for round 1:"
-cast_call $randomAddress "randomSeed(uint256)(uint256)" 1
+call ILOVE20Random $randomAddress randomSeed 1
 
 echo "Random seed for round 2:"
-cast_call $randomAddress "randomSeed(uint256)(uint256)" 2
+call ILOVE20Random $randomAddress randomSeed 2
 
 echo "===================="
 echo "Random Query Complete"

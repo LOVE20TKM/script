@@ -1,7 +1,7 @@
 #actionId=0
 additionalStakeAmount=100
 verificationInfos="[\"verification info\"]"
-round=$(cast_call $joinAddress "currentRound()(uint256)") 
+round=$(call ILOVE20Join $joinAddress currentRound) 
 
 echo "===================="
 echo "        join        "
@@ -16,24 +16,24 @@ echo "verificationInfos: $verificationInfos"
 
 
 echo "check action $actionId is voted"
-cast_call $voteAddress "isActionIdVoted(address,uint256,uint256)(bool)" $tokenAddress $round $actionId
+call ILOVE20Vote $voteAddress isActionIdVoted $tokenAddress $round $actionId
 
 echo "joined amount before"
-cast_call $joinAddress "amountByActionIdByAccount(address,uint256,address)(uint256)" $tokenAddress $actionId $ACCOUNT_ADDRESS
+call ILOVE20Join $joinAddress amountByActionIdByAccount $tokenAddress $actionId $ACCOUNT_ADDRESS
 
 
 echo "set allowance"
 echo "----------------------------------------"
-cast_send $tokenAddress "approve(address,uint256)" $joinAddress $additionalStakeAmount
+send ILOVE20Token $tokenAddress approve $joinAddress $additionalStakeAmount
 echo "----------------------------------------"
 
 echo "join action $actionId"
 echo "----------------------------------------"
-cast_send $joinAddress "join(address,uint256,uint256,string[])" $tokenAddress $actionId $additionalStakeAmount $verificationInfos
+send ILOVE20Join $joinAddress join $tokenAddress $actionId $additionalStakeAmount $verificationInfos
 echo "----------------------------------------"
 
 echo "joined amount after"
-cast_call $joinAddress "amountByActionIdByAccount(address,uint256,address)(uint256)" $tokenAddress $actionId $ACCOUNT_ADDRESS
+call ILOVE20Join $joinAddress amountByActionIdByAccount $tokenAddress $actionId $ACCOUNT_ADDRESS
 
 
 
@@ -44,20 +44,20 @@ cast_call $joinAddress "amountByActionIdByAccount(address,uint256,address)(uint2
 
 # ------ read ------
 echo "amount by action id"
-cast_call $joinAddress "amountByActionId(address,uint256)(uint256)" $tokenAddress $actionId
+call ILOVE20Join $joinAddress amountByActionId $tokenAddress $actionId
 
 
 
 echo "Get verification information"
-cast_call $joinAddress "verificationInfo(address,address,uint256,string)(string)" $tokenAddress $ACCOUNT_ADDRESS $actionId $verificationKey
+call ILOVE20Join $joinAddress verificationInfo $tokenAddress $ACCOUNT_ADDRESS $actionId $verificationKey
 
 echo "amount by account"
-cast_call $joinAddress "amountByAccount(address,address)(uint256)" $tokenAddress $ACCOUNT_ADDRESS 
+call ILOVE20Join $joinAddress amountByAccount $tokenAddress $ACCOUNT_ADDRESS 
 
 echo "amount by actionId by account"
-cast_call $joinAddress "amountByActionIdByAccount(address,uint256,address)(uint256)" $tokenAddress $actionId $ACCOUNT_ADDRESS
+call ILOVE20Join $joinAddress amountByActionIdByAccount $tokenAddress $actionId $ACCOUNT_ADDRESS
 
 next_phase_waiting_blocks $joinAddress
 
 # Generate and store random accounts
-#cast_send $joinAddress "generateAndStoreRandomAccounts(address,uint256,uint256,uint256,uint256)" $tokenAddress $round $actionId $randomSeed $num
+#send ILOVE20Join $joinAddress generateAndStoreRandomAccounts $tokenAddress $round $actionId $randomSeed $num

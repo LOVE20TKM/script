@@ -4,7 +4,7 @@ echo "===================="
 
 # Get the claim result using cast call (simulation)
 echo "--- Claim Status Before ---"
-result=$(cast_call $launchAddress "claimInfo(address,address)(uint256,uint256,bool)" $tokenAddress $ACCOUNT_ADDRESS)
+result=$(call ILOVE20Launch $launchAddress claimInfo $tokenAddress $ACCOUNT_ADDRESS)
 claimableAmount=$(echo "$result" | sed -n '1p' | awk '{print $1}')
 extraRefundAmount=$(echo "$result" | sed -n '2p')
 claimed=$(echo "$result" | sed -n '3p')
@@ -27,12 +27,12 @@ echo "parent balance in eth: $(echo $parentBalance | show_in_eth)"
 # ------------------- Claim -------------------
 echo "claim"
 echo "----------------------------------------"
-cast_send $launchAddress "claim(address)" $tokenAddress
+send ILOVE20Launch $launchAddress claim $tokenAddress
 echo "----------------------------------------"
 # ------------------- Claim -------------------
 
 echo "--- Claim Status After ---"
-result=$(cast_call $launchAddress "claimInfo(address,address)(uint256,uint256,bool)" $tokenAddress $ACCOUNT_ADDRESS)
+result=$(call ILOVE20Launch $launchAddress claimInfo $tokenAddress $ACCOUNT_ADDRESS)
 claimableAmount=$(echo "$result" | sed -n '1p' | awk '{print $1}')
 extraRefundAmount=$(echo "$result" | sed -n '2p')
 claimed=$(echo "$result" | sed -n '3p')

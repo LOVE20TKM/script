@@ -13,23 +13,23 @@ echo "in wei: " $parentTokenAmountForContribute
 # ------------------- contribute -------------------
 
 echo "contributed amount before"
-contributedAmount=$(cast_call $launchAddress "contributed(address,address)(uint256)" $tokenAddress $ACCOUNT_ADDRESS | awk '{print $1}')
+contributedAmount=$(call ILOVE20Launch $launchAddress contributed $tokenAddress $ACCOUNT_ADDRESS | awk '{print $1}')
 echo "in wei: $contributedAmount"
 echo "in eth: $(echo $contributedAmount | show_in_eth)"
 
 
 echo "Approve parent token to launch contract"
 echo "----------------------------------------"
-cast_send $parentTokenAddress "approve(address,uint256)" $launchAddress $parentTokenAmountForContribute
+send ILOVE20Token $parentTokenAddress approve $launchAddress $parentTokenAmountForContribute
 echo "----------------------------------------"
 
 echo "Contribute to launch"
 echo "----------------------------------------"
-cast_send $launchAddress "contribute(address,uint256,address)" $tokenAddress $parentTokenAmountForContribute $ACCOUNT_ADDRESS
+send ILOVE20Launch $launchAddress contribute $tokenAddress $parentTokenAmountForContribute $ACCOUNT_ADDRESS
 echo "----------------------------------------"
 
 echo "contributed amount after"
-contributedAmount=$(cast_call $launchAddress "contributed(address,address)(uint256)" $tokenAddress $ACCOUNT_ADDRESS | awk '{print $1}')
+contributedAmount=$(call ILOVE20Launch $launchAddress contributed $tokenAddress $ACCOUNT_ADDRESS | awk '{print $1}')
 echo "in wei: $contributedAmount"
 echo "in eth: $(echo $contributedAmount | show_in_eth)"
 
@@ -40,7 +40,7 @@ echo "SECOND_HALF_MIN_BLOCKS: $SECOND_HALF_MIN_BLOCKS"
 
 
 echo "Get participated token num by account"
-cast_call $launchAddress "participatedTokensCount(address)(uint256)" $ACCOUNT_ADDRESS | awk '{print $1}'
+call ILOVE20Launch $launchAddress participatedTokensCount $ACCOUNT_ADDRESS | awk '{print $1}'
 
 echo "block number: $(cast_block number)"
 

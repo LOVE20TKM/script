@@ -18,7 +18,7 @@ echo "ETH balance in ETH: $(echo $ethBalance | show_in_eth)"
 
 echo "Deposit ETH to WETH:"
 echo "----------------------------------------"
-cast_send $rootParentTokenAddress "deposit()" --value "${deposit_eth_amount}ether"
+send IETH20 $rootParentTokenAddress deposit --value "${deposit_eth_amount}ether"
 echo "----------------------------------------"
 
 echo "WETH balance after: " $ACCOUNT_ADDRESS
