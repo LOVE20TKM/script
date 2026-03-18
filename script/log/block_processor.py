@@ -137,6 +137,73 @@ def hex_to_int(h: str | None) -> int | None:
         return None
 
 
+async def fetch_receipts_batch(
+    client: httpx.AsyncClient,
+    rpc_url: str,
+    tx_hashes: list[str],
+    max_retries: int = 5,
+) -> dict[str, dict | None]:
+    """Fetch transaction receipts via JSON-RPC batch. Returns dict mapping tx_hash to receipt."""
+    if not tx_hashes:
+        return {}
+
+    payload = [
+        {"jsonrpc": "2.0", "method": "eth_getTransactionReceipt", "params": [tx_hash], "id": i}
+        for i, tx_hash in enumerate(tx_hashes)
+    ]
+
+    for attempt in range(max_retries):
+        try:
+            resp = await client.post(rpc_url, json=payload, timeout=60.0)
+            data = resp.json()
+            if isinstance(data, dict) and "error" in data:
+                raise RuntimeError(data["error"].get("message", str(data["error"])))
+            if not isinstance(data, list):
+                raise RuntimeError(f"Expected batch response list, got {type(data)}")
+            by_id = {r.get("id"): r for r in data if isinstance(r, dict)}
+            result = {}
+            for i, tx_hash in enumerate(tx_hashes):
+                r = by_id.get(i, {})
+                if "error" in r:
+                    result[tx_hash] = None
+                else:
+                    result[tx_hash] = r.get("result")
+            return result
+        except httpx.TimeoutException:
+            if attempt < max_retries - 1:
+                await asyncio.sleep(0.5)
+                continue
+            raise
+        except Exception as e:
+            if attempt < max_retries - 1:
+                await asyncio.sleep(0.2)
+                continue
+            raise
+
+    return {tx_hash: None for tx_hash in tx_hashes}
+
+
+async def fetch_receipts_chunked(
+    client: httpx.AsyncClient,
+    rpc_url: str,
+    tx_hashes: list[str],
+    max_retries: int = 5,
+    chunk_size: int = 100,
+) -> dict[str, dict | None]:
+    """Fetch receipts in bounded batches to avoid oversized JSON-RPC requests."""
+    if not tx_hashes:
+        return {}
+
+    receipts: dict[str, dict | None] = {}
+    for i in range(0, len(tx_hashes), chunk_size):
+        chunk = tx_hashes[i : i + chunk_size]
+        try:
+            receipts.update(await fetch_receipts_batch(client, rpc_url, chunk, max_retries))
+        except Exception as e:
+            log(f"⚠️  Failed to fetch receipts for {len(chunk)} txs: {e}")
+    return receipts
+
+
 def _hex_to_value(h) -> tuple[str, float]:
     """Return (value_wei_str, amount_human)."""
     wei = 0
@@ -147,14 +214,31 @@ def _hex_to_value(h) -> tuple[str, float]:
     return str(wei), wei / 1e18
 
 
-def _parse_tx(tx: dict, block_number: int, block_hash: str | None, block_timestamp: int | None) -> dict | None:
-    """Extract tx fields for DB insert. Returns None if tx is hash-only (fullTx=false)."""
+def _parse_tx(tx: dict, block_number: int, block_hash: str | None, block_timestamp: int | None, receipt: dict | None = None) -> dict | None:
+    """Extract tx fields for DB insert. Returns None if tx is hash-only (fullTx=false).
+
+    If receipt is provided, also extracts status, gas_used, cumulative_gas_used, contract_address, effective_gas_price.
+    """
     if not isinstance(tx, dict) or "hash" not in tx:
         return None
     value_wei, amount = _hex_to_value(tx.get("value") or "0")
     access_list = tx.get("accessList")
     if access_list is not None and isinstance(access_list, list):
         access_list = json.dumps(access_list) if access_list else None
+
+    # Extract receipt fields if available
+    gas_used = None
+    cumulative_gas_used = None
+    status = None
+    contract_address = None
+    effective_gas_price = None
+    if receipt:
+        gas_used = hex_to_int(receipt.get("gasUsed"))
+        cumulative_gas_used = hex_to_int(receipt.get("cumulativeGasUsed"))
+        status = hex_to_int(receipt.get("status"))
+        contract_address = receipt.get("contractAddress")
+        effective_gas_price = hex_to_int(receipt.get("effectiveGasPrice"))
+
     return {
         "block_number": block_number,
         "block_hash": block_hash or tx.get("blockHash"),
@@ -177,6 +261,11 @@ def _parse_tx(tx: dict, block_number: int, block_hash: str | None, block_timesta
         "r": tx.get("r"),
         "s": tx.get("s"),
         "access_list": access_list,
+        "gas_used": gas_used,
+        "cumulative_gas_used": cumulative_gas_used,
+        "status": status,
+        "contract_address": contract_address,
+        "effective_gas_price": effective_gas_price,
     }
 
 
@@ -235,16 +324,21 @@ def save_blocks(db_path: str, blocks: list[dict]) -> int:
     return inserted
 
 
-def save_transactions(db_path: str, blocks: list[dict]) -> int:
-    """Insert transactions from blocks (fullTx). Returns inserted count."""
+def save_transactions(db_path: str, blocks: list[dict], receipts: dict[str, dict | None] | None = None) -> int:
+    """Insert transactions from blocks (fullTx). Returns inserted count.
+
+    If receipts dict is provided (tx_hash -> receipt), also inserts status, gas_used, etc.
+    """
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
     inserted = 0
     ins = """INSERT OR IGNORE INTO transactions
         (block_number, block_hash, block_timestamp, tx_hash, tx_index, "from", "to",
          value_wei, amount, gas, gas_price, max_fee_per_gas, max_priority_fee_per_gas,
-         type, chain_id, input, nonce, v, r, s, access_list, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+         type, chain_id, input, nonce, v, r, s, access_list,
+         gas_used, cumulative_gas_used, status, contract_address, effective_gas_price,
+         created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
     for b in blocks:
         if not b:
             continue
@@ -257,7 +351,9 @@ def save_transactions(db_path: str, blocks: list[dict]) -> int:
         if not isinstance(txs, list):
             continue
         for tx in txs:
-            row = _parse_tx(tx, num, bhash, ts)
+            tx_hash = tx.get("hash")
+            receipt = receipts.get(tx_hash) if receipts else None
+            row = _parse_tx(tx, num, bhash, ts, receipt)
             if not row:
                 continue
             try:
@@ -285,6 +381,11 @@ def save_transactions(db_path: str, blocks: list[dict]) -> int:
                         row["r"],
                         row["s"],
                         row["access_list"],
+                        row["gas_used"],
+                        row["cumulative_gas_used"],
+                        row["status"],
+                        row["contract_address"],
+                        row["effective_gas_price"],
                         datetime.now().isoformat(),
                     ),
                 )
@@ -372,9 +473,20 @@ async def run(
                     results = await fetch_blocks_batch(client, rpc_url, nums, max_retries)
                     blocks = [r for r in results if r is not None]
                 if blocks:
+                    # Collect all tx hashes for receipt fetching
+                    all_tx_hashes = []
+                    for b in blocks:
+                        txs = b.get("transactions") or []
+                        for tx in txs:
+                            if isinstance(tx, dict) and "hash" in tx:
+                                all_tx_hashes.append(tx["hash"])
+
+                    # Fetch receipts in batch
+                    receipts = await fetch_receipts_chunked(client, rpc_url, all_tx_hashes, max_retries)
+
                     async with write_lock:
                         blk_count = save_blocks(db_path, blocks)
-                        tx_count = save_transactions(db_path, blocks)
+                        tx_count = save_transactions(db_path, blocks, receipts)
                         return blk_count, tx_count
                 return 0, 0
 
@@ -424,7 +536,18 @@ async def run_gap_fill(
         results = await fetch_blocks_batch(client, rpc_url, batch, max_retries)
         blocks = [r for r in results if r is not None]
         if blocks:
-            total_txs += save_transactions(db_path, blocks)
+            # Collect all tx hashes for receipt fetching
+            all_tx_hashes = []
+            for b in blocks:
+                txs = b.get("transactions") or []
+                for tx in txs:
+                    if isinstance(tx, dict) and "hash" in tx:
+                        all_tx_hashes.append(tx["hash"])
+
+            # Fetch receipts in batch
+            receipts = await fetch_receipts_chunked(client, rpc_url, all_tx_hashes, max_retries)
+
+            total_txs += save_transactions(db_path, blocks, receipts)
         if (i + batch_size) % 500 < batch_size or i + batch_size >= len(gaps):
             log(f"   Gap fill: {min(i + batch_size, len(gaps))}/{len(gaps)} blocks, {total_txs} txs")
     if gaps:
