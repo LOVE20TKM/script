@@ -170,5 +170,64 @@
   {
     "name": "uniswapV2Router02",
     "address_env_var": "uniswapV2Router02Address"
+  },
+  {
+    "name": "LIFE20",
+    "address_env_var": "life20Address",
+    "abi_files": ["../../abi/ILOVE20Token.sol/ILOVE20Token.json"]
+  },
+  {
+    "name": "life20SlToken",
+    "address_env_var": "life20SlTokenAddress",
+    "abi_files": ["../../abi/ILOVE20SLToken.sol/ILOVE20SLToken.json"]
+  },
+  {
+    "name": "life20StToken",
+    "address_env_var": "life20StTokenAddress",
+    "abi_files": ["../../abi/ILOVE20STToken.sol/ILOVE20STToken.json"]
+  },
+  {
+    "name": "love20Life20Pair",
+    "address_env_var": "love20Life20PairAddress",
+    "abi_files": ["../../abi/IUniswapV2Pair.sol/IUniswapV2Pair.0.5.16.json"]
+  },
+  {
+    "name": "life20Ext0",
+    "address_env_var": "life20Ext0Address",
+    "abi_files": ["../../abi/IReward.sol/IRewardEvents.json"]
+  },
+  {
+    "name": "life20Ext1",
+    "address_env_var": "life20Ext1Address",
+    "abi_files": ["../../abi/IReward.sol/IRewardEvents.json"]
+  },
+  {
+    "name": "life20Ext2",
+    "address_env_var": "life20Ext2Address",
+    "abi_files": ["../../abi/IReward.sol/IRewardEvents.json"]
+  },
+  {
+    "name": "life20Ext3",
+    "address_env_var": "life20Ext3Address",
+    "abi_files": ["../../abi/IReward.sol/IRewardEvents.json"]
+  },
+  {
+    "name": "life20Ext4",
+    "address_env_var": "life20Ext4Address",
+    "abi_files": ["../../abi/IReward.sol/IRewardEvents.json"]
+  },
+  {
+    "name": "life20Ext5",
+    "address_env_var": "life20Ext5Address",
+    "abi_files": ["../../abi/IReward.sol/IRewardEvents.json"]
+  },
+  {
+    "name": "life20Ext6",
+    "address_env_var": "life20Ext6Address",
+    "abi_files": [
+      "../../abi/IReward.sol/IRewardEvents.json",
+      "../../abi/IGroupService.sol/IGroupServiceEvents.json",
+      "../../abi/IJoin.sol/IJoinEvents.json"
+    ]
   }
 ]
