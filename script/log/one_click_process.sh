@@ -6,8 +6,19 @@
 # Fetches all events for ALL contracts in a SINGLE parallelized RPC call.
 # ============================================================================
 
+script_return_or_exit() {
+  local code=$1
+  if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+    return "$code"
+  fi
+  exit "$code"
+}
+
 # 引入初始化逻辑 (网络参数、ABI 路径、地址解析等)
-source ./000_init.sh $1
+if ! source ./000_init.sh "$1"; then
+  echo "❌ Initialization failed."
+  script_return_or_exit 1
+fi
 
 echo ""
 echo "🎯 Starting incremental event log processing..."
@@ -17,7 +28,7 @@ echo ""
 # Check Python dependencies
 if ! check_python_deps; then
   echo "❌ Please install Python dependencies first: pip install -r requirements.txt"
-  return 1
+  script_return_or_exit 1
 fi
 
 echo "====================================================================="
@@ -39,7 +50,7 @@ exit_code=$?
 if [ $exit_code -ne 0 ]; then
   echo ""
   echo "❌ Error during event log processing."
-  return $exit_code
+  script_return_or_exit $exit_code
 fi
 
 echo ""
@@ -67,4 +78,4 @@ else
   echo ""
   echo "⚠️ Block processor returned error (events were saved successfully)."
 fi
-return $block_exit
+script_return_or_exit $block_exit

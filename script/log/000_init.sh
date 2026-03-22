@@ -6,18 +6,23 @@ fi
 
 # Export all variables from parameter files so Python can access them
 set -a
-source ../network/$network/address.params
-source ../network/$network/network.params
-source ../network/$network/LOVE20.params
-source ../network/$network/address.extension.center.params
-source ../network/$network/address.extension.group.params
-source ../network/$network/address.extension.lp.params
-source ../network/$network/address.group.params
-source ../network/$network/address.else.params
+source ../network/$network/address.params || return 1
+source ../network/$network/network.params || return 1
+source ../network/$network/LOVE20.params || return 1
+source ../network/$network/address.extension.center.params || return 1
+source ../network/$network/address.extension.group.params || return 1
+source ../network/$network/address.extension.lp.params || return 1
+source ../network/$network/address.group.params || return 1
+source ../network/$network/address.else.params || return 1
 set +a
 
 export from_block=$originBlocks
-export to_block=$(cast block-number --rpc-url $RPC_URL)
+to_block=$(cast block-number --rpc-url "$RPC_URL") || return 1
+if [ -z "$to_block" ]; then
+  echo "Failed to resolve latest block number from RPC: $RPC_URL" >&2
+  return 1
+fi
+export to_block
 
 normalize_address() {
     # 如果有参数，使用参数；否则从标准输入读取
@@ -58,6 +63,19 @@ cast_call() {
     cast call "$address" "$function_signature" "$@" --rpc-url "$RPC_URL"
 }
 
+resolve_optional_address_from_call() {
+    local label=$1
+    shift
+
+    local raw_output
+    if ! raw_output=$(cast_call "$@" 2>/dev/null); then
+        echo "Failed to resolve $label via RPC" >&2
+        return 1
+    fi
+
+    printf '%s\n' "$raw_output" | normalize_address
+}
+
 init_token_address_set() {
     local token_var_name=$1
     local token_address=$2
@@ -80,13 +98,13 @@ init_token_address_set() {
     fi
 
     local st_address
-    st_address=$(cast_call "$token_address" "stAddress()(address)" 2>/dev/null | normalize_address)
+    st_address=$(resolve_optional_address_from_call "$st_var_name" "$token_address" "stAddress()(address)") || return 1
     if is_nonzero_address "$st_address"; then
         export "$st_var_name=$st_address"
     fi
 
     local sl_address
-    sl_address=$(cast_call "$token_address" "slAddress()(address)" 2>/dev/null | normalize_address)
+    sl_address=$(resolve_optional_address_from_call "$sl_var_name" "$token_address" "slAddress()(address)") || return 1
     if is_nonzero_address "$sl_address"; then
         export "$sl_var_name=$sl_address"
     fi
@@ -110,7 +128,7 @@ init_extension_addresses() {
             ext_var_name="ext${actionId}Address"
         fi
         local ext_address
-        ext_address=$(cast_call "$centerAddress" "extension(address,uint256)(address)" "$token_address" "$actionId" 2>/dev/null | normalize_address)
+        ext_address=$(resolve_optional_address_from_call "$ext_var_name" "$centerAddress" "extension(address,uint256)(address)" "$token_address" "$actionId") || return 1
         if is_nonzero_address "$ext_address"; then
             export "$ext_var_name=$ext_address"
         fi
@@ -127,26 +145,26 @@ init_pair_address() {
     fi
 
     local pair_address
-    pair_address=$(cast_call "$uniswapV2FactoryAddress" "getPair(address,address)(address)" "$token0_address" "$token1_address" 2>/dev/null | normalize_address)
+    pair_address=$(resolve_optional_address_from_call "$pair_var_name" "$uniswapV2FactoryAddress" "getPair(address,address)(address)" "$token0_address" "$token1_address") || return 1
     if is_nonzero_address "$pair_address"; then
         export "$pair_var_name=$pair_address"
     fi
 }
 
 export tokenAddress=$firstTokenAddress
-init_token_address_set "tokenAddress" "$tokenAddress" ""
-init_extension_addresses "$tokenAddress" "" 24 25 26 27 28 29
-init_pair_address "$tokenAddress" "$rootParentTokenAddress" "love20Tkm20PairAddress"
-init_pair_address "$tokenAddress" "$tusdtAddress" "love20TusdtPairAddress"
+init_token_address_set "tokenAddress" "$tokenAddress" "" || return 1
+init_extension_addresses "$tokenAddress" "" 24 25 26 27 28 29 || return 1
+init_pair_address "$tokenAddress" "$rootParentTokenAddress" "love20Tkm20PairAddress" || return 1
+init_pair_address "$tokenAddress" "$tusdtAddress" "love20TusdtPairAddress" || return 1
 
-life20Address=$(cast_call "$launchAddress" "tokenAddressBySymbol(string)(address)" "LIFE20" 2>/dev/null | normalize_address)
+life20Address=$(resolve_optional_address_from_call "life20Address" "$launchAddress" "tokenAddressBySymbol(string)(address)" "LIFE20") || return 1
 if is_nonzero_address "$life20Address"; then
-  init_token_address_set "life20Address" "$life20Address" "life20"
-  init_extension_addresses "$life20Address" "life20" 0 1 2 3 4 5 6
-  init_pair_address "$firstTokenAddress" "$life20Address" "love20Life20PairAddress"
+  init_token_address_set "life20Address" "$life20Address" "life20" || return 1
+  init_extension_addresses "$life20Address" "life20" 0 1 2 3 4 5 6 || return 1
+  init_pair_address "$firstTokenAddress" "$life20Address" "love20Life20PairAddress" || return 1
 fi
 
-export maxBlocksPerRequest=50000  # Large chunks for Python processor
+export maxBlocksPerRequest=4096  # RPC rejects larger eth_getLogs windows during full rebuilds
 export maxRetries=5
 export maxConcurrentJobs=10  # Reduced concurrency to avoid RPC rate limiting
 

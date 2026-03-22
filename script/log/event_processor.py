@@ -32,6 +32,12 @@ def log(msg: str):
         print(msg, file=sys.stderr, flush=True)
 
 
+def connect_db(db_path: str) -> sqlite3.Connection:
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    conn.execute("PRAGMA busy_timeout = 30000")
+    return conn
+
+
 # ============================================================================
 # Data Classes
 # ============================================================================
@@ -52,6 +58,7 @@ class EventDef:
     params: list[EventParam]
     topic0: str  # Keccak256 hash of event signature
     contract_name: str # The name of the contract this event belongs to
+    start_block: int
 
 
 @dataclass
@@ -98,7 +105,27 @@ def load_abi(abi_file: str) -> list[dict]:
         return []
 
 
-def get_all_event_defs(abi: list[dict], contract_name: str) -> dict[str, EventDef]:
+def parse_start_block(value: Any, field_name: str) -> int:
+    """Parse a configured start block from int/decimal string/hex string."""
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError(f"{field_name} is empty")
+        return int(stripped, 16) if stripped.startswith("0x") else int(stripped)
+    raise ValueError(f"{field_name} must be an integer or string, got {type(value).__name__}")
+
+
+def resolve_contract_start_block(contract_info: dict, default_origin_blocks: int) -> int:
+    """Resolve per-contract start block, falling back to the global origin block."""
+    for field_name in ("from_block", "start_block"):
+        if field_name in contract_info:
+            return parse_start_block(contract_info[field_name], field_name)
+    return default_origin_blocks
+
+
+def get_all_event_defs(abi: list[dict], contract_name: str, start_block: int) -> dict[str, EventDef]:
     """Extract all event definitions from ABI, returning topic0 -> EventDef map"""
     events = {}
     for item in abi:
@@ -116,7 +143,13 @@ def get_all_event_defs(abi: list[dict], contract_name: str) -> dict[str, EventDe
             # Calculate topic0 (event signature hash)
             topic0 = '0x' + event_abi_to_log_topic(item).hex()
             
-            events[topic0] = EventDef(name=event_name, params=params, topic0=topic0, contract_name=contract_name)
+            events[topic0] = EventDef(
+                name=event_name,
+                params=params,
+                topic0=topic0,
+                contract_name=contract_name,
+                start_block=start_block,
+            )
             
     return events
 
@@ -167,7 +200,7 @@ def _build_contract_address_name_view_sql(config_file: str) -> str | None:
 
 def init_db(db_path: str, contracts_config_file: str | None = None):
     """Initialize DB by executing SQL files from script/log/sql/init, then optionally create contract mapping view."""
-    conn = sqlite3.connect(db_path)
+    conn = connect_db(db_path)
 
     script_dir = Path(__file__).resolve().parent
     sql_init_dir = script_dir / 'sql' / 'init'
@@ -180,7 +213,9 @@ def init_db(db_path: str, contracts_config_file: str | None = None):
                 with open(f, 'r', encoding='utf-8') as sql_file:
                     conn.executescript(sql_file.read())
             except Exception as e:
-                log(f"❌ Error executing {f.name}: {e}")
+                conn.rollback()
+                conn.close()
+                raise RuntimeError(f"error executing {f.name}: {e}") from e
     else:
         log(f"⚠️ SQL init directory not found: {sql_init_dir}")
 
@@ -191,7 +226,9 @@ def init_db(db_path: str, contracts_config_file: str | None = None):
             try:
                 conn.executescript(view_sql)
             except Exception as e:
-                log(f"❌ Error creating v_contract: {e}")
+                conn.rollback()
+                conn.close()
+                raise RuntimeError(f"error creating v_contract: {e}") from e
         else:
             log("⚠️ No resolved addresses for v_contract (env vars may be missing)")
 
@@ -201,7 +238,7 @@ def init_db(db_path: str, contracts_config_file: str | None = None):
 
 def get_last_synced_block(db_path: str, contract_name: str, event_name: str) -> int | None:
     """Query the last synced block for a specific contract+event"""
-    conn = sqlite3.connect(db_path)
+    conn = connect_db(db_path)
     c = conn.cursor()
     try:
         c.execute(
@@ -220,7 +257,6 @@ def get_min_from_block_for_address(
     db_path: str,
     address: str,
     addr_topic_to_event_def: dict[str, dict[str, EventDef]],
-    origin_blocks: int,
     to_block: int
 ) -> int:
     """Compute min from_block across all (contract_name, event_name) for this address."""
@@ -228,7 +264,7 @@ def get_min_from_block_for_address(
     min_from = to_block + 1
     for ed in topic_to_def.values():
         last = get_last_synced_block(db_path, ed.contract_name, ed.name)
-        from_b = (last + 1) if last is not None else origin_blocks
+        from_b = (last + 1) if last is not None else ed.start_block
         min_from = min(min_from, from_b)
     return min_from
 
@@ -241,7 +277,7 @@ def save_events_to_db(
 ) -> int:
     """Batch insert decoded events and update sync_status. Use to_block (processed range end) for last_block. Returns inserted count."""
     base_fields = {'blockNumber', 'transactionHash', 'transactionIndex', 'logIndex', 'address', 'log_round', 'event_name', 'contract_name'}
-    conn = sqlite3.connect(db_path)
+    conn = connect_db(db_path)
     c = conn.cursor()
     inserted = 0
 
@@ -269,17 +305,43 @@ def save_events_to_db(
                        event.get('address'), decoded_json))
             inserted += c.rowcount
         except Exception as e:
-            log(f"⚠️  Failed to insert event: {e}")
+            conn.rollback()
+            conn.close()
+            raise RuntimeError(
+                f"failed to insert event {contract_name}.{event_name} at {block_num}: {e}"
+            ) from e
 
     keys_to_update = event_max_block.keys() | (all_synced_keys or set())
     for (contract_name, event_name) in keys_to_update:
-        c.execute('''INSERT OR REPLACE INTO sync_status (contract_name, event_name, last_block, updated_at)
-                    VALUES (?, ?, ?, ?)''',
-                  (contract_name, event_name, to_block, datetime.now().isoformat()))
+        try:
+            c.execute('''INSERT OR REPLACE INTO sync_status (contract_name, event_name, last_block, updated_at)
+                        VALUES (?, ?, ?, ?)''',
+                      (contract_name, event_name, to_block, datetime.now().isoformat()))
+        except Exception as e:
+            conn.rollback()
+            conn.close()
+            raise RuntimeError(
+                f"failed to update sync_status for {contract_name}.{event_name}: {e}"
+            ) from e
 
     conn.commit()
     conn.close()
     return inserted
+
+
+def should_split_fetch_error(error_msg: str | None) -> bool:
+    """Only split ranges for errors that can plausibly improve with a smaller window."""
+    if not error_msg:
+        return False
+
+    lower = error_msg.lower()
+    return (
+        error_msg.startswith("RANGE_TOO_LARGE:")
+        or "timeout" in lower
+        or "too many" in lower
+        or "limit" in lower
+        or "height out of range" in lower
+    )
 
 
 # ============================================================================
@@ -360,9 +422,15 @@ async def fetch_logs_with_split(
     
     if result[2] is not None:
         return result[2]
-    
-    if to_block - from_block < 1000:
-        return []
+
+    error_msg = result[3] or "Unknown error"
+    if not should_split_fetch_error(error_msg):
+        raise RuntimeError(f"failed to fetch logs for blocks {from_block}->{to_block}: {error_msg}")
+
+    if from_block >= to_block:
+        raise RuntimeError(
+            f"failed to fetch logs for blocks {from_block}->{to_block} after retries: {error_msg}"
+        )
     
     mid = (from_block + to_block) // 2
     logs1 = await fetch_logs_with_split(
@@ -414,8 +482,7 @@ async def fetch_all_logs_rpc(config: ProcessConfig, contracts: list[ProcessContr
                 config.rpc_url, 0, 1
             )
             if test_result[3]:
-                log(f"❌ RPC connection failed: {test_result[3]}")
-                return []
+                raise RuntimeError(f"RPC connection failed: {test_result[3]}")
             log(f"✅ RPC connection OK")
             
         async def fetch_with_semaphore_and_split(chunk_start: int, chunk_end: int, req_id: int) -> list[dict]:
@@ -452,7 +519,7 @@ async def fetch_all_logs_rpc(config: ProcessConfig, contracts: list[ProcessContr
                         
                 return valid_logs
         
-        tasks = [fetch_with_semaphore_and_split(start, end, i) for i, (start, end) in enumerate(ranges)]
+        tasks = [asyncio.create_task(fetch_with_semaphore_and_split(start, end, i)) for i, (start, end) in enumerate(ranges)]
         
         completed = 0
         all_logs = []
@@ -460,18 +527,24 @@ async def fetch_all_logs_rpc(config: ProcessConfig, contracts: list[ProcessContr
         last_log_time = start_time
         
         log("🚀 Starting intelligent parallel fetch...")
-        for coro in asyncio.as_completed(tasks):
-            logs = await coro
-            all_logs.extend(logs)
-            completed += 1
-            now = datetime.now()
-            if (now - last_log_time).total_seconds() >= 2 or completed == total_ranges or completed == 1:
-                progress = completed * 100 // total_ranges
-                elapsed = (now - start_time).total_seconds()
-                rate = completed / elapsed if elapsed > 0 else 0
-                eta = (total_ranges - completed) / rate if rate > 0 else 0
-                log(f"🔄 Progress: {progress}% ({completed}/{total_ranges}) | {rate:.1f} req/s | ETA: {eta:.0f}s | Logs: {len(all_logs):,}")
-                last_log_time = now
+        try:
+            for coro in asyncio.as_completed(tasks):
+                logs = await coro
+                all_logs.extend(logs)
+                completed += 1
+                now = datetime.now()
+                if (now - last_log_time).total_seconds() >= 2 or completed == total_ranges or completed == 1:
+                    progress = completed * 100 // total_ranges
+                    elapsed = (now - start_time).total_seconds()
+                    rate = completed / elapsed if elapsed > 0 else 0
+                    eta = (total_ranges - completed) / rate if rate > 0 else 0
+                    log(f"🔄 Progress: {progress}% ({completed}/{total_ranges}) | {rate:.1f} req/s | ETA: {eta:.0f}s | Logs: {len(all_logs):,}")
+                    last_log_time = now
+        except Exception:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
     
     return all_logs
 
@@ -653,6 +726,11 @@ async def process_events(config: ProcessConfig) -> bool:
     # Build addr_topic_to_event_def from all configs
     for c in contracts_info:
         name = c['name']
+        try:
+            contract_start_block = resolve_contract_start_block(c, config.origin_blocks)
+        except ValueError as e:
+            log(f"❌ Invalid start block for {name}: {e}")
+            return False
         env_var = c.get('address_env_var')
         if env_var:
             raw_address = os.environ.get(env_var)
@@ -673,7 +751,7 @@ async def process_events(config: ProcessConfig) -> bool:
         event_defs = {}
         for abi_path in abi_files:
             abi = load_abi(abi_path)
-            event_defs.update(get_all_event_defs(abi, name))
+            event_defs.update(get_all_event_defs(abi, name, contract_start_block))
         if address not in addr_topic_to_event_def:
             addr_topic_to_event_def[address] = {}
         addr_topic_to_event_def[address].update(event_defs)
@@ -683,10 +761,14 @@ async def process_events(config: ProcessConfig) -> bool:
     for address, topic_to_def in addr_topic_to_event_def.items():
         c_from_block = get_min_from_block_for_address(
             config.db_path, address, addr_topic_to_event_def,
-            config.origin_blocks, config.to_block
+            config.to_block
         )
         event_summary = ", ".join(sorted({ed.name for ed in topic_to_def.values()}))
-        log(f"   - {address}: from_block={c_from_block} (events: {event_summary})")
+        configured_start_block = min((ed.start_block for ed in topic_to_def.values()), default=c_from_block)
+        log(
+            f"   - {address}: from_block={c_from_block} "
+            f"(configured_start={configured_start_block}, events: {event_summary})"
+        )
         if c_from_block > config.to_block:
             log(f"     ✅ Already up to date (>= {config.to_block})")
 
@@ -711,7 +793,11 @@ async def process_events(config: ProcessConfig) -> bool:
     else:
         log(f"\n📡 Fetching event logs for {len(contracts_to_sync)} addresses...")
         fetch_start = datetime.now()
-        raw_logs = await fetch_all_logs_rpc(config, contracts_to_sync)
+        try:
+            raw_logs = await fetch_all_logs_rpc(config, contracts_to_sync)
+        except Exception as e:
+            log(f"❌ Event fetch failed: {e}")
+            return False
         fetch_elapsed = (datetime.now() - fetch_start).total_seconds()
         log(f"✅ Fetched {len(raw_logs)} total logs in {fetch_elapsed:.2f}s")
         
@@ -724,6 +810,8 @@ async def process_events(config: ProcessConfig) -> bool:
             log("\n🔓 Decoding events dynamically by address and topic0...")
             decode_start = datetime.now()
             decoded_events = []
+            undecoded_count = 0
+            undecoded_samples: list[str] = []
             for i, raw_log in enumerate(raw_logs):
                 event = convert_rpc_log_to_event(raw_log)
                 decoded = decode_event(event, addr_topic_to_event_def)
@@ -732,18 +820,37 @@ async def process_events(config: ProcessConfig) -> bool:
                         decoded.get('blockNumber', 0), config.origin_blocks, config.phase_blocks
                     )
                     decoded_events.append(decoded)
+                else:
+                    undecoded_count += 1
+                    if len(undecoded_samples) < 5:
+                        topic0 = raw_log.get('topics', [''])[0] if raw_log.get('topics') else ''
+                        undecoded_samples.append(
+                            f"block={event['blockNumber']} address={event['address']} topic0={topic0}"
+                        )
                 if (i + 1) % 5000 == 0:
                     log(f"   Decoded {i + 1}/{len(raw_logs)} events...")
             decode_elapsed = (datetime.now() - decode_start).total_seconds()
+            if undecoded_count:
+                sample_text = "; ".join(undecoded_samples)
+                log(f"❌ Failed to decode {undecoded_count} logs. Samples: {sample_text}")
+                return False
             log(f"✅ Successfully decoded {len(decoded_events)} known events in {decode_elapsed:.2f}s")
             new_event_count = len(decoded_events)
             log(f"\n💾 Saving {new_event_count} events to SQLite...")
-            inserted = save_events_to_db(
-                config.db_path, decoded_events, config.to_block, all_synced_keys
-            )
+            try:
+                inserted = save_events_to_db(
+                    config.db_path, decoded_events, config.to_block, all_synced_keys
+                )
+            except Exception as e:
+                log(f"❌ Failed to save events: {e}")
+                return False
             log(f"✅ Inserted {inserted} new rows (duplicates ignored)")
         else:
-            save_events_to_db(config.db_path, [], config.to_block, all_synced_keys)
+            try:
+                save_events_to_db(config.db_path, [], config.to_block, all_synced_keys)
+            except Exception as e:
+                log(f"❌ Failed to advance sync_status: {e}")
+                return False
             log("📌 No new events in this batch (sync_status updated to to_block)")
     
     # Final report
@@ -795,7 +902,11 @@ def main():
         phase_blocks=args.phase_blocks
     )
     
-    success = asyncio.run(process_events(config))
+    try:
+        success = asyncio.run(process_events(config))
+    except Exception as e:
+        log(f"❌ Event processor failed: {e}")
+        success = False
     sys.exit(0 if success else 1)
 
 
