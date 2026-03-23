@@ -299,6 +299,52 @@ load_keystore(){
 }
 echo "load_keystore() loaded"
 
+resolve_account_address() {
+    local account_input=$1
+    local account_address=""
+    local keystore_password=""
+    local keystore_path=""
+
+    if [ -z "$account_input" ]; then
+        echo ""
+        return 1
+    fi
+
+    if [[ "$account_input" =~ ^0x[a-fA-F0-9]{40}$ ]]; then
+        normalize_address "$account_input"
+        return 0
+    fi
+
+    keystore_path="$HOME/.foundry/keystores/$account_input"
+    if [ ! -f "$keystore_path" ]; then
+        echo ""
+        return 1
+    fi
+
+    if [ -n "$KEYSTORE_PASSWORD" ]; then
+        account_address=$(cast wallet address --keystore "$keystore_path" --password "$KEYSTORE_PASSWORD" 2>/dev/null | grep -o '0x[a-fA-F0-9]\{40\}' | head -1)
+    fi
+
+    if [ -z "$account_address" ]; then
+        echo -e "\nPlease enter keystore password (for $account_input):" >&2
+        read -s keystore_password
+        echo "" >&2
+
+        account_address=$(cast wallet address --keystore "$keystore_path" --password "$keystore_password" 2>/dev/null | grep -o '0x[a-fA-F0-9]\{40\}' | head -1)
+        if [ -z "$account_address" ]; then
+            echo ""
+            return 1
+        fi
+
+        if [ "$KEYSTORE_ACCOUNT" = "$account_input" ]; then
+            export KEYSTORE_PASSWORD="$keystore_password"
+        fi
+    fi
+
+    normalize_address "$account_address"
+}
+echo "resolve_account_address() loaded"
+
 
 show_hex_3() {
     local hex_value decimal
@@ -368,6 +414,828 @@ show_in_eth(){
     [ -z "$result" ] && echo "0" || echo "$result"
 }
 echo "show_in_eth() loaded"
+
+normalize_address() {
+    local address=$1
+
+    if [ -z "$address" ]; then
+        read -r address
+    fi
+
+    address=$(echo "$address" | awk 'NR==1 {print $1}')
+    address=${address#0x}
+
+    if [ -z "$address" ] || [ ${#address} -lt 40 ]; then
+        echo "$ZERO_ADDRESS"
+        return 0
+    fi
+
+    if [ ${#address} -gt 40 ]; then
+        address=${address: -40}
+    fi
+
+    echo "0x$address"
+}
+echo "normalize_address() loaded"
+
+is_zero_address() {
+    local address
+    address=$(normalize_address "${1:-$ZERO_ADDRESS}")
+    [ "$address" = "$ZERO_ADDRESS" ]
+}
+echo "is_zero_address() loaded"
+
+try_call() {
+    call "$@" 2>/dev/null
+}
+echo "try_call() loaded"
+
+account_assets_cache_reset() {
+    if [ -n "$ZSH_VERSION" ]; then
+        setopt LOCAL_OPTIONS SH_WORD_SPLIT 2>/dev/null
+    fi
+
+    local key
+    for key in $ACCOUNT_ASSETS_CACHE_KEYS; do
+        unset -v -- "$key"
+    done
+    ACCOUNT_ASSETS_CACHE_KEYS=""
+}
+echo "account_assets_cache_reset() loaded"
+
+account_assets_cache_var() {
+    local prefix=$1
+    shift
+
+    local raw=$prefix
+    local part
+    for part in "$@"; do
+        raw="${raw}_${part}"
+    done
+
+    echo "$raw" | tr '[:lower:]' '[:upper:]' | sed 's/[^A-Z0-9_]/_/g'
+}
+echo "account_assets_cache_var() loaded"
+
+account_assets_cache_get() {
+    local var_name=$1
+    eval 'if [ "${'"$var_name"'+set}" = "set" ]; then printf "%s\n" "${'"$var_name"'}"; return 0; fi'
+    return 1
+}
+echo "account_assets_cache_get() loaded"
+
+account_assets_cache_set() {
+    local var_name=$1
+    local value=$2
+
+    eval "$var_name='$value'"
+    case " $ACCOUNT_ASSETS_CACHE_KEYS " in
+        *" $var_name "*) ;;
+        *) ACCOUNT_ASSETS_CACHE_KEYS="$ACCOUNT_ASSETS_CACHE_KEYS $var_name" ;;
+    esac
+}
+echo "account_assets_cache_set() loaded"
+
+call_first_word() {
+    local output
+    output=$(try_call "$@") || return 1
+    echo "$output" | awk 'NR==1 {print $1}'
+}
+echo "call_first_word() loaded"
+
+safe_uint_call() {
+    local value
+    value=$(call_first_word "$@" 2>/dev/null) || {
+        echo "0"
+        return 0
+    }
+
+    if [[ "$value" =~ ^[0-9]+$ ]]; then
+        echo "$value"
+    else
+        echo "0"
+    fi
+}
+echo "safe_uint_call() loaded"
+
+safe_address_call() {
+    local value
+    value=$(call_first_word "$@" 2>/dev/null) || {
+        echo "$ZERO_ADDRESS"
+        return 0
+    }
+    normalize_address "$value"
+}
+echo "safe_address_call() loaded"
+
+token_label_for_address() {
+    local asset_address
+    local primary_token=$2
+    local life20_token=$3
+    local primary_label=${4:-LOVE20}
+
+    asset_address=$(normalize_address "$1")
+    primary_token=$(normalize_address "${primary_token:-$tokenAddress}")
+    life20_token=$(normalize_address "${life20_token:-$ZERO_ADDRESS}")
+
+    if [ "$asset_address" = "$primary_token" ]; then
+        echo "$primary_label"
+    elif [ "$life20_token" != "$ZERO_ADDRESS" ] && [ "$asset_address" = "$life20_token" ]; then
+        echo "LIFE20"
+    elif [ "$asset_address" = "$(normalize_address "$rootParentTokenAddress")" ]; then
+        echo "TKM20"
+    elif [ "$asset_address" = "$(normalize_address "$tusdtAddress")" ]; then
+        echo "TUSDT"
+    else
+        echo "$asset_address"
+    fi
+}
+echo "token_label_for_address() loaded"
+
+pair_label_for_tokens() {
+    local token0=$1
+    local token1=$2
+    local primary_token=$3
+    local life20_token=$4
+    local primary_label=${5:-LOVE20}
+
+    local label0
+    local label1
+    label0=$(token_label_for_address "$token0" "$primary_token" "$life20_token" "$primary_label")
+    label1=$(token_label_for_address "$token1" "$primary_token" "$life20_token" "$primary_label")
+
+    echo "LP(${label0}/${label1})"
+}
+echo "pair_label_for_tokens() loaded"
+
+emit_account_asset_line() {
+    local category=$1
+    local asset=$2
+    local amount_wei=$3
+    local note=${4:-}
+
+    if ! [[ "$amount_wei" =~ ^[0-9]+$ ]]; then
+        amount_wei=0
+    fi
+
+    printf "%s\t%s\t%s\t%s\n" \
+        "$category" \
+        "$asset" \
+        "$(show_in_eth "$amount_wei")" \
+        "$note"
+}
+echo "emit_account_asset_line() loaded"
+
+resolve_life20_address() {
+    if [ -n "$life20Address" ] && ! is_zero_address "$life20Address"; then
+        normalize_address "$life20Address"
+        return 0
+    fi
+
+    local resolved
+    resolved=$(safe_address_call ILOVE20Launch "$launchAddress" tokenAddressBySymbol "LIFE20")
+
+    if ! is_zero_address "$resolved"; then
+        export life20Address="$resolved"
+        echo "$resolved"
+    else
+        echo "$ZERO_ADDRESS"
+    fi
+}
+echo "resolve_life20_address() loaded"
+
+pair_address() {
+    local token0=$1
+    local token1=$2
+
+    if is_zero_address "$token0" || is_zero_address "$token1"; then
+        echo "$ZERO_ADDRESS"
+        return 0
+    fi
+
+    token0=$(normalize_address "$token0")
+    token1=$(normalize_address "$token1")
+
+    local key_token0=$token0
+    local key_token1=$token1
+    if [[ "$key_token1" < "$key_token0" ]]; then
+        key_token0=$token1
+        key_token1=$token0
+    fi
+
+    local cache_var
+    cache_var=$(account_assets_cache_var "PAIR" "$key_token0" "$key_token1")
+    local cached
+    cached=$(account_assets_cache_get "$cache_var") && {
+        echo "$cached"
+        return 0
+    }
+
+    local resolved
+    resolved=$(safe_address_call IUniswapV2Factory "$uniswapV2FactoryAddress" getPair "$token0" "$token1")
+    account_assets_cache_set "$cache_var" "$resolved"
+    echo "$resolved"
+}
+echo "pair_address() loaded"
+
+is_uniswap_pair_address() {
+    local pair_address_value=$1
+    local token0
+    local token1
+
+    if is_zero_address "$pair_address_value"; then
+        return 1
+    fi
+
+    local cache_var
+    cache_var=$(account_assets_cache_var "IS_PAIR" "$pair_address_value")
+    local cached
+    cached=$(account_assets_cache_get "$cache_var") && {
+        [ "$cached" = "1" ]
+        return
+    }
+
+    token0=$(safe_address_call IUniswapV2Pair "$pair_address_value" token0)
+    token1=$(safe_address_call IUniswapV2Pair "$pair_address_value" token1)
+
+    if ! is_zero_address "$token0" && ! is_zero_address "$token1"; then
+        account_assets_cache_set "$cache_var" "1"
+        return 0
+    fi
+
+    account_assets_cache_set "$cache_var" "0"
+    return 1
+}
+echo "is_uniswap_pair_address() loaded"
+
+emit_lp_asset_lines() {
+    local category=$1
+    local pair_address_value=$2
+    local lp_amount_wei=$3
+    local note=$4
+    local primary_token=$5
+    local life20_token=$6
+    local primary_label=${7:-LOVE20}
+
+    if ! [[ "$lp_amount_wei" =~ ^[0-9]+$ ]] || [ "$lp_amount_wei" = "0" ]; then
+        return 0
+    fi
+
+    local token0
+    local token1
+    token0=$(safe_address_call IUniswapV2Pair "$pair_address_value" token0)
+    token1=$(safe_address_call IUniswapV2Pair "$pair_address_value" token1)
+
+    if is_zero_address "$token0" || is_zero_address "$token1"; then
+        emit_account_asset_line "$category" "$pair_address_value" "$lp_amount_wei" "$note"
+        return 0
+    fi
+
+    local pair_label
+    pair_label=$(pair_label_for_tokens "$token0" "$token1" "$primary_token" "$life20_token" "$primary_label")
+    emit_account_asset_line "$category" "$pair_label" "$lp_amount_wei" "$note"
+
+    local total_supply
+    total_supply=$(safe_uint_call IUniswapV2Pair "$pair_address_value" totalSupply)
+    if [ "$total_supply" = "0" ]; then
+        return 0
+    fi
+
+    local reserves
+    reserves=$(try_call IUniswapV2Pair "$pair_address_value" getReserves)
+    local reserve0
+    local reserve1
+    reserve0=$(echo "$reserves" | sed -n '1p' | awk '{print $1}')
+    reserve1=$(echo "$reserves" | sed -n '2p' | awk '{print $1}')
+
+    if ! [[ "$reserve0" =~ ^[0-9]+$ ]]; then reserve0=0; fi
+    if ! [[ "$reserve1" =~ ^[0-9]+$ ]]; then reserve1=0; fi
+
+    local amount0
+    local amount1
+    amount0=$(echo "scale=0; $reserve0 * $lp_amount_wei / $total_supply" | bc | awk -F. '{print $1}')
+    amount1=$(echo "scale=0; $reserve1 * $lp_amount_wei / $total_supply" | bc | awk -F. '{print $1}')
+
+    emit_account_asset_line \
+        "${category}.split" \
+        "$(token_label_for_address "$token0" "$primary_token" "$life20_token" "$primary_label")" \
+        "$amount0" \
+        "$note | underlying:$pair_label"
+    emit_account_asset_line \
+        "${category}.split" \
+        "$(token_label_for_address "$token1" "$primary_token" "$life20_token" "$primary_label")" \
+        "$amount1" \
+        "$note | underlying:$pair_label"
+}
+echo "emit_lp_asset_lines() loaded"
+
+emit_position_asset_lines() {
+    local category=$1
+    local asset_address=$2
+    local amount_wei=$3
+    local note=$4
+    local primary_token=$5
+    local life20_token=$6
+    local primary_label=${7:-LOVE20}
+
+    if ! [[ "$amount_wei" =~ ^[0-9]+$ ]] || [ "$amount_wei" = "0" ]; then
+        return 0
+    fi
+
+    if is_uniswap_pair_address "$asset_address"; then
+        emit_lp_asset_lines "$category" "$asset_address" "$amount_wei" "$note" "$primary_token" "$life20_token" "$primary_label"
+        return 0
+    fi
+
+    emit_account_asset_line \
+        "$category" \
+        "$(token_label_for_address "$asset_address" "$primary_token" "$life20_token" "$primary_label")" \
+        "$amount_wei" \
+        "$note"
+}
+echo "emit_position_asset_lines() loaded"
+
+pair_underlying_amounts() {
+    local pair_address_value=$1
+    local lp_amount_wei=$2
+
+    if ! [[ "$lp_amount_wei" =~ ^[0-9]+$ ]] || [ "$lp_amount_wei" = "0" ]; then
+        return 0
+    fi
+
+    local token0
+    local token1
+    token0=$(safe_address_call IUniswapV2Pair "$pair_address_value" token0)
+    token1=$(safe_address_call IUniswapV2Pair "$pair_address_value" token1)
+
+    if is_zero_address "$token0" || is_zero_address "$token1"; then
+        return 0
+    fi
+
+    local total_supply
+    total_supply=$(safe_uint_call IUniswapV2Pair "$pair_address_value" totalSupply)
+    if [ "$total_supply" = "0" ]; then
+        return 0
+    fi
+
+    local reserves
+    reserves=$(try_call IUniswapV2Pair "$pair_address_value" getReserves)
+    local reserve0
+    local reserve1
+    reserve0=$(echo "$reserves" | sed -n '1p' | awk '{print $1}')
+    reserve1=$(echo "$reserves" | sed -n '2p' | awk '{print $1}')
+
+    if ! [[ "$reserve0" =~ ^[0-9]+$ ]]; then reserve0=0; fi
+    if ! [[ "$reserve1" =~ ^[0-9]+$ ]]; then reserve1=0; fi
+
+    local amount0
+    local amount1
+    amount0=$(echo "scale=0; $reserve0 * $lp_amount_wei / $total_supply" | bc | awk -F. '{print $1}')
+    amount1=$(echo "scale=0; $reserve1 * $lp_amount_wei / $total_supply" | bc | awk -F. '{print $1}')
+
+    printf "%s\t%s\n" "$token0" "$amount0"
+    printf "%s\t%s\n" "$token1" "$amount1"
+}
+echo "pair_underlying_amounts() loaded"
+
+pair_price_in_quote_wei() {
+    local pair_address_value=$1
+    local base_token=$2
+    local quote_token=$3
+
+    local cache_var
+    cache_var=$(account_assets_cache_var "PAIR_PRICE" "$pair_address_value" "$base_token" "$quote_token")
+    local cached
+    cached=$(account_assets_cache_get "$cache_var") && {
+        echo "$cached"
+        return 0
+    }
+
+    local token0
+    local token1
+    token0=$(safe_address_call IUniswapV2Pair "$pair_address_value" token0)
+    token1=$(safe_address_call IUniswapV2Pair "$pair_address_value" token1)
+
+    if is_zero_address "$token0" || is_zero_address "$token1"; then
+        account_assets_cache_set "$cache_var" "0"
+        echo "0"
+        return 0
+    fi
+
+    local reserves
+    reserves=$(try_call IUniswapV2Pair "$pair_address_value" getReserves)
+    local reserve0
+    local reserve1
+    reserve0=$(echo "$reserves" | sed -n '1p' | awk '{print $1}')
+    reserve1=$(echo "$reserves" | sed -n '2p' | awk '{print $1}')
+
+    if ! [[ "$reserve0" =~ ^[0-9]+$ ]]; then reserve0=0; fi
+    if ! [[ "$reserve1" =~ ^[0-9]+$ ]]; then reserve1=0; fi
+
+    if [ "$reserve0" = "0" ] || [ "$reserve1" = "0" ]; then
+        account_assets_cache_set "$cache_var" "0"
+        echo "0"
+        return 0
+    fi
+
+    if [ "$(normalize_address "$token0")" = "$(normalize_address "$base_token")" ] && [ "$(normalize_address "$token1")" = "$(normalize_address "$quote_token")" ]; then
+        local price
+        price=$(echo "scale=0; $reserve1 * 1000000000000000000 / $reserve0" | bc | awk -F. '{print $1}')
+        account_assets_cache_set "$cache_var" "$price"
+        echo "$price"
+    elif [ "$(normalize_address "$token1")" = "$(normalize_address "$base_token")" ] && [ "$(normalize_address "$token0")" = "$(normalize_address "$quote_token")" ]; then
+        local price
+        price=$(echo "scale=0; $reserve0 * 1000000000000000000 / $reserve1" | bc | awk -F. '{print $1}')
+        account_assets_cache_set "$cache_var" "$price"
+        echo "$price"
+    else
+        account_assets_cache_set "$cache_var" "0"
+        echo "0"
+    fi
+}
+echo "pair_price_in_quote_wei() loaded"
+
+token_tusdt_price_wei() {
+    local token_address=$1
+    local primary_token=$2
+    local life20_token=$3
+
+    token_address=$(normalize_address "$token_address")
+    primary_token=$(normalize_address "$primary_token")
+    life20_token=$(normalize_address "${life20_token:-$ZERO_ADDRESS}")
+
+    local cache_var
+    cache_var=$(account_assets_cache_var "TOKEN_TUSDT" "$token_address" "$primary_token" "$life20_token")
+    local cached
+    cached=$(account_assets_cache_get "$cache_var") && {
+        echo "$cached"
+        return 0
+    }
+
+    if is_zero_address "$token_address"; then
+        account_assets_cache_set "$cache_var" "0"
+        echo "0"
+        return 0
+    fi
+
+    if [ "$token_address" = "$(normalize_address "$tusdtAddress")" ]; then
+        account_assets_cache_set "$cache_var" "1000000000000000000"
+        echo "1000000000000000000"
+        return 0
+    fi
+
+    local direct_pair
+    direct_pair=$(pair_address "$token_address" "$tusdtAddress")
+    if ! is_zero_address "$direct_pair"; then
+        local direct_price
+        direct_price=$(pair_price_in_quote_wei "$direct_pair" "$token_address" "$tusdtAddress")
+        if [ "$direct_price" != "0" ]; then
+            account_assets_cache_set "$cache_var" "$direct_price"
+            echo "$direct_price"
+            return 0
+        fi
+    fi
+
+    if [ "$token_address" = "$primary_token" ]; then
+        account_assets_cache_set "$cache_var" "0"
+        echo "0"
+        return 0
+    fi
+
+    local primary_direct_pair
+    local primary_price
+    primary_direct_pair=$(pair_address "$primary_token" "$tusdtAddress")
+    if ! is_zero_address "$primary_direct_pair"; then
+        primary_price=$(pair_price_in_quote_wei "$primary_direct_pair" "$primary_token" "$tusdtAddress")
+    else
+        primary_price=0
+    fi
+
+    if [ "$primary_price" != "0" ]; then
+        local via_primary_pair
+        via_primary_pair=$(pair_address "$token_address" "$primary_token")
+        if ! is_zero_address "$via_primary_pair"; then
+            local token_in_primary
+            token_in_primary=$(pair_price_in_quote_wei "$via_primary_pair" "$token_address" "$primary_token")
+            if [ "$token_in_primary" != "0" ]; then
+                local price
+                price=$(echo "scale=0; $token_in_primary * $primary_price / 1000000000000000000" | bc | awk -F. '{print $1}')
+                account_assets_cache_set "$cache_var" "$price"
+                echo "$price"
+                return 0
+            fi
+        fi
+    fi
+
+    if ! is_zero_address "$life20_token"; then
+        local life20_price=0
+        local life20_direct_pair
+        life20_direct_pair=$(pair_address "$life20_token" "$tusdtAddress")
+        if ! is_zero_address "$life20_direct_pair"; then
+            life20_price=$(pair_price_in_quote_wei "$life20_direct_pair" "$life20_token" "$tusdtAddress")
+        elif [ "$primary_price" != "0" ]; then
+            local life20_primary_pair
+            life20_primary_pair=$(pair_address "$life20_token" "$primary_token")
+            if ! is_zero_address "$life20_primary_pair"; then
+                local life20_in_primary
+                life20_in_primary=$(pair_price_in_quote_wei "$life20_primary_pair" "$life20_token" "$primary_token")
+                if [ "$life20_in_primary" != "0" ]; then
+                    life20_price=$(echo "scale=0; $life20_in_primary * $primary_price / 1000000000000000000" | bc | awk -F. '{print $1}')
+                fi
+            fi
+        fi
+
+        if [ "$life20_price" != "0" ] && [ "$token_address" != "$life20_token" ]; then
+            local via_life20_pair
+            via_life20_pair=$(pair_address "$token_address" "$life20_token")
+            if ! is_zero_address "$via_life20_pair"; then
+                local token_in_life20
+                token_in_life20=$(pair_price_in_quote_wei "$via_life20_pair" "$token_address" "$life20_token")
+                if [ "$token_in_life20" != "0" ]; then
+                    local price
+                    price=$(echo "scale=0; $token_in_life20 * $life20_price / 1000000000000000000" | bc | awk -F. '{print $1}')
+                    account_assets_cache_set "$cache_var" "$price"
+                    echo "$price"
+                    return 0
+                fi
+            fi
+        fi
+
+        if [ "$token_address" = "$life20_token" ]; then
+            account_assets_cache_set "$cache_var" "$life20_price"
+            echo "$life20_price"
+            return 0
+        fi
+    fi
+
+    account_assets_cache_set "$cache_var" "0"
+    echo "0"
+}
+echo "token_tusdt_price_wei() loaded"
+
+token_amount_to_tusdt_wei() {
+    local token_address=$1
+    local amount_wei=$2
+    local primary_token=$3
+    local life20_token=$4
+
+    if ! [[ "$amount_wei" =~ ^[0-9]+$ ]] || [ "$amount_wei" = "0" ]; then
+        echo "0"
+        return 0
+    fi
+
+    if [ "$token_address" = "TKM" ] || [ "$token_address" = "tkm" ]; then
+        token_address="$rootParentTokenAddress"
+    fi
+
+    local price_wei
+    price_wei=$(token_tusdt_price_wei "$token_address" "$primary_token" "$life20_token")
+    if [ "$price_wei" = "0" ]; then
+        echo "0"
+        return 0
+    fi
+
+    echo "scale=0; $amount_wei * $price_wei / 1000000000000000000" | bc | awk -F. '{print $1}'
+}
+echo "token_amount_to_tusdt_wei() loaded"
+
+position_tusdt_value_wei() {
+    local asset_address=$1
+    local amount_wei=$2
+    local primary_token=$3
+    local life20_token=$4
+
+    if ! [[ "$amount_wei" =~ ^[0-9]+$ ]] || [ "$amount_wei" = "0" ]; then
+        echo "0"
+        return 0
+    fi
+
+    if is_uniswap_pair_address "$asset_address"; then
+        local total_value=0
+        while IFS=$'\t' read -r underlying_token underlying_amount; do
+            [ -z "$underlying_token" ] && continue
+            local underlying_value
+            underlying_value=$(token_amount_to_tusdt_wei "$underlying_token" "$underlying_amount" "$primary_token" "$life20_token")
+            total_value=$(echo "$total_value + $underlying_value" | bc)
+        done < <(pair_underlying_amounts "$asset_address" "$amount_wei")
+        echo "$total_value"
+        return 0
+    fi
+
+    token_amount_to_tusdt_wei "$asset_address" "$amount_wei" "$primary_token" "$life20_token"
+}
+echo "position_tusdt_value_wei() loaded"
+
+sum_wei() {
+    local left=${1:-0}
+    local right=${2:-0}
+    echo "$left + $right" | bc
+}
+echo "sum_wei() loaded"
+
+token_action_ids() {
+    local token_address=$1
+    local action_count
+    action_count=$(safe_uint_call ILOVE20Submit "$submitAddress" actionsCount "$token_address")
+
+    if [ "$action_count" = "0" ]; then
+        return 0
+    fi
+
+    local i
+    for ((i = 1; i <= action_count; i++)); do
+        safe_uint_call ILOVE20Submit "$submitAddress" actionsAtIndex "$token_address" "$i"
+    done
+}
+echo "token_action_ids() loaded"
+
+json_array_items() {
+    jq -r '
+        if type == "array" and length == 1 and (.[0] | type == "string") then
+            (.[0] | fromjson? // empty) | .[]?
+        elif type == "array" then
+            .[]?
+        else
+            empty
+        end
+    '
+}
+echo "json_array_items() loaded"
+
+base_action_ids_by_account() {
+    local token_address=$1
+    local account_address=$2
+
+    try_call ILOVE20Join "$joinAddress" actionIdsByAccount "$token_address" "$account_address" --json | json_array_items
+}
+echo "base_action_ids_by_account() loaded"
+
+extension_factories_json() {
+    local factories=()
+
+    if ! is_zero_address "$lpFactoryAddress"; then
+        factories+=("$lpFactoryAddress")
+    fi
+    if ! is_zero_address "$groupActionFactoryAddress"; then
+        factories+=("$groupActionFactoryAddress")
+    fi
+    if ! is_zero_address "$groupServiceFactoryAddress"; then
+        factories+=("$groupServiceFactoryAddress")
+    fi
+
+    if [ ${#factories[@]} -eq 0 ]; then
+        echo "[]"
+        return 0
+    fi
+
+    local joined=""
+    local item
+    for item in "${factories[@]}"; do
+        if [ -n "$joined" ]; then
+            joined="$joined,$item"
+        else
+            joined="$item"
+        fi
+    done
+
+    echo "[$joined]"
+}
+echo "extension_factories_json() loaded"
+
+extension_actions_by_account() {
+    local token_address=$1
+    local account_address=$2
+    local factories_json
+    factories_json=$(extension_factories_json)
+
+    if [ "$factories_json" = "[]" ]; then
+        return 0
+    fi
+
+    try_call IExtensionCenter "$centerAddress" actionIdsByAccount "$token_address" "$account_address" "$factories_json" --json \
+        | jq -r '
+            def parse_sol_array:
+                if type == "string" then
+                    (sub("^\\["; "") | sub("\\]$"; "")) as $body
+                    | if ($body | length) == 0 then
+                        []
+                      else
+                        ($body | split(",") | map(gsub("^ +| +$"; "")))
+                      end
+                elif type == "array" then
+                    .
+                else
+                    []
+                end;
+            if (type == "array" and length >= 3) then
+                (.[0] | parse_sol_array) as $ids
+                | (.[1] | parse_sol_array) as $exts
+                | (.[2] | parse_sol_array) as $factories
+                | range(0; ($ids | length))
+                | [$ids[.], $exts[.], $factories[.]]
+                | @tsv
+            else
+                empty
+            end
+        '
+}
+echo "extension_actions_by_account() loaded"
+
+extension_kind() {
+    local extension=$1
+
+    if ! is_zero_address "$(safe_address_call IGroupService "$extension" GROUP_ACTION_TOKEN_ADDRESS)"; then
+        echo "group-service"
+    elif ! is_zero_address "$(safe_address_call IGroupAction "$extension" JOIN_TOKEN_ADDRESS)"; then
+        echo "group-action"
+    elif ! is_zero_address "$(safe_address_call ITokenJoin "$extension" JOIN_TOKEN_ADDRESS)"; then
+        echo "token-join"
+    else
+        echo "extension"
+    fi
+}
+echo "extension_kind() loaded"
+
+extension_join_token_address() {
+    local extension=$1
+    local join_token
+
+    join_token=$(safe_address_call IExtension "$extension" joinedAmountTokenAddress)
+    if ! is_zero_address "$join_token"; then
+        echo "$join_token"
+        return 0
+    fi
+
+    join_token=$(safe_address_call ITokenJoin "$extension" JOIN_TOKEN_ADDRESS)
+    if ! is_zero_address "$join_token"; then
+        echo "$join_token"
+        return 0
+    fi
+
+    join_token=$(safe_address_call IGroupAction "$extension" JOIN_TOKEN_ADDRESS)
+    if ! is_zero_address "$join_token"; then
+        echo "$join_token"
+        return 0
+    fi
+
+    join_token=$(safe_address_call IGroupService "$extension" GROUP_ACTION_TOKEN_ADDRESS)
+    echo "$join_token"
+}
+echo "extension_join_token_address() loaded"
+
+extension_join_amount_by_account() {
+    local extension=$1
+    local round=$2
+    local account_address=$3
+    local joined_amount
+
+    joined_amount=$(safe_uint_call IExtension "$extension" joinedAmountByAccount "$account_address")
+    if [ "$joined_amount" != "0" ]; then
+        echo "$joined_amount"
+        return 0
+    fi
+
+    if ! is_zero_address "$groupJoinAddress"; then
+        joined_amount=$(safe_uint_call IGroupJoin "$groupJoinAddress" joinedAmountByAccount "$extension" "$round" "$account_address")
+        if [ "$joined_amount" != "0" ]; then
+            echo "$joined_amount"
+            return 0
+        fi
+
+        if (( round > 0 )); then
+            joined_amount=$(safe_uint_call IGroupJoin "$groupJoinAddress" joinedAmountByAccount "$extension" "$((round - 1))" "$account_address")
+            if [ "$joined_amount" != "0" ]; then
+                echo "$joined_amount"
+                return 0
+            fi
+        fi
+    fi
+
+    echo "0"
+}
+echo "extension_join_amount_by_account() loaded"
+
+stake_status_fields() {
+    local token_address=$1
+    local account_address=$2
+    local raw
+
+    raw=$(call ILOVE20Stake "$stakeAddress" accountStakeStatus "$token_address" "$account_address" --json 2>/dev/null \
+        | jq -r '.[0] // empty')
+
+    if [ -z "$raw" ]; then
+        printf "0\n0\n0\n0\n0\n"
+        return 0
+    fi
+
+    echo "$raw" \
+        | sed 's/^[(]//' \
+        | sed 's/[)]$//' \
+        | tr ',' '\n' \
+        | sed 's/^ *//' \
+        | sed 's/ *$//'
+}
+echo "stake_status_fields() loaded"
 
 
 # Accept a contract address, calculate the number of blocks until the next round based on roundRange and current block height
@@ -466,7 +1334,7 @@ stake_status(){
     local account_address=$2
     local slAmount stAmount promisedWaitingPhases requestedUnstakeRound govVotes
     
-    call ILOVE20Stake $stakeAddress accountStakeStatus $token_address $account_address | {
+    stake_status_fields "$token_address" "$account_address" | {
         read slAmount
         read stAmount
         read promisedWaitingPhases
@@ -679,6 +1547,229 @@ account_status() {
   fi
 }
 echo "account_status() loaded"
+
+account_assets() {
+  if [ -n "$ZSH_VERSION" ]; then
+    setopt LOCAL_OPTIONS NO_XTRACE TYPESET_SILENT 2>/dev/null
+  fi
+
+  account_assets_cache_reset
+
+  local account_input=$1
+  local account_address
+  local primary_token=$tokenAddress
+
+  if [ -z "$account_input" ]; then
+    echo "Usage: account_assets(account_address_or_keystore)"
+    return 1
+  fi
+
+  account_address=$(resolve_account_address "$account_input")
+  if [ -z "$account_address" ]; then
+    echo "Failed to resolve account from input: $account_input"
+    return 1
+  fi
+
+  local life20_token
+  life20_token=$(resolve_life20_address)
+  local current_round_value
+  current_round_value=$(safe_uint_call IPhase "$submitAddress" currentRound)
+  local total_tusdt_wei=0
+
+  local primary_sl_token
+  local primary_st_token
+  primary_sl_token=$(safe_address_call ILOVE20Token "$primary_token" slAddress)
+  primary_st_token=$(safe_address_call ILOVE20Token "$primary_token" stAddress)
+
+  echo ""
+  echo "===================="
+  echo "account_assets"
+  echo "===================="
+  echo "account_address: $account_address"
+  echo "primary_token: $primary_token"
+  if ! is_zero_address "$life20_token"; then
+    echo "life20_token: $life20_token"
+  fi
+  echo "current_round: $current_round_value"
+  echo ""
+  echo -e "category\tasset\tamount\tnote"
+
+  local native_tkm_wei
+  native_tkm_wei=$(balance_eth_in_wei "$account_address")
+  emit_account_asset_line "wallet" "TKM" "$native_tkm_wei" "native"
+  total_tusdt_wei=$(sum_wei "$total_tusdt_wei" "$(token_amount_to_tusdt_wei "$rootParentTokenAddress" "$native_tkm_wei" "$primary_token" "$life20_token")")
+
+  local wallet_tkm20_wei
+  wallet_tkm20_wei=$(balance_of_wei "$rootParentTokenAddress" "$account_address")
+  emit_position_asset_lines "wallet" "$rootParentTokenAddress" "$wallet_tkm20_wei" "wallet-balance" "$primary_token" "$life20_token" "LOVE20"
+  total_tusdt_wei=$(sum_wei "$total_tusdt_wei" "$(token_amount_to_tusdt_wei "$rootParentTokenAddress" "$wallet_tkm20_wei" "$primary_token" "$life20_token")")
+
+  local wallet_primary_wei
+  wallet_primary_wei=$(balance_of_wei "$primary_token" "$account_address")
+  emit_position_asset_lines "wallet" "$primary_token" "$wallet_primary_wei" "wallet-balance" "$primary_token" "$life20_token" "LOVE20"
+  total_tusdt_wei=$(sum_wei "$total_tusdt_wei" "$(token_amount_to_tusdt_wei "$primary_token" "$wallet_primary_wei" "$primary_token" "$life20_token")")
+
+  local wallet_tusdt_wei
+  wallet_tusdt_wei=$(balance_of_wei "$tusdtAddress" "$account_address")
+  emit_position_asset_lines "wallet" "$tusdtAddress" "$wallet_tusdt_wei" "wallet-balance" "$primary_token" "$life20_token" "LOVE20"
+  total_tusdt_wei=$(sum_wei "$total_tusdt_wei" "$wallet_tusdt_wei")
+
+  if ! is_zero_address "$life20_token"; then
+    local wallet_life20_wei
+    wallet_life20_wei=$(balance_of_wei "$life20_token" "$account_address")
+    emit_position_asset_lines "wallet" "$life20_token" "$wallet_life20_wei" "wallet-balance" "$primary_token" "$life20_token" "LOVE20"
+    total_tusdt_wei=$(sum_wei "$total_tusdt_wei" "$(token_amount_to_tusdt_wei "$life20_token" "$wallet_life20_wei" "$primary_token" "$life20_token")")
+  fi
+
+  local wallet_pair
+  wallet_pair=$(pair_address "$primary_token" "$tusdtAddress")
+  if ! is_zero_address "$wallet_pair"; then
+    local wallet_lp_wei
+    wallet_lp_wei=$(balance_of_wei "$wallet_pair" "$account_address")
+    emit_lp_asset_lines "wallet.lp" "$wallet_pair" "$wallet_lp_wei" "wallet-lp" "$primary_token" "$life20_token" "LOVE20"
+    total_tusdt_wei=$(sum_wei "$total_tusdt_wei" "$(position_tusdt_value_wei "$wallet_pair" "$wallet_lp_wei" "$primary_token" "$life20_token")")
+  fi
+
+  if ! is_zero_address "$life20_token"; then
+    wallet_pair=$(pair_address "$primary_token" "$life20_token")
+    if ! is_zero_address "$wallet_pair"; then
+      local wallet_love20_life20_lp_wei
+      wallet_love20_life20_lp_wei=$(balance_of_wei "$wallet_pair" "$account_address")
+      emit_lp_asset_lines "wallet.lp" "$wallet_pair" "$wallet_love20_life20_lp_wei" "wallet-lp" "$primary_token" "$life20_token" "LOVE20"
+      total_tusdt_wei=$(sum_wei "$total_tusdt_wei" "$(position_tusdt_value_wei "$wallet_pair" "$wallet_love20_life20_lp_wei" "$primary_token" "$life20_token")")
+    fi
+
+    wallet_pair=$(pair_address "$life20_token" "$tusdtAddress")
+    if ! is_zero_address "$wallet_pair"; then
+      local wallet_life20_tusdt_lp_wei
+      wallet_life20_tusdt_lp_wei=$(balance_of_wei "$wallet_pair" "$account_address")
+      emit_lp_asset_lines "wallet.lp" "$wallet_pair" "$wallet_life20_tusdt_lp_wei" "wallet-lp" "$primary_token" "$life20_token" "LOVE20"
+      total_tusdt_wei=$(sum_wei "$total_tusdt_wei" "$(position_tusdt_value_wei "$wallet_pair" "$wallet_life20_tusdt_lp_wei" "$primary_token" "$life20_token")")
+    fi
+  fi
+
+  local primary_sl_amount
+  local primary_st_amount
+  primary_sl_amount=$(balance_of_wei "$primary_sl_token" "$account_address")
+  primary_st_amount=$(balance_of_wei "$primary_st_token" "$account_address")
+
+  emit_account_asset_line "stake.sl" "SL(LOVE20)" "$primary_sl_amount" "liquidity-stake-position"
+  if [ "$primary_sl_amount" != "0" ] && ! is_zero_address "$primary_sl_token"; then
+    local primary_sl_underlying
+    primary_sl_underlying=$(try_call ILOVE20SLToken "$primary_sl_token" tokenAmountsBySlAmount "$primary_sl_amount")
+    local primary_sl_token_amount
+    local primary_sl_parent_amount
+    primary_sl_token_amount=$(echo "$primary_sl_underlying" | sed -n '1p' | awk '{print $1}')
+    primary_sl_parent_amount=$(echo "$primary_sl_underlying" | sed -n '2p' | awk '{print $1}')
+    if ! [[ "$primary_sl_token_amount" =~ ^[0-9]+$ ]]; then primary_sl_token_amount=0; fi
+    if ! [[ "$primary_sl_parent_amount" =~ ^[0-9]+$ ]]; then primary_sl_parent_amount=0; fi
+    emit_account_asset_line "stake.sl.split" "LOVE20" "$primary_sl_token_amount" "liquidity-stake-underlying"
+    emit_account_asset_line "stake.sl.split" "TKM20" "$primary_sl_parent_amount" "liquidity-stake-underlying"
+    total_tusdt_wei=$(sum_wei "$total_tusdt_wei" "$(token_amount_to_tusdt_wei "$primary_token" "$primary_sl_token_amount" "$primary_token" "$life20_token")")
+    total_tusdt_wei=$(sum_wei "$total_tusdt_wei" "$(token_amount_to_tusdt_wei "$rootParentTokenAddress" "$primary_sl_parent_amount" "$primary_token" "$life20_token")")
+  fi
+
+  emit_account_asset_line "stake.st" "ST(LOVE20)" "$primary_st_amount" "boost-stake-position"
+  emit_account_asset_line "stake.st.split" "LOVE20" "$primary_st_amount" "boost-stake-underlying"
+  total_tusdt_wei=$(sum_wei "$total_tusdt_wei" "$(token_amount_to_tusdt_wei "$primary_token" "$primary_st_amount" "$primary_token" "$life20_token")")
+
+  local group_activation_amount
+  group_activation_amount=$(safe_uint_call IGroupManager "$groupManagerAddress" stakedByOwner "$primary_token" "$account_address")
+  emit_account_asset_line "group.stake" "LOVE20" "$group_activation_amount" "group-activation-stake"
+  total_tusdt_wei=$(sum_wei "$total_tusdt_wei" "$(token_amount_to_tusdt_wei "$primary_token" "$group_activation_amount" "$primary_token" "$life20_token")")
+
+  if ! is_zero_address "$life20_token"; then
+    local life20_sl_token
+    local life20_st_token
+    life20_sl_token=$(safe_address_call ILOVE20Token "$life20_token" slAddress)
+    life20_st_token=$(safe_address_call ILOVE20Token "$life20_token" stAddress)
+    local life20_sl_amount
+    local life20_st_amount
+    life20_sl_amount=$(balance_of_wei "$life20_sl_token" "$account_address")
+    life20_st_amount=$(balance_of_wei "$life20_st_token" "$account_address")
+
+    emit_account_asset_line "stake.sl" "SL(LIFE20)" "$life20_sl_amount" "liquidity-stake-position"
+    if [ "$life20_sl_amount" != "0" ] && ! is_zero_address "$life20_sl_token"; then
+      local life20_sl_underlying
+      life20_sl_underlying=$(try_call ILOVE20SLToken "$life20_sl_token" tokenAmountsBySlAmount "$life20_sl_amount")
+      local life20_sl_token_amount
+      local life20_sl_parent_amount
+      life20_sl_token_amount=$(echo "$life20_sl_underlying" | sed -n '1p' | awk '{print $1}')
+      life20_sl_parent_amount=$(echo "$life20_sl_underlying" | sed -n '2p' | awk '{print $1}')
+      if ! [[ "$life20_sl_token_amount" =~ ^[0-9]+$ ]]; then life20_sl_token_amount=0; fi
+      if ! [[ "$life20_sl_parent_amount" =~ ^[0-9]+$ ]]; then life20_sl_parent_amount=0; fi
+      emit_account_asset_line "stake.sl.split" "LIFE20" "$life20_sl_token_amount" "liquidity-stake-underlying"
+      emit_account_asset_line "stake.sl.split" "LOVE20" "$life20_sl_parent_amount" "liquidity-stake-underlying"
+      total_tusdt_wei=$(sum_wei "$total_tusdt_wei" "$(token_amount_to_tusdt_wei "$life20_token" "$life20_sl_token_amount" "$primary_token" "$life20_token")")
+      total_tusdt_wei=$(sum_wei "$total_tusdt_wei" "$(token_amount_to_tusdt_wei "$primary_token" "$life20_sl_parent_amount" "$primary_token" "$life20_token")")
+    fi
+
+    emit_account_asset_line "stake.st" "ST(LIFE20)" "$life20_st_amount" "boost-stake-position"
+    emit_account_asset_line "stake.st.split" "LIFE20" "$life20_st_amount" "boost-stake-underlying"
+    total_tusdt_wei=$(sum_wei "$total_tusdt_wei" "$(token_amount_to_tusdt_wei "$life20_token" "$life20_st_amount" "$primary_token" "$life20_token")")
+
+    group_activation_amount=$(safe_uint_call IGroupManager "$groupManagerAddress" stakedByOwner "$life20_token" "$account_address")
+    emit_account_asset_line "group.stake" "LIFE20" "$group_activation_amount" "group-activation-stake"
+    total_tusdt_wei=$(sum_wei "$total_tusdt_wei" "$(token_amount_to_tusdt_wei "$life20_token" "$group_activation_amount" "$primary_token" "$life20_token")")
+  fi
+
+  local token_scope
+  for token_scope in "$primary_token" "$life20_token"; do
+    if is_zero_address "$token_scope"; then
+      continue
+    fi
+
+    local token_scope_label
+    token_scope_label=$(token_label_for_address "$token_scope" "$primary_token" "$life20_token" "LOVE20")
+
+    local base_action_id
+    while IFS= read -r base_action_id; do
+      if ! [[ "$base_action_id" =~ ^[0-9]+$ ]]; then
+        continue
+      fi
+
+      local joined_amount
+      joined_amount=$(safe_uint_call ILOVE20Join "$joinAddress" amountByActionIdByAccount "$token_scope" "$base_action_id" "$account_address")
+      emit_position_asset_lines "action.base" "$token_scope" "$joined_amount" "base-action#$base_action_id@$token_scope_label" "$primary_token" "$life20_token" "LOVE20"
+      total_tusdt_wei=$(sum_wei "$total_tusdt_wei" "$(position_tusdt_value_wei "$token_scope" "$joined_amount" "$primary_token" "$life20_token")")
+    done < <(base_action_ids_by_account "$token_scope" "$account_address")
+
+    local extension_entry
+    while IFS=$'\t' read -r action_id extension factory_address; do
+      if ! [[ "$action_id" =~ ^[0-9]+$ ]]; then
+        continue
+      fi
+
+      local ext_kind
+      ext_kind=$(extension_kind "$extension")
+      local joined_token
+      joined_token=$(extension_join_token_address "$extension")
+      local joined_amount
+      joined_amount=$(extension_join_amount_by_account "$extension" "$current_round_value" "$account_address")
+
+      if is_zero_address "$joined_token"; then
+        joined_token="$token_scope"
+      fi
+
+      case "$ext_kind" in
+        group-service|group-action)
+          emit_position_asset_lines "action.group" "$joined_token" "$joined_amount" "$ext_kind#$action_id@$token_scope_label@$factory_address" "$primary_token" "$life20_token" "LOVE20"
+          ;;
+        token-join)
+          emit_position_asset_lines "action.extension" "$joined_token" "$joined_amount" "token-join#$action_id@$token_scope_label@$factory_address" "$primary_token" "$life20_token" "LOVE20"
+          ;;
+        *)
+          emit_position_asset_lines "action.extension" "$joined_token" "$joined_amount" "extension#$action_id@$token_scope_label@$factory_address" "$primary_token" "$life20_token" "LOVE20"
+          ;;
+      esac
+      total_tusdt_wei=$(sum_wei "$total_tusdt_wei" "$(position_tusdt_value_wei "$joined_token" "$joined_amount" "$primary_token" "$life20_token")")
+    done < <(extension_actions_by_account "$token_scope" "$account_address")
+  done
+
+  echo ""
+  emit_account_asset_line "summary" "TUSDT" "$total_tusdt_wei" "estimated-by-current-pool-price"
+}
+echo "account_assets() loaded"
 
 balance_of(){
     local token_address=$1
@@ -975,6 +2066,7 @@ help() {
     echo "  action_info_by_field(action_id, field)            - Get specific action field"
     echo "  join_status(token_address, action_id)             - Get join status"
     echo "  account_status(token_address, account_address)     - Get account status"
+    echo "  account_assets(account_or_keystore)                - Aggregate LOVE20 ecosystem assets by account"
     echo "  core_data()                                        - Get core data"
     echo "  extension_address(token_address, action_id)        - Get extension address via center"
     echo "  extension_rewardByAccount(extension, round, account)"
@@ -1006,6 +2098,8 @@ help() {
     echo "  current_round \$submitAddress                       - Check current round"
     echo "  launch_info \$tokenAddress                         - Get launch info"
     echo "  stake_status \$tokenAddress \$ACCOUNT_ADDRESS       - Check stake status"
+    echo "  account_assets \$ACCOUNT_ADDRESS                   - Aggregate wallet, stake, join, LP, and group assets"
+    echo "  account_assets cnode01                             - Resolve keystore name to address, then aggregate assets"
     echo "  extension_address \$tokenAddress \$actionId         - Get extension address"
     echo "  extension_rewardByAccount \$extension \$round \$ACCOUNT_ADDRESS  - Get extension reward"
     echo "  send_extension_claimReward \$extension \$round        - Claim extension reward"
