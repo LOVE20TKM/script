@@ -1,0 +1,1382 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>每轮铸币地址看板</title>
+  <style>
+    :root {
+      --bg: #f6f1e8;
+      --panel: rgba(255, 252, 245, 0.84);
+      --panel-strong: rgba(255, 252, 245, 0.96);
+      --text: #1f2933;
+      --muted: #5c6b73;
+      --grid: rgba(31, 41, 51, 0.12);
+      --accent-total: #cc5a2f;
+      --accent-gov: #1b7f6a;
+      --accent-gov-new: #4a9f8b;
+      --accent-action: #3b5ea7;
+      --accent-action-new: #6a88cf;
+      --accent-avg: #8a4b20;
+      --accent-overlap: #7a4f9a;
+      --info-bg: rgba(59, 94, 167, 0.10);
+      --info-border: rgba(59, 94, 167, 0.18);
+      --warn-bg: rgba(204, 90, 47, 0.10);
+      --warn-border: rgba(204, 90, 47, 0.18);
+      --ok-bg: rgba(27, 127, 106, 0.10);
+      --ok-border: rgba(27, 127, 106, 0.18);
+      --shadow: 0 24px 60px rgba(83, 62, 39, 0.12);
+      --radius: 22px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      font-family: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(204, 90, 47, 0.20), transparent 34%),
+        radial-gradient(circle at top right, rgba(27, 127, 106, 0.18), transparent 30%),
+        linear-gradient(180deg, #fbf7ef 0%, var(--bg) 48%, #efe6d7 100%);
+      padding: 32px 18px 56px;
+    }
+
+    .shell {
+      max-width: 1220px;
+      margin: 0 auto;
+      display: grid;
+      gap: 20px;
+    }
+
+    .hero,
+    .panel {
+      background: var(--panel);
+      border: 1px solid rgba(31, 41, 51, 0.08);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+    }
+
+    .hero {
+      padding: 28px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .hero-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: start;
+      flex-wrap: wrap;
+    }
+
+    .eyebrow {
+      font-size: 12px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 0 0 8px;
+    }
+
+    h1 {
+      margin: 0;
+      font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      font-size: clamp(30px, 5vw, 52px);
+      line-height: 1.04;
+      letter-spacing: -0.03em;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 820px;
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 15px;
+    }
+
+    .meta {
+      display: grid;
+      gap: 8px;
+      min-width: 280px;
+      padding: 16px 18px;
+      border-radius: 18px;
+      background: var(--panel-strong);
+      border: 1px solid rgba(31, 41, 51, 0.08);
+    }
+
+    .meta-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--muted);
+    }
+
+    .meta-value {
+      font-size: 14px;
+      word-break: break-all;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .action-btn,
+    .toggle-btn,
+    .filter-btn {
+      border: 0;
+      padding: 10px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+    }
+
+    .action-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: rgba(31, 41, 51, 0.07);
+      color: var(--text);
+      border: 1px solid rgba(31, 41, 51, 0.12);
+      text-decoration: none;
+    }
+
+    .action-btn:hover,
+    .toggle-btn:hover,
+    .filter-btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .action-btn[disabled],
+    .toggle-btn[disabled],
+    .filter-btn[disabled] {
+      opacity: 0.6;
+      cursor: wait;
+      transform: none;
+    }
+
+    .file-btn {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .file-btn input {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .toolbar-note {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      padding: 18px;
+      border-radius: 18px;
+      background: var(--panel-strong);
+      border: 1px solid rgba(31, 41, 51, 0.08);
+    }
+
+    .card-label {
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .card-value {
+      font-size: clamp(28px, 4vw, 42px);
+      line-height: 1;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .card-note {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .status-stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .status-banner {
+      display: none;
+      padding: 14px 16px;
+      border-radius: 18px;
+      line-height: 1.6;
+      font-size: 14px;
+      border: 1px solid transparent;
+    }
+
+    .status-banner strong {
+      font-weight: 700;
+    }
+
+    .status-banner[data-tone="info"] {
+      display: block;
+      background: var(--info-bg);
+      border-color: var(--info-border);
+    }
+
+    .status-banner[data-tone="success"] {
+      display: block;
+      background: var(--ok-bg);
+      border-color: var(--ok-border);
+    }
+
+    .status-banner[data-tone="warning"] {
+      display: block;
+      background: var(--warn-bg);
+      border-color: var(--warn-border);
+    }
+
+    .status-banner[data-tone="error"] {
+      display: block;
+      background: rgba(157, 37, 32, 0.10);
+      border-color: rgba(157, 37, 32, 0.18);
+    }
+
+    .grid-two {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.9fr);
+      gap: 20px;
+    }
+
+    .panel {
+      padding: 22px;
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: 20px;
+      font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+    }
+
+    .panel-subtitle {
+      margin: 6px 0 0;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .filters {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .filter-btn {
+      background: rgba(31, 41, 51, 0.07);
+      color: var(--text);
+    }
+
+    .filter-btn.active {
+      background: var(--text);
+      color: #fffaf3;
+    }
+
+    .toggle-btn {
+      border: 1px solid rgba(31, 41, 51, 0.16);
+      background: rgba(255, 252, 245, 0.92);
+      color: var(--text);
+    }
+
+    .toggle-btn.active {
+      background: rgba(59, 94, 167, 0.12);
+      border-color: rgba(59, 94, 167, 0.28);
+      color: #24427a;
+    }
+
+    .chart-wrap {
+      position: relative;
+      border-radius: 18px;
+      overflow: hidden;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.28));
+      border: 1px solid rgba(31, 41, 51, 0.07);
+      padding: 16px 16px 8px;
+    }
+
+    .chart-legend {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid rgba(31, 41, 51, 0.12);
+      background: rgba(255, 252, 245, 0.94);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: transform 140ms ease, opacity 140ms ease, border-color 140ms ease;
+      font-size: 13px;
+    }
+
+    .legend-item:hover {
+      transform: translateY(-1px);
+    }
+
+    .legend-item.inactive {
+      opacity: 0.45;
+      border-color: rgba(31, 41, 51, 0.08);
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      display: inline-block;
+    }
+
+    .legend-dot.avg {
+      width: 16px;
+      height: 0;
+      border-radius: 0;
+      border-top: 3px dashed var(--accent-avg);
+    }
+
+    #chart {
+      width: 100%;
+      height: 340px;
+      display: block;
+    }
+
+    .notes {
+      display: grid;
+      gap: 12px;
+    }
+
+    .note {
+      padding: 16px;
+      border-radius: 16px;
+      background: var(--panel-strong);
+      border: 1px solid rgba(31, 41, 51, 0.08);
+    }
+
+    .note-title {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .note strong {
+      font-size: 24px;
+      display: inline-block;
+      margin-bottom: 8px;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      border-radius: 18px;
+      border: 1px solid rgba(31, 41, 51, 0.08);
+      background: rgba(255, 255, 255, 0.52);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 720px;
+    }
+
+    th,
+    td {
+      padding: 12px 14px;
+      text-align: right;
+      border-bottom: 1px solid rgba(31, 41, 51, 0.08);
+      font-size: 14px;
+    }
+
+    th:first-child,
+    td:first-child {
+      text-align: left;
+      position: sticky;
+      left: 0;
+      background: rgba(255, 252, 245, 0.94);
+    }
+
+    th {
+      top: 0;
+      position: sticky;
+      background: rgba(255, 252, 245, 0.96);
+      z-index: 1;
+    }
+
+    tbody tr:hover {
+      background: rgba(31, 41, 51, 0.04);
+    }
+
+    .table-tag {
+      display: inline-flex;
+      align-items: center;
+      margin-left: 8px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      line-height: 1;
+      color: #24427a;
+      background: rgba(59, 94, 167, 0.12);
+      border: 1px solid rgba(59, 94, 167, 0.18);
+    }
+
+    .empty-cell {
+      text-align: center !important;
+      color: var(--muted);
+      padding: 28px 14px;
+    }
+
+    .footer {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+      padding: 0 4px;
+    }
+
+    code {
+      font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 0.95em;
+    }
+
+    @media (max-width: 980px) {
+      .grid-two {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 18px 12px 36px;
+      }
+
+      .hero,
+      .panel {
+        padding: 18px;
+      }
+
+      #chart {
+        height: 280px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div class="hero-top">
+        <div>
+          <p class="eyebrow">LOVE20 Event DB Dashboard</p>
+          <h1>每一轮有多少地址铸币</h1>
+          <p>
+            页面直接在浏览器里读取 SQLite 数据库并执行 SQL。默认加载看板专用的
+            <code>./data/thinkium70001_public.db</code>，按 <code>log_round</code>
+            统计治理铸币地址、行动铸币地址，以及两者去重后的总铸币地址数。
+          </p>
+        </div>
+        <aside class="meta" id="meta"></aside>
+      </div>
+
+      <div class="toolbar">
+        <button class="action-btn" id="reload-default" type="button">加载默认看板 DB</button>
+        <label class="action-btn file-btn">
+          选择本地看板 DB
+          <input id="db-file" type="file" accept=".db,.sqlite,.sqlite3,application/octet-stream" />
+        </label>
+        <div class="toolbar-note" id="source-note"></div>
+      </div>
+
+      <div class="cards" id="cards"></div>
+
+      <div class="status-stack">
+        <div class="status-banner" id="load-banner"></div>
+        <div class="status-banner" id="round-banner"></div>
+      </div>
+    </section>
+
+    <section class="grid-two">
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2 class="panel-title">轮次趋势</h2>
+            <p class="panel-subtitle" id="chart-subtitle">加载数据后显示最近 48 轮趋势。</p>
+          </div>
+          <div class="controls">
+            <button class="toggle-btn" id="toggle-in-progress" type="button">显示进行中轮次</button>
+            <div class="filters" id="filters"></div>
+          </div>
+        </div>
+        <div class="chart-wrap">
+          <div class="chart-legend" id="chart-legend"></div>
+          <svg id="chart" viewBox="0 0 980 340" preserveAspectRatio="none" aria-label="mint address trend chart"></svg>
+        </div>
+      </section>
+
+      <aside class="panel">
+        <div class="panel-head">
+          <div>
+            <h2 class="panel-title">读数说明</h2>
+            <p class="panel-subtitle">口径和当前加载状态都写在页内。</p>
+          </div>
+        </div>
+        <div class="notes" id="notes"></div>
+      </aside>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2 class="panel-title">逐轮明细</h2>
+          <p class="panel-subtitle" id="table-subtitle">表格按最新轮次在前展示。</p>
+        </div>
+      </div>
+        <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>log_round</th>
+              <th>总铸币地址数</th>
+              <th>治理铸币新增地址数</th>
+              <th>行动铸币新增地址数</th>
+              <th>治理铸币地址数</th>
+              <th>行动铸币地址数</th>
+              <th>平均每地址行动数</th>
+              <th>重叠地址数</th>
+            </tr>
+          </thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="footer">
+      <div>页面直接查询看板专用 SQLite，源数据来自原始 <code>events.db</code> 聚合结果。</div>
+      <div>适配层：<code>v_mint_gov_reward</code>、<code>v_mint_action_reward</code>、<code>v_claim_reward</code>。</div>
+      <div>注意：<code>log_round</code> 是按区块推导出的协议轮次，不等于事件 payload 里的 <code>round</code>。</div>
+      <div>默认数据库：<code>./data/thinkium70001_public.db</code>。</div>
+    </section>
+  </main>
+
+  <template id="query-sql-fallback">
+SELECT
+    log_round,
+    total_mint_address_count,
+    new_gov_mint_address_count,
+    new_action_mint_address_count,
+    gov_mint_address_count,
+    action_mint_address_count,
+    avg_action_count_per_address,
+    overlap_mint_address_count
+FROM round_stats
+ORDER BY log_round ASC;
+  </template>
+
+  <template id="summary-sql-fallback">
+SELECT
+    history_gov_unique_address_count,
+    history_action_unique_address_count,
+    history_total_unique_address_count
+FROM history_summary
+LIMIT 1;
+  </template>
+
+  <script src="../vendor/sql.js/sql-wasm.js"></script>
+  <script>
+    const DEFAULT_NETWORK = "thinkium70001_public";
+    const DEFAULT_DB_URL = `./data/${DEFAULT_NETWORK}.db`;
+    const MAIN_QUERY_URL = "./query.sql";
+    const SUMMARY_QUERY_URL = "./summary.sql";
+    const SQL_WASM_DIR = "../vendor/sql.js";
+
+    const numberFormatter = new Intl.NumberFormat("zh-CN");
+    const timeFormatter = new Intl.DateTimeFormat("zh-CN", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    });
+
+    const state = {
+      allRows: [],
+      historySummary: null,
+      sourceLabel: DEFAULT_DB_URL,
+      networkLabel: DEFAULT_NETWORK,
+      loadedAt: null,
+      showInProgressRound: false,
+      activeWindow: 48,
+      seriesVisibility: {
+        total: true,
+        govNew: true,
+        actionNew: true,
+        gov: true,
+        action: true,
+        avg: true
+      },
+      isBusy: false
+    };
+
+    let sqlModulePromise = null;
+
+    function fmt(value) {
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return numberFormatter.format(value);
+      }
+      if (value === null || value === undefined || value === "") {
+        return "-";
+      }
+      return String(value);
+    }
+
+    function setBusy(isBusy) {
+      state.isBusy = isBusy;
+      document.querySelectorAll("button").forEach((button) => {
+        button.disabled = isBusy;
+      });
+      const fileInput = document.getElementById("db-file");
+      fileInput.disabled = isBusy;
+    }
+
+    function setBanner(id, tone, message) {
+      const node = document.getElementById(id);
+      if (!message) {
+        node.style.display = "none";
+        node.removeAttribute("data-tone");
+        node.textContent = "";
+        return;
+      }
+      node.style.display = "block";
+      node.setAttribute("data-tone", tone);
+      node.innerHTML = message;
+    }
+
+    function rowsFromExec(execResult) {
+      const table = execResult[0];
+      if (!table) {
+        return [];
+      }
+      return table.values.map((values) => {
+        const row = {};
+        table.columns.forEach((column, index) => {
+          row[column] = values[index];
+        });
+        return row;
+      });
+    }
+
+    async function ensureSqlJs() {
+      if (!window.initSqlJs) {
+        throw new Error("sql.js 未成功加载");
+      }
+      if (!sqlModulePromise) {
+        sqlModulePromise = window.initSqlJs({
+          locateFile: (file) => `${SQL_WASM_DIR}/${file}`
+        });
+      }
+      return sqlModulePromise;
+    }
+
+    async function fetchText(url) {
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`加载 ${url} 失败: HTTP ${response.status}`);
+      }
+      return response.text();
+    }
+
+    async function fetchBuffer(url) {
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`加载 ${url} 失败: HTTP ${response.status}`);
+      }
+      return response.arrayBuffer();
+    }
+
+    async function loadSqlWithFallback(url, templateId) {
+      try {
+        return await fetchText(url);
+      } catch (error) {
+        const fallback = document.getElementById(templateId);
+        if (fallback) {
+          return fallback.textContent.trim();
+        }
+        throw error;
+      }
+    }
+
+    async function loadQueries() {
+      const [mainSql, summarySql] = await Promise.all([
+        loadSqlWithFallback(MAIN_QUERY_URL, "query-sql-fallback"),
+        loadSqlWithFallback(SUMMARY_QUERY_URL, "summary-sql-fallback")
+      ]);
+      return { mainSql, summarySql };
+    }
+
+    function normalizeRows(rows) {
+      return rows
+        .map((row) => ({
+          log_round: Number(row.log_round),
+          total_mint_address_count: Number(row.total_mint_address_count),
+          new_gov_mint_address_count: Number(row.new_gov_mint_address_count || 0),
+          new_action_mint_address_count: Number(row.new_action_mint_address_count || 0),
+          gov_mint_address_count: Number(row.gov_mint_address_count),
+          action_mint_address_count: Number(row.action_mint_address_count),
+          avg_action_count_per_address: Number(row.avg_action_count_per_address),
+          overlap_mint_address_count: Number(row.overlap_mint_address_count)
+        }))
+        .sort((left, right) => left.log_round - right.log_round);
+    }
+
+    function normalizeHistorySummary(rows) {
+      const row = rows[0] || {};
+      return {
+        history_gov_unique_address_count: Number(row.history_gov_unique_address_count || 0),
+        history_action_unique_address_count: Number(row.history_action_unique_address_count || 0),
+        history_total_unique_address_count: Number(row.history_total_unique_address_count || 0)
+      };
+    }
+
+    async function queryDatabase(arrayBuffer) {
+      const SQL = await ensureSqlJs();
+      const db = new SQL.Database(new Uint8Array(arrayBuffer));
+      try {
+        const { mainSql, summarySql } = await loadQueries();
+        const mainRows = normalizeRows(rowsFromExec(db.exec(mainSql)));
+        const historySummary = normalizeHistorySummary(rowsFromExec(db.exec(summarySql)));
+        return { mainRows, historySummary };
+      } finally {
+        db.close();
+      }
+    }
+
+    function getHiddenInProgressRound() {
+      return state.allRows.length > 1 ? state.allRows[state.allRows.length - 1] : null;
+    }
+
+    function getVisibleRows() {
+      const hidden = getHiddenInProgressRound();
+      if (hidden && !state.showInProgressRound) {
+        return state.allRows.slice(0, -1);
+      }
+      return state.allRows;
+    }
+
+    function getViewSummary(viewRows) {
+      const latest = viewRows[viewRows.length - 1];
+      const peakTotal = viewRows.reduce(
+        (best, item) => item.total_mint_address_count > best.total_mint_address_count ? item : best,
+        viewRows[0]
+      );
+      const peakGov = viewRows.reduce(
+        (best, item) => item.gov_mint_address_count > best.gov_mint_address_count ? item : best,
+        viewRows[0]
+      );
+      const peakAction = viewRows.reduce(
+        (best, item) => item.action_mint_address_count > best.action_mint_address_count ? item : best,
+        viewRows[0]
+      );
+      const avgTotal = Math.round(
+        (viewRows.reduce((sum, item) => sum + item.total_mint_address_count, 0) / viewRows.length) * 100
+      ) / 100;
+
+      return {
+        roundCount: viewRows.length,
+        latest,
+        peakTotal,
+        peakGov,
+        peakAction,
+        avgTotal
+      };
+    }
+
+    function getChartRows(viewRows) {
+      if (state.activeWindow === "all") {
+        return viewRows;
+      }
+      return viewRows.slice(-Math.min(state.activeWindow, viewRows.length));
+    }
+
+    function renderMeta() {
+      document.getElementById("meta").innerHTML = `
+        <div>
+          <div class="meta-label">Network</div>
+          <div class="meta-value">${fmt(state.networkLabel)}</div>
+        </div>
+        <div>
+          <div class="meta-label">DB Source</div>
+          <div class="meta-value">${fmt(state.sourceLabel)}</div>
+        </div>
+        <div>
+          <div class="meta-label">Query Files</div>
+          <div class="meta-value">query.sql + summary.sql</div>
+        </div>
+        <div>
+          <div class="meta-label">Loaded At</div>
+          <div class="meta-value">${fmt(state.loadedAt)}</div>
+        </div>
+        <div>
+          <div class="meta-label">Default View</div>
+          <div class="meta-value">隐藏最新进行中轮次</div>
+        </div>
+      `;
+    }
+
+    function renderSourceNote() {
+      const hidden = getHiddenInProgressRound();
+      const note = hidden
+        ? `默认源：${DEFAULT_DB_URL}。当前隐藏第 ${fmt(hidden.log_round)} 轮，除非右上角手动显示。`
+        : `默认源：${DEFAULT_DB_URL}。也可以手动选择其他同结构的看板 SQLite 文件。`;
+      document.getElementById("source-note").textContent = note;
+    }
+
+    function getSeriesConfig() {
+      return [
+        { key: "total", label: "总铸币地址", field: "total_mint_address_count", axis: "count", color: "var(--accent-total)", dotClass: "" },
+        { key: "gov", label: "治理铸币地址", field: "gov_mint_address_count", axis: "count", color: "var(--accent-gov)", dotClass: "" },
+        { key: "govNew", label: "治理铸币新增", field: "new_gov_mint_address_count", axis: "count", color: "var(--accent-gov-new)", dotClass: "" },
+        { key: "action", label: "行动铸币地址", field: "action_mint_address_count", axis: "count", color: "var(--accent-action)", dotClass: "" },
+        { key: "actionNew", label: "行动铸币新增", field: "new_action_mint_address_count", axis: "count", color: "var(--accent-action-new)", dotClass: "" },
+        { key: "avg", label: "平均每地址行动数", field: "avg_action_count_per_address", axis: "avg", color: "var(--accent-avg)", dotClass: "avg" }
+      ];
+    }
+
+    function renderLegend() {
+      const legend = document.getElementById("chart-legend");
+      const items = getSeriesConfig();
+      legend.innerHTML = items.map((item) => `
+        <button
+          class="legend-item ${state.seriesVisibility[item.key] ? "" : "inactive"}"
+          type="button"
+          data-series-key="${item.key}"
+          ${state.isBusy ? "disabled" : ""}
+          title="点击切换 ${item.label}"
+        >
+          <span class="legend-dot ${item.dotClass}" style="${item.dotClass ? "" : `background: ${item.color}`}"></span>
+          ${item.label}
+        </button>
+      `).join("");
+
+      legend.querySelectorAll(".legend-item").forEach((button) => {
+        button.addEventListener("click", () => {
+          const key = button.dataset.seriesKey;
+          state.seriesVisibility[key] = !state.seriesVisibility[key];
+          render();
+        });
+      });
+    }
+
+    function renderCards(viewSummary) {
+      const history = state.historySummary;
+      const cards = [
+        {
+          label: "最新轮次",
+          value: viewSummary.latest.log_round,
+          note: `当前视图覆盖 ${fmt(viewSummary.roundCount)} 个 log_round`
+        },
+        {
+          label: "最新总铸币地址",
+          value: viewSummary.latest.total_mint_address_count,
+          note: `治理 ${fmt(viewSummary.latest.gov_mint_address_count)} / 行动 ${fmt(viewSummary.latest.action_mint_address_count)}`
+        },
+        {
+          label: "最新治理铸币新增",
+          value: viewSummary.latest.new_gov_mint_address_count,
+          note: "当轮治理铸币地址中，历史上首次发生治理铸币的地址数"
+        },
+        {
+          label: "最新行动铸币新增",
+          value: viewSummary.latest.new_action_mint_address_count,
+          note: "当轮行动铸币地址中，历史上首次发生行动铸币的地址数"
+        },
+        {
+          label: "最新平均参与行动数",
+          value: viewSummary.latest.avg_action_count_per_address,
+          note: "按当轮所有有铸币地址平均，未参与行动按 0 计"
+        },
+        {
+          label: "历史唯一总铸币地址",
+          value: history.history_total_unique_address_count,
+          note: `治理 ${fmt(history.history_gov_unique_address_count)} / 行动 ${fmt(history.history_action_unique_address_count)}`
+        },
+        {
+          label: "峰值总铸币地址",
+          value: viewSummary.peakTotal.total_mint_address_count,
+          note: `发生在第 ${fmt(viewSummary.peakTotal.log_round)} 轮`
+        },
+        {
+          label: "平均每轮总铸币地址",
+          value: viewSummary.avgTotal,
+          note: `按当前视图 ${fmt(viewSummary.roundCount)} 轮均值计算`
+        }
+      ];
+
+      document.getElementById("cards").innerHTML = cards.map((card) => `
+        <article class="card">
+          <div class="card-label">${card.label}</div>
+          <div class="card-value">${fmt(card.value)}</div>
+          <div class="card-note">${card.note}</div>
+        </article>
+      `).join("");
+    }
+
+    function renderNotes(viewSummary) {
+      const hidden = getHiddenInProgressRound();
+      const items = [
+        {
+          title: "治理铸币峰值",
+          value: viewSummary.peakGov.gov_mint_address_count,
+          note: `第 ${fmt(viewSummary.peakGov.log_round)} 轮`
+        },
+        {
+          title: "行动铸币峰值",
+          value: viewSummary.peakAction.action_mint_address_count,
+          note: `第 ${fmt(viewSummary.peakAction.log_round)} 轮`
+        },
+        {
+          title: "最新治理铸币新增",
+          value: viewSummary.latest.new_gov_mint_address_count,
+          note: "当轮治理铸币地址里，历史上第一次发生治理铸币的地址数"
+        },
+        {
+          title: "最新行动铸币新增",
+          value: viewSummary.latest.new_action_mint_address_count,
+          note: "当轮行动铸币地址里，历史上第一次发生行动铸币的地址数"
+        },
+        {
+          title: "最新重叠地址",
+          value: viewSummary.latest.overlap_mint_address_count,
+          note: "同一轮同时出现在治理铸币和行动铸币中的地址数"
+        },
+        {
+          title: "最新平均参与行动数",
+          value: viewSummary.latest.avg_action_count_per_address,
+          note: "同一轮中，所有有铸币地址平均参与的 distinct actionId 数；未参与行动地址按 0 计"
+        },
+        {
+          title: hidden ? "进行中轮次" : "统计口径",
+          value: hidden ? `第 ${fmt(hidden.log_round)} 轮` : "总数=去重并集",
+          note: hidden
+            ? "默认隐藏最新同步轮次。需要排查实时变化时，再点右上角按钮显示。"
+            : "总铸币地址数不是治理+行动直接相加，因为同一地址可能两边都出现。"
+        }
+      ];
+
+      document.getElementById("notes").innerHTML = items.map((item) => `
+        <article class="note">
+          <div class="note-title">${item.title}</div>
+          <strong>${typeof item.value === "number" ? fmt(item.value) : item.value}</strong>
+          <div>${item.note}</div>
+        </article>
+      `).join("");
+    }
+
+    function renderSubtitles(viewSummary) {
+      const chartSubtitle = document.getElementById("chart-subtitle");
+      const tableSubtitle = document.getElementById("table-subtitle");
+      const hidden = getHiddenInProgressRound();
+
+      if (hidden && !state.showInProgressRound) {
+        chartSubtitle.textContent = `默认展示已完成轮次，当前隐藏进行中的第 ${hidden.log_round} 轮。点击图例可隐藏或显示曲线，平均行动数使用右轴。`;
+        tableSubtitle.textContent = `表格按最新已完成轮次在前展示；第 ${hidden.log_round} 轮默认隐藏。`;
+        return;
+      }
+
+      if (hidden && state.showInProgressRound) {
+        chartSubtitle.textContent = `当前包含进行中的第 ${hidden.log_round} 轮；默认展示最近 48 轮。点击图例可隐藏或显示曲线，平均行动数使用右轴。`;
+        tableSubtitle.textContent = "表格按最新轮次在前展示；当前包含进行中轮次。";
+        return;
+      }
+
+      chartSubtitle.textContent = `当前展示 ${fmt(viewSummary.roundCount)} 个 log_round，可切换不同窗口。点击图例可隐藏或显示曲线，平均行动数使用右轴。`;
+      tableSubtitle.textContent = `表格按最新轮次在前展示，共 ${fmt(viewSummary.roundCount)} 轮。`;
+    }
+
+    function renderRoundBanner(viewSummary) {
+      const hidden = getHiddenInProgressRound();
+      if (!hidden) {
+        setBanner("round-banner", "", "");
+        return;
+      }
+
+      if (state.showInProgressRound) {
+        setBanner(
+          "round-banner",
+          "warning",
+          `当前正在显示进行中的第 <strong>${fmt(hidden.log_round)}</strong> 轮。该轮尚未结束，地址数仍会继续变化。`
+        );
+        return;
+      }
+
+      setBanner(
+        "round-banner",
+        "info",
+        `默认已隐藏进行中的第 <strong>${fmt(hidden.log_round)}</strong> 轮，避免把未结束轮次误读为异常下跌。当前展示到第 <strong>${fmt(viewSummary.latest.log_round)}</strong> 轮。`
+      );
+    }
+
+    function renderTable(viewRows) {
+      const hidden = getHiddenInProgressRound();
+      const body = document.getElementById("table-body");
+      body.innerHTML = viewRows.slice().reverse().map((row) => `
+        <tr>
+          <td>${fmt(row.log_round)}${state.showInProgressRound && hidden && row.log_round === hidden.log_round ? '<span class="table-tag">进行中</span>' : ""}</td>
+          <td>${fmt(row.total_mint_address_count)}</td>
+          <td>${fmt(row.new_gov_mint_address_count)}</td>
+          <td>${fmt(row.new_action_mint_address_count)}</td>
+          <td>${fmt(row.gov_mint_address_count)}</td>
+          <td>${fmt(row.action_mint_address_count)}</td>
+          <td>${fmt(row.avg_action_count_per_address)}</td>
+          <td>${fmt(row.overlap_mint_address_count)}</td>
+        </tr>
+      `).join("");
+    }
+
+    function buildPath(points, xMap, yMap, key) {
+      return points.map((point, index) => `${index === 0 ? "M" : "L"}${xMap(index)},${yMap(point[key])}`).join(" ");
+    }
+
+    function renderPlaceholderChart(message) {
+      const svg = document.getElementById("chart");
+      svg.innerHTML = `
+        <rect x="0" y="0" width="980" height="340" fill="transparent"></rect>
+        <text x="490" y="170" text-anchor="middle" font-size="16" fill="var(--muted)">${message}</text>
+      `;
+    }
+
+    function renderChart(points) {
+      if (!points.length) {
+        renderPlaceholderChart("暂无数据");
+        return;
+      }
+
+      const visibleSeries = getSeriesConfig().filter((item) => state.seriesVisibility[item.key]);
+      if (!visibleSeries.length) {
+        renderPlaceholderChart("已隐藏全部曲线，点击上方图例重新显示");
+        return;
+      }
+
+      const svg = document.getElementById("chart");
+      const width = 980;
+      const height = 340;
+      const padding = { top: 18, right: 58, bottom: 34, left: 58 };
+      const chartWidth = width - padding.left - padding.right;
+      const chartHeight = height - padding.top - padding.bottom;
+      const visibleCountSeries = visibleSeries.filter((item) => item.axis === "count");
+      const visibleAvgSeries = visibleSeries.filter((item) => item.axis === "avg");
+      const countMax = Math.max(
+        1,
+        ...(visibleCountSeries.length
+          ? points.flatMap((item) => visibleCountSeries.map((series) => item[series.field]))
+          : [0])
+      );
+      const avgMax = Math.max(
+        1,
+        ...(visibleAvgSeries.length
+          ? points.flatMap((item) => visibleAvgSeries.map((series) => item[series.field]))
+          : [0])
+      );
+
+      const xMap = (index) => {
+        if (points.length === 1) {
+          return padding.left + chartWidth / 2;
+        }
+        return padding.left + (chartWidth * index) / (points.length - 1);
+      };
+
+      const yCountMap = (value) => padding.top + chartHeight - (value / countMax) * chartHeight;
+      const yAvgMap = (value) => padding.top + chartHeight - (value / avgMax) * chartHeight;
+      const leftAxisValues = [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round(countMax * ratio));
+      const rightAxisValues = [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round(avgMax * ratio * 100) / 100);
+      const gridSource = visibleCountSeries.length ? leftAxisValues : rightAxisValues;
+      const yGridMap = visibleCountSeries.length ? yCountMap : yAvgMap;
+
+      const grid = gridSource.map((value) => {
+        const y = yGridMap(value);
+        return `
+          <line x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" stroke="var(--grid)" stroke-width="1" />
+          ${visibleCountSeries.length ? `<text x="${padding.left - 10}" y="${y + 4}" text-anchor="end" font-size="12" fill="var(--muted)">${fmt(value)}</text>` : ""}
+        `;
+      }).join("");
+
+      const rightAxis = visibleAvgSeries.length ? rightAxisValues.map((value) => {
+        const y = yAvgMap(value);
+        return `
+          <text x="${width - padding.right + 10}" y="${y + 4}" text-anchor="start" font-size="12" fill="var(--muted)">${fmt(value)}</text>
+        `;
+      }).join("") : "";
+
+      const tickStride = Math.max(1, Math.ceil(points.length / 8));
+      const xTicks = points.map((point, index) => {
+        if (points.length > 24 && index !== 0 && index !== points.length - 1 && index % tickStride !== 0) {
+          return "";
+        }
+        return `
+          <text x="${xMap(index)}" y="${height - 10}" text-anchor="middle" font-size="11" fill="var(--muted)">${point.log_round}</text>
+        `;
+      }).join("");
+
+      const seriesPaths = visibleSeries.map((series) => {
+        const yMap = series.axis === "avg" ? yAvgMap : yCountMap;
+        const path = buildPath(points, xMap, yMap, series.field);
+        const dash = series.axis === "avg" ? ' stroke-dasharray="8 6"' : "";
+        const widthValue = series.axis === "avg" ? 2.5 : 3;
+        return `<path d="${path}" fill="none" stroke="${series.color}" stroke-width="${widthValue}" stroke-linecap="round" stroke-linejoin="round"${dash}></path>`;
+      }).join("");
+
+      const axisLabels = `
+        ${visibleCountSeries.length ? `<text x="${padding.left}" y="${padding.top - 4}" text-anchor="start" font-size="11" fill="var(--muted)">地址数</text>` : ""}
+        ${visibleAvgSeries.length ? `<text x="${width - padding.right}" y="${padding.top - 4}" text-anchor="end" font-size="11" fill="var(--muted)">平均每地址行动数</text>` : ""}
+      `;
+
+      svg.innerHTML = `
+        <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
+        ${grid}
+        ${rightAxis}
+        ${axisLabels}
+        ${seriesPaths}
+        ${xTicks}
+      `;
+    }
+
+    function renderControls(viewRows) {
+      const hidden = getHiddenInProgressRound();
+      const toggleButton = document.getElementById("toggle-in-progress");
+      if (!hidden) {
+        toggleButton.style.display = "none";
+      } else {
+        toggleButton.style.display = "inline-flex";
+        toggleButton.textContent = state.showInProgressRound
+          ? "隐藏进行中轮次"
+          : `显示第 ${hidden.log_round} 轮`;
+        toggleButton.classList.toggle("active", state.showInProgressRound);
+      }
+
+      const baseOptions = [
+        { label: "最近 24 轮", value: 24 },
+        { label: "最近 48 轮", value: 48 },
+        { label: "最近 96 轮", value: 96 },
+        { label: "全部轮次", value: "all" }
+      ];
+
+      const options = [
+        ...baseOptions.filter((item) => item.value === "all" || item.value <= viewRows.length),
+        ...(viewRows.length <= 24 ? [{ label: "全部轮次", value: "all" }] : [])
+      ].filter((item, index, array) => array.findIndex((other) => other.value === item.value) === index);
+
+      const container = document.getElementById("filters");
+      container.innerHTML = options.map((item) => `
+        <button class="filter-btn ${item.value === state.activeWindow ? "active" : ""}" data-value="${item.value}">
+          ${item.label}
+        </button>
+      `).join("");
+
+      container.querySelectorAll(".filter-btn").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.activeWindow = button.dataset.value === "all" ? "all" : Number(button.dataset.value);
+          render();
+        });
+      });
+    }
+
+    function renderEmpty() {
+      renderMeta();
+      renderSourceNote();
+      renderLegend();
+      document.getElementById("cards").innerHTML = `
+        <article class="card">
+          <div class="card-label">等待数据</div>
+          <div class="card-value">-</div>
+          <div class="card-note">点击“加载默认 DB”或“选择本地 DB”后开始查询。</div>
+        </article>
+      `;
+      document.getElementById("notes").innerHTML = `
+        <article class="note">
+          <div class="note-title">当前状态</div>
+          <strong>未加载</strong>
+          <div>页面会在浏览器内直接执行 <code>query.sql</code> 和 <code>summary.sql</code>。</div>
+        </article>
+        <article class="note">
+          <div class="note-title">默认源</div>
+          <strong>${DEFAULT_NETWORK}</strong>
+          <div>默认读取 <code>${DEFAULT_DB_URL}</code>。如果浏览器拦截相对文件访问，请起本地静态服务。</div>
+        </article>
+      `;
+      document.getElementById("table-body").innerHTML = `
+        <tr>
+          <td colspan="6" class="empty-cell">暂无数据</td>
+        </tr>
+      `;
+      document.getElementById("chart-subtitle").textContent = "加载数据后显示最近 48 轮趋势。";
+      document.getElementById("table-subtitle").textContent = "表格按最新轮次在前展示。";
+      setBanner("round-banner", "", "");
+      renderPlaceholderChart("等待加载 SQLite 数据库");
+      renderControls([]);
+    }
+
+    function render() {
+      if (!state.allRows.length || !state.historySummary) {
+        renderEmpty();
+        return;
+      }
+
+      const viewRows = getVisibleRows();
+      const viewSummary = getViewSummary(viewRows);
+
+      renderMeta();
+      renderSourceNote();
+      renderLegend();
+      renderCards(viewSummary);
+      renderNotes(viewSummary);
+      renderSubtitles(viewSummary);
+      renderRoundBanner(viewSummary);
+      renderTable(viewRows);
+      renderControls(viewRows);
+      renderChart(getChartRows(viewRows));
+    }
+
+    async function loadDashboard({ label, networkLabel, arrayBufferPromise }) {
+      setBusy(true);
+      setBanner("load-banner", "info", "正在加载看板 SQLite 数据库并执行 SQL，请稍等。");
+
+      try {
+        const arrayBuffer = await arrayBufferPromise;
+        const { mainRows, historySummary } = await queryDatabase(arrayBuffer);
+        if (!mainRows.length) {
+          throw new Error("query.sql 没有返回任何轮次数据");
+        }
+
+        state.allRows = mainRows;
+        state.historySummary = historySummary;
+        state.sourceLabel = label;
+        state.networkLabel = networkLabel;
+        state.loadedAt = timeFormatter.format(new Date());
+        state.showInProgressRound = false;
+
+        render();
+        setBanner(
+          "load-banner",
+          "success",
+          `已加载 <strong>${fmt(label)}</strong>，共查询到 <strong>${fmt(mainRows.length)}</strong> 个 log_round。`
+        );
+      } catch (error) {
+        console.error(error);
+        const extra = location.protocol === "file:"
+          ? " 当前页面通过 file:// 打开时，浏览器通常不允许直接读取相对 .db 文件。建议改用本地静态服务，或点击“选择本地看板 DB”。"
+          : "";
+        setBanner("load-banner", "error", `${error.message}${extra}`);
+        render();
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function loadDefaultDb() {
+      await loadDashboard({
+        label: DEFAULT_DB_URL,
+        networkLabel: DEFAULT_NETWORK,
+        arrayBufferPromise: fetchBuffer(DEFAULT_DB_URL)
+      });
+    }
+
+    async function loadLocalFile(file) {
+      await loadDashboard({
+        label: file.name,
+        networkLabel: "manual file",
+        arrayBufferPromise: file.arrayBuffer()
+      });
+    }
+
+    function bindEvents() {
+      document.getElementById("reload-default").addEventListener("click", () => {
+        loadDefaultDb();
+      });
+
+      document.getElementById("toggle-in-progress").addEventListener("click", () => {
+        state.showInProgressRound = !state.showInProgressRound;
+        render();
+      });
+
+      document.getElementById("db-file").addEventListener("change", async (event) => {
+        const file = event.target.files && event.target.files[0];
+        if (!file) {
+          return;
+        }
+        await loadLocalFile(file);
+        event.target.value = "";
+      });
+    }
+
+    async function bootstrap() {
+      renderEmpty();
+      bindEvents();
+
+      try {
+        await ensureSqlJs();
+      } catch (error) {
+        console.error(error);
+        setBanner("load-banner", "error", `${error.message}。请确认 vendor/sql.js 文件存在。`);
+        return;
+      }
+
+      if (location.protocol === "file:") {
+        setBanner(
+          "load-banner",
+          "warning",
+          `当前页面通过 <code>file://</code> 打开，浏览器通常不会直接读取默认的 <code>${DEFAULT_DB_URL}</code>。请点击“选择本地看板 DB”，或按 README 在 <code>script/script/log</code> 目录启动静态服务后访问 <code>http://127.0.0.1:8000/dashboards/mint-addresses-by-log-round/</code>。`
+        );
+        return;
+      }
+
+      await loadDefaultDb();
+    }
+
+    bootstrap();
+  </script>
+</body>
+</html>

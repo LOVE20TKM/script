@@ -16,6 +16,10 @@ script/log/output/
 # SQLite databases
 script/log/db/
 
+# Python cache
+__pycache__/
+*.pyc
+
 # Dotenv file
 .env
 .account

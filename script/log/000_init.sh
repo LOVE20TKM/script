@@ -153,14 +153,14 @@ init_pair_address() {
 
 export tokenAddress=$firstTokenAddress
 init_token_address_set "tokenAddress" "$tokenAddress" "" || return 1
-init_extension_addresses "$tokenAddress" "" 24 25 26 27 28 29 || return 1
+init_extension_addresses "$tokenAddress" "" 24 25 26 27 28 29 30 || return 1
 init_pair_address "$tokenAddress" "$rootParentTokenAddress" "love20Tkm20PairAddress" || return 1
 init_pair_address "$tokenAddress" "$tusdtAddress" "love20TusdtPairAddress" || return 1
 
 life20Address=$(resolve_optional_address_from_call "life20Address" "$launchAddress" "tokenAddressBySymbol(string)(address)" "LIFE20") || return 1
 if is_nonzero_address "$life20Address"; then
   init_token_address_set "life20Address" "$life20Address" "life20" || return 1
-  init_extension_addresses "$life20Address" "life20" 0 1 2 3 4 5 6 || return 1
+  init_extension_addresses "$life20Address" "life20" 0 1 2 3 4 5 6 7 || return 1
   init_pair_address "$firstTokenAddress" "$life20Address" "love20Life20PairAddress" || return 1
 fi
 

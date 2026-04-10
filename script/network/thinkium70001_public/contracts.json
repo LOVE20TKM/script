@@ -77,10 +77,7 @@
   {
     "name": "group",
     "address_env_var": "groupAddress",
-    "abi_files": [
-      "../../abi/ILOVE20Group.sol/ILOVE20Group.json",
-      "../../abi/IERC721.sol/IERC721.json"
-    ]
+    "abi_files": ["../../abi/ILOVE20Group.sol/ILOVE20Group.json", "../../abi/IERC721.sol/IERC721.json"]
   },
   {
     "name": "groupManager",
@@ -144,26 +141,17 @@
   {
     "name": "ext25",
     "address_env_var": "ext25Address",
-    "abi_files": [
-      "../../abi/IExtension.sol/IExtensionEvents.json",
-      "../../abi/IReward.sol/IRewardEvents.json"
-    ]
+    "abi_files": ["../../abi/IExtension.sol/IExtensionEvents.json", "../../abi/IReward.sol/IRewardEvents.json"]
   },
   {
     "name": "ext26",
     "address_env_var": "ext26Address",
-    "abi_files": [
-      "../../abi/IExtension.sol/IExtensionEvents.json",
-      "../../abi/IReward.sol/IRewardEvents.json"
-    ]
+    "abi_files": ["../../abi/IExtension.sol/IExtensionEvents.json", "../../abi/IReward.sol/IRewardEvents.json"]
   },
   {
     "name": "ext27",
     "address_env_var": "ext27Address",
-    "abi_files": [
-      "../../abi/IExtension.sol/IExtensionEvents.json",
-      "../../abi/IReward.sol/IRewardEvents.json"
-    ]
+    "abi_files": ["../../abi/IExtension.sol/IExtensionEvents.json", "../../abi/IReward.sol/IRewardEvents.json"]
   },
   {
     "name": "ext28",
@@ -178,9 +166,17 @@
   {
     "name": "ext29",
     "address_env_var": "ext29Address",
+    "abi_files": ["../../abi/IExtension.sol/IExtensionEvents.json", "../../abi/IReward.sol/IRewardEvents.json"]
+  },
+  {
+    "name": "ext30",
+    "address_env_var": "ext30Address",
+    "from_block": 71274532,
     "abi_files": [
       "../../abi/IExtension.sol/IExtensionEvents.json",
-      "../../abi/IReward.sol/IRewardEvents.json"
+      "../../abi/IReward.sol/IRewardEvents.json",
+      "../../abi/IGroupService.sol/IGroupServiceEvents.json",
+      "../../abi/IJoin.sol/IJoinEvents.json"
     ]
   },
   {
@@ -219,55 +215,37 @@
     "name": "life20Ext0",
     "address_env_var": "life20Ext0Address",
     "from_block": 71274532,
-    "abi_files": [
-      "../../abi/IExtension.sol/IExtensionEvents.json",
-      "../../abi/IReward.sol/IRewardEvents.json"
-    ]
+    "abi_files": ["../../abi/IExtension.sol/IExtensionEvents.json", "../../abi/IReward.sol/IRewardEvents.json"]
   },
   {
     "name": "life20Ext1",
     "address_env_var": "life20Ext1Address",
     "from_block": 71274532,
-    "abi_files": [
-      "../../abi/IExtension.sol/IExtensionEvents.json",
-      "../../abi/IReward.sol/IRewardEvents.json"
-    ]
+    "abi_files": ["../../abi/IExtension.sol/IExtensionEvents.json", "../../abi/IReward.sol/IRewardEvents.json"]
   },
   {
     "name": "life20Ext2",
     "address_env_var": "life20Ext2Address",
     "from_block": 71274532,
-    "abi_files": [
-      "../../abi/IExtension.sol/IExtensionEvents.json",
-      "../../abi/IReward.sol/IRewardEvents.json"
-    ]
+    "abi_files": ["../../abi/IExtension.sol/IExtensionEvents.json", "../../abi/IReward.sol/IRewardEvents.json"]
   },
   {
     "name": "life20Ext3",
     "address_env_var": "life20Ext3Address",
     "from_block": 71274532,
-    "abi_files": [
-      "../../abi/IExtension.sol/IExtensionEvents.json",
-      "../../abi/IReward.sol/IRewardEvents.json"
-    ]
+    "abi_files": ["../../abi/IExtension.sol/IExtensionEvents.json", "../../abi/IReward.sol/IRewardEvents.json"]
   },
   {
     "name": "life20Ext4",
     "address_env_var": "life20Ext4Address",
     "from_block": 71274532,
-    "abi_files": [
-      "../../abi/IExtension.sol/IExtensionEvents.json",
-      "../../abi/IReward.sol/IRewardEvents.json"
-    ]
+    "abi_files": ["../../abi/IExtension.sol/IExtensionEvents.json", "../../abi/IReward.sol/IRewardEvents.json"]
   },
   {
     "name": "life20Ext5",
     "address_env_var": "life20Ext5Address",
     "from_block": 71274532,
-    "abi_files": [
-      "../../abi/IExtension.sol/IExtensionEvents.json",
-      "../../abi/IReward.sol/IRewardEvents.json"
-    ]
+    "abi_files": ["../../abi/IExtension.sol/IExtensionEvents.json", "../../abi/IReward.sol/IRewardEvents.json"]
   },
   {
     "name": "life20Ext6",
@@ -278,6 +256,16 @@
       "../../abi/IReward.sol/IRewardEvents.json",
       "../../abi/IGroupService.sol/IGroupServiceEvents.json",
       "../../abi/IJoin.sol/IJoinEvents.json"
+    ]
+  },
+  {
+    "name": "life20Ext7",
+    "address_env_var": "life20Ext7Address",
+    "from_block": 71274532,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json",
+      "../../abi/ITokenJoin.sol/ITokenJoinEvents.json"
     ]
   }
 ]
