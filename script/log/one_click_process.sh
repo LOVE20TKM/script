@@ -61,28 +61,49 @@ echo ""
 echo "🔎 Rebuilding auto-discovered extension configuration from events.db..."
 echo ""
 
+discover_status_file=$(mktemp)
+
 "$PYTHON_CMD" "$DISCOVER_PROCESSOR" \
   --config "$CONFIG_FILE" \
-  --db-path "$db_dir/events.db"
+  --db-path "$db_dir/events.db" \
+  --status-file "$discover_status_file"
 
 discover_exit=$?
 if [ $discover_exit -ne 0 ]; then
+  rm -f "$discover_status_file"
   echo ""
   echo "❌ Error while rebuilding extension configuration."
   script_return_or_exit $discover_exit
 fi
 
-echo ""
-echo "🚀 Processing contracts again with refreshed extension configuration..."
-echo ""
+if [ -f "$discover_status_file" ]; then
+  # shellcheck disable=SC1090
+  source "$discover_status_file"
+fi
+rm -f "$discover_status_file"
 
-run_event_processor
+DISCOVER_SYNC_NEEDED=${DISCOVER_SYNC_NEEDED:-1}
+DISCOVER_CONFIG_CHANGED=${DISCOVER_CONFIG_CHANGED:-0}
+DISCOVER_GENERATED_COUNT=${DISCOVER_GENERATED_COUNT:-0}
+DISCOVER_RESET_CONTRACTS=${DISCOVER_RESET_CONTRACTS:-}
 
-second_pass_exit=$?
-if [ $second_pass_exit -ne 0 ]; then
+if [ "$DISCOVER_SYNC_NEEDED" = "1" ]; then
   echo ""
-  echo "❌ Error during second event log processing pass."
-  script_return_or_exit $second_pass_exit
+  echo "🚀 Processing contracts again with refreshed extension configuration..."
+  echo ""
+
+  run_event_processor
+
+  second_pass_exit=$?
+  if [ $second_pass_exit -ne 0 ]; then
+    echo ""
+    echo "❌ Error during second event log processing pass."
+    script_return_or_exit $second_pass_exit
+  fi
+else
+  echo ""
+  echo "⏭️ No new tracked contract events detected after discovery."
+  echo "   Skipping second event log processing pass."
 fi
 
 echo ""

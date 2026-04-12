@@ -24,6 +24,7 @@ from typing import Any
 
 ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
 AUTO_DISCOVERY_MARKER = "auto-discovery"
+SYNC_RELEVANT_KEYS = ("address", "from_block", "abi_files")
 
 
 def log(msg: str) -> None:
@@ -48,6 +49,14 @@ def load_config(config_path: Path) -> list[dict[str, Any]]:
     if not isinstance(data, list):
         raise ValueError("contracts config must be a JSON array")
     return data
+
+
+def coerce_block_number(value: Any) -> int | None:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
 
 
 def resolve_entry_address(entry: dict[str, Any]) -> str | None:
@@ -319,6 +328,77 @@ def rebuild_config(
     return rebuilt
 
 
+def make_sync_fingerprint(entry: dict[str, Any]) -> dict[str, Any]:
+    abi_files = entry.get("abi_files")
+    return {
+        "address": resolve_entry_address(entry),
+        "from_block": coerce_block_number(entry.get("from_block")),
+        "abi_files": list(abi_files) if isinstance(abi_files, list) else [],
+    }
+
+
+def analyze_sync_changes(
+    config_entries: list[dict[str, Any]],
+    generated_entries: list[dict[str, Any]],
+) -> tuple[bool, list[str]]:
+    existing_by_name = {
+        str(entry.get("name")): entry
+        for entry in config_entries
+        if isinstance(entry.get("name"), str)
+    }
+
+    sync_needed = False
+    reset_contract_names: list[str] = []
+
+    for generated in generated_entries:
+        name = generated["name"]
+        existing = existing_by_name.get(name)
+        if not existing:
+            sync_needed = True
+            continue
+
+        existing_fp = make_sync_fingerprint(existing)
+        generated_fp = {key: generated.get(key) for key in SYNC_RELEVANT_KEYS}
+        if existing_fp != generated_fp:
+            sync_needed = True
+            reset_contract_names.append(name)
+
+    return sync_needed, sorted(set(reset_contract_names))
+
+
+def reset_sync_status(conn: sqlite3.Connection, contract_names: list[str]) -> int:
+    if not contract_names:
+        return 0
+
+    placeholders = ",".join("?" for _ in contract_names)
+    cursor = conn.execute(
+        f"DELETE FROM sync_status WHERE contract_name IN ({placeholders})",
+        tuple(contract_names),
+    )
+    conn.commit()
+    return int(cursor.rowcount or 0)
+
+
+def write_status_file(
+    status_path: Path,
+    *,
+    config_changed: bool,
+    sync_needed: bool,
+    generated_count: int,
+    reset_contract_names: list[str],
+) -> None:
+    status_text = "\n".join(
+        [
+            f"DISCOVER_CONFIG_CHANGED={1 if config_changed else 0}",
+            f"DISCOVER_SYNC_NEEDED={1 if sync_needed else 0}",
+            f"DISCOVER_GENERATED_COUNT={generated_count}",
+            f"DISCOVER_RESET_CONTRACTS={','.join(reset_contract_names)}",
+            "",
+        ]
+    )
+    status_path.write_text(status_text, encoding="utf-8")
+
+
 def audit_register_actions(
     generated_entries: list[dict[str, Any]],
     registered_actions: dict[tuple[str, int], str],
@@ -348,10 +428,15 @@ def main() -> int:
     )
     parser.add_argument("--config", required=True, help="Path to contracts.json")
     parser.add_argument("--db-path", required=True, help="Path to events.db")
+    parser.add_argument(
+        "--status-file",
+        help="Optional path to write discovery status for one_click_process.sh",
+    )
     args = parser.parse_args()
 
     config_path = Path(args.config).resolve()
     db_path = Path(args.db_path).resolve()
+    status_path = Path(args.status_file).resolve() if args.status_file else None
 
     config_entries = load_config(config_path)
     monitored_tokens = resolve_monitored_tokens(config_entries)
@@ -365,23 +450,46 @@ def main() -> int:
         action_creates = load_action_creates(conn, monitored_tokens)
         created_extensions = load_create_extension_events(conn, extension_factories)
         registered_actions = load_register_actions(conn, monitored_tokens)
+        generated_entries = generate_extension_entries(
+            action_creates=action_creates,
+            created_extensions=created_extensions,
+            monitored_tokens=monitored_tokens,
+        )
+        audit_register_actions(generated_entries, registered_actions)
+
+        sync_needed, reset_contract_names = analyze_sync_changes(
+            config_entries=config_entries,
+            generated_entries=generated_entries,
+        )
+        reset_count = reset_sync_status(conn, reset_contract_names)
     finally:
         conn.close()
 
-    generated_entries = generate_extension_entries(
-        action_creates=action_creates,
-        created_extensions=created_extensions,
-        monitored_tokens=monitored_tokens,
-    )
-    audit_register_actions(generated_entries, registered_actions)
-
     rebuilt_entries = rebuild_config(config_entries, generated_entries)
-    changed = write_config_if_changed(config_path, rebuilt_entries)
+    config_changed = write_config_if_changed(config_path, rebuilt_entries)
 
-    log(
+    if status_path:
+        write_status_file(
+            status_path,
+            config_changed=config_changed,
+            sync_needed=sync_needed,
+            generated_count=len(generated_entries),
+            reset_contract_names=reset_contract_names,
+        )
+
+    summary = (
         f"✅ discovered {len(generated_entries)} extension entries from {db_path.name}"
-        + (" and updated contracts.json" if changed else "; contracts.json unchanged")
+        + (" and updated contracts.json" if config_changed else "; contracts.json unchanged")
+        + ("; second sync needed" if sync_needed else "; second sync not needed")
     )
+    if reset_contract_names:
+        summary += (
+            f"; reset sync_status for {len(reset_contract_names)} contract(s)"
+            f" ({', '.join(reset_contract_names)})"
+        )
+        if reset_count:
+            summary += f", deleted {reset_count} sync_status row(s)"
+    log(summary)
     return 0
 
 

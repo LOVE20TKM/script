@@ -254,6 +254,14 @@
     ]
   },
   {
+    "name": "life20TusdtPair",
+    "address_env_var": "life20TusdtPairAddress",
+    "from_block": 71597303,
+    "abi_files": [
+      "../../abi/IUniswapV2Pair.sol/IUniswapV2Pair.0.5.16.json"
+    ]
+  },
+  {
     "name": "ext24",
     "address": "0xd9228e0378049bfda65807c7d0473e7bfc699d29",
     "from_block": 70369237,

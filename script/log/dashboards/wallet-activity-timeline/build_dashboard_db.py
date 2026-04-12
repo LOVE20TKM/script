@@ -12,11 +12,13 @@ PAIR_CONTRACTS = {
     "love20tusdtpair",
     "love20tkm20pair",
     "love20life20pair",
+    "life20tusdtpair",
 }
 PAIR_LABELS = {
     "love20tusdtpair": "LOVE20/TUSDT LP",
     "love20tkm20pair": "LOVE20/TKM20 LP",
     "love20life20pair": "LOVE20/LIFE20 LP",
+    "life20tusdtpair": "LIFE20/TUSDT LP",
 }
 
 
@@ -63,14 +65,28 @@ def load_contract_map(conn: sqlite3.Connection) -> dict[str, str]:
     return {row["address"]: row["contract_name"] for row in rows}
 
 
-def add_counterparty(items: list[dict], address: str | None, contract_map: dict[str, str]) -> None:
+def is_known_contract(address: str | None, contract_map: dict[str, str]) -> bool:
+    return normalize_address(address) in contract_map
+
+
+def add_counterparty(
+    items: list[dict],
+    address: str | None,
+    contract_map: dict[str, str],
+    *,
+    skip_address: str | None = None,
+    known_only: bool = False,
+) -> None:
     normalized = normalize_address(address)
-    if not normalized:
+    if not normalized or normalized == normalize_address(skip_address):
+        return
+    label = contract_map.get(normalized, "")
+    if known_only and not label:
         return
     items.append(
         {
             "address": normalized,
-            "label": contract_map.get(normalized, ""),
+            "label": label,
         }
     )
 
@@ -213,6 +229,7 @@ def build_row(
     tx_meta: dict,
     contract_map: dict[str, str],
 ) -> dict:
+    account_address = normalize_address(account)
     tx_to = normalize_address(tx_meta["tx_to"])
     tx_from = normalize_address(tx_meta["tx_from"])
 
@@ -289,7 +306,7 @@ def build_row(
             if summary["claims"]
             else summary["reward_mints"][0]["contract_address"]
         )
-        add_counterparty(counterparties, tx_to or first_contract, contract_map)
+        add_counterparty(counterparties, tx_to or first_contract, contract_map, skip_address=account_address)
         for item in summary["claims"]:
             add_community(communities, item.get("token_address"), contract_map)
         for item in summary["reward_mints"]:
@@ -301,7 +318,7 @@ def build_row(
         group_id_text = stringify_numbers([item["group_id"] for item in summary["group_joins"]])
         description = f"加入 groupJoin，actionId={action_id_text}，groupId={group_id_text}"
         amounts = infer_group_amounts(summary, tx_to, contract_map)
-        add_counterparty(counterparties, tx_to or summary["group_joins"][0]["contract_address"], contract_map)
+        add_counterparty(counterparties, tx_to or summary["group_joins"][0]["contract_address"], contract_map, skip_address=account_address)
         for item in summary["group_joins"]:
             add_community(communities, item.get("token_address"), contract_map)
     elif summary["group_exits"]:
@@ -311,7 +328,7 @@ def build_row(
         group_id_text = stringify_numbers([item["group_id"] for item in summary["group_exits"]])
         description = f"退出 groupJoin，actionId={action_id_text}，groupId={group_id_text}"
         amounts = infer_exit_amounts(summary, tx_to, contract_map)
-        add_counterparty(counterparties, tx_to or summary["group_exits"][0]["contract_address"], contract_map)
+        add_counterparty(counterparties, tx_to or summary["group_exits"][0]["contract_address"], contract_map, skip_address=account_address)
         for item in summary["group_exits"]:
             add_community(communities, item.get("token_address"), contract_map)
     elif summary["mints_in"] and has_non_lp(summary["transfers_out"]) and any(is_lp_token(item["token"]) for item in summary["mints_in"]):
@@ -332,7 +349,7 @@ def build_row(
                 ],
             ]
         )
-        add_counterparty(counterparties, tx_to, contract_map)
+        add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address)
     elif summary["approvals"] and not summary["transfers_in"] and not summary["transfers_out"] and not summary["mints_in"] and not summary["burns_out"]:
         action_group = "approval"
         if len(summary["approvals"]) == 1:
@@ -344,13 +361,14 @@ def build_row(
             description = f"同一笔交易里完成 {len(summary['approvals'])} 条授权"
         amounts = collapse_approvals(summary["approvals"])
         for item in summary["approvals"]:
-            add_counterparty(counterparties, item["spender"], contract_map)
+            add_counterparty(counterparties, item["spender"], contract_map, skip_address=account_address)
     elif summary["transfers_in"] and not summary["transfers_out"] and not summary["mints_in"]:
         single_token = len({item["token"] for item in summary["transfers_in"]}) == 1
         first_token = summary["transfers_in"][0]["token"]
         action = f"接收 {first_token}" if single_token and first_token.endswith("LP") else "转入"
         action_group = "transfer"
         description = f"从 {describe_counterparty(summary['transfers_in'][0]['counterparty'], contract_map)} 接收代币"
+        add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address, known_only=True)
         amounts = collapse_amounts(
             [
                 {
@@ -362,13 +380,14 @@ def build_row(
             ]
         )
         for item in summary["transfers_in"]:
-            add_counterparty(counterparties, item["counterparty"], contract_map)
+            add_counterparty(counterparties, item["counterparty"], contract_map, skip_address=account_address)
     elif summary["transfers_out"] and not summary["transfers_in"] and not summary["mints_in"]:
         single_token = len({item["token"] for item in summary["transfers_out"]}) == 1
         first_token = summary["transfers_out"][0]["token"]
         action = f"转出 {first_token}" if single_token and first_token.endswith("LP") else "转出"
         action_group = "transfer"
         description = f"转给 {describe_counterparty(summary['transfers_out'][0]['counterparty'], contract_map)}"
+        add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address, known_only=True)
         amounts = collapse_amounts(
             [
                 {
@@ -380,11 +399,12 @@ def build_row(
             ]
         )
         for item in summary["transfers_out"]:
-            add_counterparty(counterparties, item["counterparty"], contract_map)
+            add_counterparty(counterparties, item["counterparty"], contract_map, skip_address=account_address)
     elif summary["transfers_in"] and summary["transfers_out"]:
         action = "复杂代币交互"
         action_group = "complex"
         description = "同一笔交易里同时发生代币转入和转出"
+        add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address, known_only=True)
         amounts = collapse_amounts(
             [
                 *[
@@ -398,29 +418,29 @@ def build_row(
             ]
         )
         for item in summary["transfers_out"]:
-            add_counterparty(counterparties, item["counterparty"], contract_map)
+            add_counterparty(counterparties, item["counterparty"], contract_map, skip_address=account_address)
         for item in summary["transfers_in"]:
-            add_counterparty(counterparties, item["counterparty"], contract_map)
+            add_counterparty(counterparties, item["counterparty"], contract_map, skip_address=account_address)
     elif summary["native_out"] > 0:
         action = "原生币转账"
         action_group = "native"
         description = f"向 {describe_counterparty(tx_to, contract_map)} 转出原生币"
         amounts = [{"token": "原生币", "raw": str(summary["native_out"]), "decimals": 18}]
-        add_counterparty(counterparties, tx_to, contract_map)
+        add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address)
     elif summary["native_in"] > 0:
         action = "原生币转入"
         action_group = "native"
         description = f"从 {describe_counterparty(tx_from, contract_map)} 收到原生币"
         amounts = [{"token": "原生币", "raw": str(summary["native_in"]), "decimals": 18}]
-        add_counterparty(counterparties, tx_from, contract_map)
+        add_counterparty(counterparties, tx_from, contract_map, skip_address=account_address)
     else:
         action = "未归类调用"
         action_group = "other"
         description = "这笔交易没有匹配到已归类的事件模式"
-        add_counterparty(counterparties, tx_to, contract_map)
+        add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address)
 
     return {
-        "account": account,
+        "account": account_address,
         "block_number": int(tx_meta["block_number"]),
         "block_timestamp": int(tx_meta["block_timestamp"]),
         "tx_hash": tx_meta["tx_hash"],

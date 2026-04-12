@@ -135,6 +135,7 @@ life20Address=$(resolve_optional_address_from_call "life20Address" "$launchAddre
 if is_nonzero_address "$life20Address"; then
   init_token_address_set "life20Address" "$life20Address" "life20" || return 1
   init_pair_address "$firstTokenAddress" "$life20Address" "love20Life20PairAddress" || return 1
+  init_pair_address "$life20Address" "$tusdtAddress" "life20TusdtPairAddress" || return 1
 fi
 
 export maxBlocksPerRequest=4096  # RPC rejects larger eth_getLogs windows during full rebuilds
