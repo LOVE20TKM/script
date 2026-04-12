@@ -24,3 +24,4 @@ __pycache__/
 .env
 .account
 script/log/__pycache__/
+*.db

@@ -19,16 +19,23 @@
   默认隐藏最新同步到的进行中轮次，可在页面中手动切换显示。
   原始 `events.db` 太大时，先通过 shell 脚本从源库提炼出看板专用 SQLite，再由页面直接查询。
 
+- `wallet-activity-timeline/`
+  输入钱包地址后，按区块和交易顺序展示该地址的时间线。
+  页面会把 `ClaimReward`、`groupJoin`、`Approval`、转账、加池 / LP 铸造等动作归并成交易级摘要表格。
+  同样先通过脚本从原始 `events.db` 提炼出专用 SQLite，再由页面直接查询。
+
 使用说明：
 
 ```bash
 cd /Users/BigPolarBear/Documents/github/LOVE20TKM/script/script/log
 ./dashboards/mint-addresses-by-log-round/refresh.sh thinkium70001_public
+./dashboards/wallet-activity-timeline/refresh.sh thinkium70001_public
 python3 -m http.server 8000
 ```
 
 然后访问：
 
 - `http://127.0.0.1:8000/dashboards/mint-addresses-by-log-round/`
+- `http://127.0.0.1:8000/dashboards/wallet-activity-timeline/`
 
 如果不想起本地静态服务，页面也支持手动选择本地看板 SQLite 文件。
