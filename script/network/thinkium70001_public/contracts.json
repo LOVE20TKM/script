@@ -2,181 +2,215 @@
   {
     "name": "launch",
     "address_env_var": "launchAddress",
-    "abi_files": ["../../abi/ILOVE20Launch.sol/ILOVE20Launch.json"]
+    "abi_files": [
+      "../../abi/ILOVE20Launch.sol/ILOVE20Launch.json"
+    ]
   },
   {
     "name": "submit",
     "address_env_var": "submitAddress",
-    "abi_files": ["../../abi/ILOVE20Submit.sol/ILOVE20Submit.json"]
+    "abi_files": [
+      "../../abi/ILOVE20Submit.sol/ILOVE20Submit.json"
+    ]
   },
   {
     "name": "vote",
     "address_env_var": "voteAddress",
-    "abi_files": ["../../abi/ILOVE20Vote.sol/ILOVE20Vote.json"]
+    "abi_files": [
+      "../../abi/ILOVE20Vote.sol/ILOVE20Vote.json"
+    ]
   },
   {
     "name": "verify",
     "address_env_var": "verifyAddress",
-    "abi_files": ["../../abi/ILOVE20Verify.sol/ILOVE20Verify.json"]
+    "abi_files": [
+      "../../abi/ILOVE20Verify.sol/ILOVE20Verify.json"
+    ]
   },
   {
     "name": "stake",
     "address_env_var": "stakeAddress",
-    "abi_files": ["../../abi/ILOVE20Stake.sol/ILOVE20Stake.json"]
+    "abi_files": [
+      "../../abi/ILOVE20Stake.sol/ILOVE20Stake.json"
+    ]
   },
   {
     "name": "mint",
     "address_env_var": "mintAddress",
-    "abi_files": ["../../abi/ILOVE20Mint.sol/ILOVE20Mint.json"]
+    "abi_files": [
+      "../../abi/ILOVE20Mint.sol/ILOVE20Mint.json"
+    ]
   },
   {
     "name": "join",
     "address_env_var": "joinAddress",
-    "abi_files": ["../../abi/ILOVE20Join.sol/ILOVE20Join.json"]
+    "abi_files": [
+      "../../abi/ILOVE20Join.sol/ILOVE20Join.json"
+    ]
   },
   {
     "name": "tokenFactory",
     "address_env_var": "tokenFactoryAddress",
-    "abi_files": ["../../abi/ILOVE20TokenFactory.sol/ILOVE20TokenFactory.json"]
+    "abi_files": [
+      "../../abi/ILOVE20TokenFactory.sol/ILOVE20TokenFactory.json"
+    ]
   },
   {
     "name": "slToken",
     "address_env_var": "slTokenAddress",
-    "abi_files": ["../../abi/ILOVE20SLToken.sol/ILOVE20SLToken.json"]
+    "abi_files": [
+      "../../abi/ILOVE20SLToken.sol/ILOVE20SLToken.json"
+    ]
   },
   {
     "name": "stToken",
     "address_env_var": "stTokenAddress",
-    "abi_files": ["../../abi/ILOVE20STToken.sol/ILOVE20STToken.json"]
+    "abi_files": [
+      "../../abi/ILOVE20STToken.sol/ILOVE20STToken.json"
+    ]
   },
   {
     "name": "random",
     "address_env_var": "randomAddress",
-    "abi_files": ["../../abi/ILOVE20Random.sol/ILOVE20Random.json"]
+    "abi_files": [
+      "../../abi/ILOVE20Random.sol/ILOVE20Random.json"
+    ]
   },
   {
     "name": "LOVE20",
     "address_env_var": "firstTokenAddress",
-    "abi_files": ["../../abi/ILOVE20Token.sol/ILOVE20Token.json"]
+    "abi_files": [
+      "../../abi/ILOVE20Token.sol/ILOVE20Token.json"
+    ]
   },
   {
     "name": "TKM20",
     "address_env_var": "rootParentTokenAddress",
-    "abi_files": ["../../abi/IETH20.sol/IETH20.json"]
+    "abi_files": [
+      "../../abi/IETH20.sol/IETH20.json"
+    ]
   },
   {
     "name": "TUSDT",
     "address_env_var": "tusdtAddress",
-    "abi_files": ["../../abi/IERC20.sol/IERC20.json"]
+    "abi_files": [
+      "../../abi/IERC20.sol/IERC20.json"
+    ]
   },
   {
     "name": "center",
     "address_env_var": "centerAddress",
-    "abi_files": ["../../abi/IExtensionCenter.sol/IExtensionCenter.json"]
+    "abi_files": [
+      "../../abi/IExtensionCenter.sol/IExtensionCenter.json"
+    ]
   },
   {
     "name": "group",
     "address_env_var": "groupAddress",
-    "abi_files": ["../../abi/ILOVE20Group.sol/ILOVE20Group.json", "../../abi/IERC721.sol/IERC721.json"]
+    "abi_files": [
+      "../../abi/ILOVE20Group.sol/ILOVE20Group.json",
+      "../../abi/IERC721.sol/IERC721.json"
+    ]
   },
   {
     "name": "groupManager",
     "address_env_var": "groupManagerAddress",
-    "abi_files": ["../../abi/IGroupManager.sol/IGroupManager.json"]
+    "abi_files": [
+      "../../abi/IGroupManager.sol/IGroupManager.json"
+    ]
   },
   {
     "name": "groupJoin",
     "address_env_var": "groupJoinAddress",
-    "abi_files": ["../../abi/IGroupJoin.sol/IGroupJoin.json"]
+    "abi_files": [
+      "../../abi/IGroupJoin.sol/IGroupJoin.json"
+    ]
   },
   {
     "name": "groupVerify",
     "address_env_var": "groupVerifyAddress",
-    "abi_files": ["../../abi/IGroupVerify.sol/IGroupVerify.json"]
+    "abi_files": [
+      "../../abi/IGroupVerify.sol/IGroupVerify.json"
+    ]
   },
   {
     "name": "groupRecipients",
     "address_env_var": "groupRecipientsAddress",
-    "abi_files": ["../../abi/IGroupRecipients.sol/IGroupRecipients.json"]
+    "abi_files": [
+      "../../abi/IGroupRecipients.sol/IGroupRecipients.json"
+    ]
   },
   {
     "name": "groupActionFactory",
     "address_env_var": "groupActionFactoryAddress",
-    "abi_files": ["../../abi/IExtensionFactory.sol/IExtensionFactory.json"]
+    "abi_files": [
+      "../../abi/IExtensionFactory.sol/IExtensionFactory.json"
+    ],
+    "contract_type": "extension_factory",
+    "extension_abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ]
   },
   {
     "name": "groupServiceFactory",
     "address_env_var": "groupServiceFactoryAddress",
-    "abi_files": ["../../abi/IExtensionFactory.sol/IExtensionFactory.json"]
+    "abi_files": [
+      "../../abi/IExtensionFactory.sol/IExtensionFactory.json"
+    ],
+    "contract_type": "extension_factory",
+    "extension_abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json",
+      "../../abi/IGroupService.sol/IGroupServiceEvents.json",
+      "../../abi/IJoin.sol/IJoinEvents.json"
+    ]
   },
   {
     "name": "lpFactory",
     "address_env_var": "lpFactoryAddress",
-    "abi_files": ["../../abi/IExtensionFactory.sol/IExtensionFactory.json"]
-  },
-  {
-    "name": "uniswapV2Factory",
-    "address_env_var": "uniswapV2FactoryAddress",
-    "abi_files": ["../../abi/IUniswapV2Factory.sol/IUniswapV2Factory.0.5.16.json"]
-  },
-  {
-    "name": "love20Tkm20Pair",
-    "address_env_var": "love20Tkm20PairAddress",
-    "abi_files": ["../../abi/IUniswapV2Pair.sol/IUniswapV2Pair.0.5.16.json"]
-  },
-  {
-    "name": "love20TusdtPair",
-    "address_env_var": "love20TusdtPairAddress",
-    "abi_files": ["../../abi/IUniswapV2Pair.sol/IUniswapV2Pair.0.5.16.json"]
-  },
-  {
-    "name": "ext24",
-    "address_env_var": "ext24Address",
     "abi_files": [
+      "../../abi/IExtensionFactory.sol/IExtensionFactory.json"
+    ],
+    "contract_type": "extension_factory",
+    "extension_abi_files": [
       "../../abi/IExtension.sol/IExtensionEvents.json",
       "../../abi/IReward.sol/IRewardEvents.json",
       "../../abi/ITokenJoin.sol/ITokenJoinEvents.json"
     ]
   },
   {
-    "name": "ext25",
-    "address_env_var": "ext25Address",
-    "abi_files": ["../../abi/IExtension.sol/IExtensionEvents.json", "../../abi/IReward.sol/IRewardEvents.json"]
-  },
-  {
-    "name": "ext26",
-    "address_env_var": "ext26Address",
-    "abi_files": ["../../abi/IExtension.sol/IExtensionEvents.json", "../../abi/IReward.sol/IRewardEvents.json"]
-  },
-  {
-    "name": "ext27",
-    "address_env_var": "ext27Address",
-    "abi_files": ["../../abi/IExtension.sol/IExtensionEvents.json", "../../abi/IReward.sol/IRewardEvents.json"]
-  },
-  {
-    "name": "ext28",
-    "address_env_var": "ext28Address",
+    "name": "lpFactoryV2",
+    "address": "0xaDaB42ca2a237D752606A0Ddee4461FDd9963c24",
     "abi_files": [
+      "../../abi/IExtensionFactory.sol/IExtensionFactory.json"
+    ],
+    "contract_type": "extension_factory",
+    "extension_abi_files": [
       "../../abi/IExtension.sol/IExtensionEvents.json",
       "../../abi/IReward.sol/IRewardEvents.json",
-      "../../abi/IGroupService.sol/IGroupServiceEvents.json",
-      "../../abi/IJoin.sol/IJoinEvents.json"
+      "../../abi/ITokenJoin.sol/ITokenJoinEvents.json"
     ]
   },
   {
-    "name": "ext29",
-    "address_env_var": "ext29Address",
-    "abi_files": ["../../abi/IExtension.sol/IExtensionEvents.json", "../../abi/IReward.sol/IRewardEvents.json"]
+    "name": "uniswapV2Factory",
+    "address_env_var": "uniswapV2FactoryAddress",
+    "abi_files": [
+      "../../abi/IUniswapV2Factory.sol/IUniswapV2Factory.0.5.16.json"
+    ]
   },
   {
-    "name": "ext30",
-    "address_env_var": "ext30Address",
-    "from_block": 71274532,
+    "name": "love20Tkm20Pair",
+    "address_env_var": "love20Tkm20PairAddress",
     "abi_files": [
-      "../../abi/IExtension.sol/IExtensionEvents.json",
-      "../../abi/IReward.sol/IRewardEvents.json",
-      "../../abi/IGroupService.sol/IGroupServiceEvents.json",
-      "../../abi/IJoin.sol/IJoinEvents.json"
+      "../../abi/IUniswapV2Pair.sol/IUniswapV2Pair.0.5.16.json"
+    ]
+  },
+  {
+    "name": "love20TusdtPair",
+    "address_env_var": "love20TusdtPairAddress",
+    "abi_files": [
+      "../../abi/IUniswapV2Pair.sol/IUniswapV2Pair.0.5.16.json"
     ]
   },
   {
@@ -191,81 +225,293 @@
     "name": "LIFE20",
     "address_env_var": "life20Address",
     "from_block": 71274532,
-    "abi_files": ["../../abi/ILOVE20Token.sol/ILOVE20Token.json"]
+    "abi_files": [
+      "../../abi/ILOVE20Token.sol/ILOVE20Token.json"
+    ]
   },
   {
     "name": "life20SlToken",
     "address_env_var": "life20SlTokenAddress",
     "from_block": 71274532,
-    "abi_files": ["../../abi/ILOVE20SLToken.sol/ILOVE20SLToken.json"]
+    "abi_files": [
+      "../../abi/ILOVE20SLToken.sol/ILOVE20SLToken.json"
+    ]
   },
   {
     "name": "life20StToken",
     "address_env_var": "life20StTokenAddress",
     "from_block": 71274532,
-    "abi_files": ["../../abi/ILOVE20STToken.sol/ILOVE20STToken.json"]
+    "abi_files": [
+      "../../abi/ILOVE20STToken.sol/ILOVE20STToken.json"
+    ]
   },
   {
     "name": "love20Life20Pair",
     "address_env_var": "love20Life20PairAddress",
     "from_block": 71274532,
-    "abi_files": ["../../abi/IUniswapV2Pair.sol/IUniswapV2Pair.0.5.16.json"]
+    "abi_files": [
+      "../../abi/IUniswapV2Pair.sol/IUniswapV2Pair.0.5.16.json"
+    ]
   },
   {
-    "name": "life20Ext0",
-    "address_env_var": "life20Ext0Address",
-    "from_block": 71274532,
-    "abi_files": ["../../abi/IExtension.sol/IExtensionEvents.json", "../../abi/IReward.sol/IRewardEvents.json"]
+    "name": "ext24",
+    "address": "0xd9228e0378049bfda65807c7d0473e7bfc699d29",
+    "from_block": 70369237,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json",
+      "../../abi/ITokenJoin.sol/ITokenJoinEvents.json"
+    ],
+    "token_address": "0x6458e25680765add4e2ca8d5a31fa08f5e1b6e4a",
+    "action_id": 24,
+    "factory_name": "lpFactory",
+    "factory_address": "0x4d53728af3db35ec5df0f717d5ffec19749d7f11",
+    "managed_by": "auto-discovery"
   },
   {
-    "name": "life20Ext1",
-    "address_env_var": "life20Ext1Address",
-    "from_block": 71274532,
-    "abi_files": ["../../abi/IExtension.sol/IExtensionEvents.json", "../../abi/IReward.sol/IRewardEvents.json"]
+    "name": "ext25",
+    "address": "0x9f59862ab1d1620e0b94b884dfac188f21d1660f",
+    "from_block": 70378274,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x6458e25680765add4e2ca8d5a31fa08f5e1b6e4a",
+    "action_id": 25,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
   },
   {
-    "name": "life20Ext2",
-    "address_env_var": "life20Ext2Address",
-    "from_block": 71274532,
-    "abi_files": ["../../abi/IExtension.sol/IExtensionEvents.json", "../../abi/IReward.sol/IRewardEvents.json"]
+    "name": "ext26",
+    "address": "0x80a0664c3db1bbc0bf2c279a931f48e9902b9419",
+    "from_block": 70408732,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x6458e25680765add4e2ca8d5a31fa08f5e1b6e4a",
+    "action_id": 26,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
   },
   {
-    "name": "life20Ext3",
-    "address_env_var": "life20Ext3Address",
-    "from_block": 71274532,
-    "abi_files": ["../../abi/IExtension.sol/IExtensionEvents.json", "../../abi/IReward.sol/IRewardEvents.json"]
+    "name": "ext27",
+    "address": "0xa3facdbf942938e0c931d90053fdabda80a0ac59",
+    "from_block": 70410446,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x6458e25680765add4e2ca8d5a31fa08f5e1b6e4a",
+    "action_id": 27,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
   },
   {
-    "name": "life20Ext4",
-    "address_env_var": "life20Ext4Address",
-    "from_block": 71274532,
-    "abi_files": ["../../abi/IExtension.sol/IExtensionEvents.json", "../../abi/IReward.sol/IRewardEvents.json"]
-  },
-  {
-    "name": "life20Ext5",
-    "address_env_var": "life20Ext5Address",
-    "from_block": 71274532,
-    "abi_files": ["../../abi/IExtension.sol/IExtensionEvents.json", "../../abi/IReward.sol/IRewardEvents.json"]
-  },
-  {
-    "name": "life20Ext6",
-    "address_env_var": "life20Ext6Address",
-    "from_block": 71274532,
+    "name": "ext28",
+    "address": "0x75fde8070cfaa493b9a024754d0c3ff16ed412a3",
+    "from_block": 70424904,
     "abi_files": [
       "../../abi/IExtension.sol/IExtensionEvents.json",
       "../../abi/IReward.sol/IRewardEvents.json",
       "../../abi/IGroupService.sol/IGroupServiceEvents.json",
       "../../abi/IJoin.sol/IJoinEvents.json"
-    ]
+    ],
+    "token_address": "0x6458e25680765add4e2ca8d5a31fa08f5e1b6e4a",
+    "action_id": 28,
+    "factory_name": "groupServiceFactory",
+    "factory_address": "0x0b915a64ae1c263e6230d8e8a7cc39e3f4f4c29f",
+    "managed_by": "auto-discovery"
   },
   {
-    "name": "life20Ext7",
-    "address_env_var": "life20Ext7Address",
-    "from_block": 71274532,
+    "name": "ext29",
+    "address": "0x339d0dca2f20d8328de7f0c2bc8acddd1b861d99",
+    "from_block": 70722980,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x6458e25680765add4e2ca8d5a31fa08f5e1b6e4a",
+    "action_id": 29,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "ext30",
+    "address": "0x35149621574db4304f4238ca2bc40826fa424ff1",
+    "from_block": 71496198,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json",
+      "../../abi/IGroupService.sol/IGroupServiceEvents.json",
+      "../../abi/IJoin.sol/IJoinEvents.json"
+    ],
+    "token_address": "0x6458e25680765add4e2ca8d5a31fa08f5e1b6e4a",
+    "action_id": 30,
+    "factory_name": "groupServiceFactory",
+    "factory_address": "0x0b915a64ae1c263e6230d8e8a7cc39e3f4f4c29f",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "ext31",
+    "address": "0x633050ac4d7f5764876c2a6cd9eda353c5f5db6b",
+    "from_block": 71875988,
     "abi_files": [
       "../../abi/IExtension.sol/IExtensionEvents.json",
       "../../abi/IReward.sol/IRewardEvents.json",
       "../../abi/ITokenJoin.sol/ITokenJoinEvents.json"
-    ]
+    ],
+    "token_address": "0x6458e25680765add4e2ca8d5a31fa08f5e1b6e4a",
+    "action_id": 31,
+    "factory_name": "lpFactoryV2",
+    "factory_address": "0xadab42ca2a237d752606a0ddee4461fdd9963c24",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "life20Ext0",
+    "address": "0xb158b7eade07b5157181bb4f6d9cb04f70f1c4bb",
+    "from_block": 71368312,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x772127e10d2905951a302f482cd1de7f4a98aab6",
+    "action_id": 0,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "life20Ext1",
+    "address": "0xbe168c3d96181614fe3d742c2d371d0a088941d6",
+    "from_block": 71374648,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x772127e10d2905951a302f482cd1de7f4a98aab6",
+    "action_id": 1,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "life20Ext2",
+    "address": "0xfce79c4f9230cdfed8a2ca76057258d377868edc",
+    "from_block": 71381886,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x772127e10d2905951a302f482cd1de7f4a98aab6",
+    "action_id": 2,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "life20Ext3",
+    "address": "0xb592e004647cf181a80330bccc3322b2ce02ccbe",
+    "from_block": 71387192,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x772127e10d2905951a302f482cd1de7f4a98aab6",
+    "action_id": 3,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "life20Ext4",
+    "address": "0x210bec03e8fbbe4401353fbc89707c3b96663c1a",
+    "from_block": 71388258,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x772127e10d2905951a302f482cd1de7f4a98aab6",
+    "action_id": 4,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "life20Ext5",
+    "address": "0x567ad045985050473108ec7282045afe395f115f",
+    "from_block": 71402217,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x772127e10d2905951a302f482cd1de7f4a98aab6",
+    "action_id": 5,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "life20Ext6",
+    "address": "0xc6b02360f2f03d69fca422eaa573f069eafca095",
+    "from_block": 71419923,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json",
+      "../../abi/IGroupService.sol/IGroupServiceEvents.json",
+      "../../abi/IJoin.sol/IJoinEvents.json"
+    ],
+    "token_address": "0x772127e10d2905951a302f482cd1de7f4a98aab6",
+    "action_id": 6,
+    "factory_name": "groupServiceFactory",
+    "factory_address": "0x0b915a64ae1c263e6230d8e8a7cc39e3f4f4c29f",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "life20Ext7",
+    "address": "0xa85237c4a2be7cd8e57b89a5fa8864783cdf9363",
+    "from_block": 71835955,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json",
+      "../../abi/ITokenJoin.sol/ITokenJoinEvents.json"
+    ],
+    "token_address": "0x772127e10d2905951a302f482cd1de7f4a98aab6",
+    "action_id": 7,
+    "factory_name": "lpFactory",
+    "factory_address": "0x4d53728af3db35ec5df0f717d5ffec19749d7f11",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "life20Ext8",
+    "address": "0x3b7b1ce4582e66fb33816011b99a69988c5ad28e",
+    "from_block": 71905788,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x772127e10d2905951a302f482cd1de7f4a98aab6",
+    "action_id": 8,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "life20Ext9",
+    "address": "0xad938169440fc789fec516147e788d7e47b01be8",
+    "from_block": 71956613,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x772127e10d2905951a302f482cd1de7f4a98aab6",
+    "action_id": 9,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
   }
 ]

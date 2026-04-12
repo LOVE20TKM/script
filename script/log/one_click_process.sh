@@ -32,25 +32,57 @@ if ! check_python_deps; then
 fi
 
 echo "====================================================================="
-echo "🚀 Processing contracts using unified configuration in BATCH mode..."
+echo "🚀 Processing contracts using current configuration in BATCH mode..."
 echo "====================================================================="
 
-$PYTHON_CMD "$PYTHON_PROCESSOR" \
-  --config "$CONFIG_FILE" \
-  --rpc "$RPC_URL" \
-  --to-block "$to_block" \
-  --max-blocks "$maxBlocksPerRequest" \
-  --concurrency "$maxConcurrentJobs" \
-  --retries "$maxRetries" \
-  --db-path "$db_dir/events.db" \
-  --origin-blocks "$originBlocks" \
-  --phase-blocks "$PHASE_BLOCKS"
+run_event_processor() {
+  "$PYTHON_CMD" "$PYTHON_PROCESSOR" \
+    --config "$CONFIG_FILE" \
+    --rpc "$RPC_URL" \
+    --to-block "$to_block" \
+    --max-blocks "$maxBlocksPerRequest" \
+    --concurrency "$maxConcurrentJobs" \
+    --retries "$maxRetries" \
+    --db-path "$db_dir/events.db" \
+    --origin-blocks "$originBlocks" \
+    --phase-blocks "$PHASE_BLOCKS"
+}
+
+run_event_processor
 
 exit_code=$?
 if [ $exit_code -ne 0 ]; then
   echo ""
-  echo "❌ Error during event log processing."
+  echo "❌ Error during first event log processing pass."
   script_return_or_exit $exit_code
+fi
+
+echo ""
+echo "🔎 Rebuilding auto-discovered extension configuration from events.db..."
+echo ""
+
+"$PYTHON_CMD" "$DISCOVER_PROCESSOR" \
+  --config "$CONFIG_FILE" \
+  --db-path "$db_dir/events.db"
+
+discover_exit=$?
+if [ $discover_exit -ne 0 ]; then
+  echo ""
+  echo "❌ Error while rebuilding extension configuration."
+  script_return_or_exit $discover_exit
+fi
+
+echo ""
+echo "🚀 Processing contracts again with refreshed extension configuration..."
+echo ""
+
+run_event_processor
+
+second_pass_exit=$?
+if [ $second_pass_exit -ne 0 ]; then
+  echo ""
+  echo "❌ Error during second event log processing pass."
+  script_return_or_exit $second_pass_exit
 fi
 
 echo ""

@@ -1072,15 +1072,46 @@ echo "base_action_ids_by_account() loaded"
 
 extension_factories_json() {
     local factories=()
+    local contracts_file="$base_dir/contracts.json"
 
-    if ! is_zero_address "$lpFactoryAddress"; then
-        factories+=("$lpFactoryAddress")
+    if [ -f "$contracts_file" ]; then
+        while IFS=$'\t' read -r env_var literal_address; do
+            local resolved=""
+            [ "$env_var" = "__EMPTY__" ] && env_var=""
+            [ "$literal_address" = "__EMPTY__" ] && literal_address=""
+            if [ -n "$env_var" ]; then
+                if [ -n "${ZSH_VERSION:-}" ]; then
+                    resolved="${(P)env_var}"
+                else
+                    resolved="${!env_var}"
+                fi
+            fi
+            if [ -z "$resolved" ]; then
+                resolved="$literal_address"
+            fi
+            if [ -n "$resolved" ] && ! is_zero_address "$resolved"; then
+                factories+=("$resolved")
+            fi
+        done < <(
+            jq -r '
+                .[]
+                | select(.contract_type == "extension_factory")
+                | [(.address_env_var // "__EMPTY__"), (.address // "__EMPTY__")]
+                | @tsv
+            ' "$contracts_file" 2>/dev/null
+        )
     fi
-    if ! is_zero_address "$groupActionFactoryAddress"; then
-        factories+=("$groupActionFactoryAddress")
-    fi
-    if ! is_zero_address "$groupServiceFactoryAddress"; then
-        factories+=("$groupServiceFactoryAddress")
+
+    if [ ${#factories[@]} -eq 0 ]; then
+        if ! is_zero_address "$lpFactoryAddress"; then
+            factories+=("$lpFactoryAddress")
+        fi
+        if ! is_zero_address "$groupActionFactoryAddress"; then
+            factories+=("$groupActionFactoryAddress")
+        fi
+        if ! is_zero_address "$groupServiceFactoryAddress"; then
+            factories+=("$groupServiceFactoryAddress")
+        fi
     fi
 
     if [ ${#factories[@]} -eq 0 ]; then
@@ -1090,13 +1121,14 @@ extension_factories_json() {
 
     local joined=""
     local item
-    for item in "${factories[@]}"; do
+    while IFS= read -r item; do
+        [ -z "$item" ] && continue
         if [ -n "$joined" ]; then
             joined="$joined,$item"
         else
             joined="$item"
         fi
-    done
+    done < <(printf '%s\n' "${factories[@]}" | sort -u)
 
     echo "[$joined]"
 }

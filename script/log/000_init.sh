@@ -110,31 +110,6 @@ init_token_address_set() {
     fi
 }
 
-init_extension_addresses() {
-    local token_address=$1
-    local prefix=$2
-    shift 2
-
-    if ! is_nonzero_address "$token_address"; then
-        return 0
-    fi
-
-    local actionId
-    for actionId in "$@"; do
-        local ext_var_name
-        if [ -n "$prefix" ]; then
-            ext_var_name="${prefix}Ext${actionId}Address"
-        else
-            ext_var_name="ext${actionId}Address"
-        fi
-        local ext_address
-        ext_address=$(resolve_optional_address_from_call "$ext_var_name" "$centerAddress" "extension(address,uint256)(address)" "$token_address" "$actionId") || return 1
-        if is_nonzero_address "$ext_address"; then
-            export "$ext_var_name=$ext_address"
-        fi
-    done
-}
-
 init_pair_address() {
     local token0_address=$1
     local token1_address=$2
@@ -153,14 +128,12 @@ init_pair_address() {
 
 export tokenAddress=$firstTokenAddress
 init_token_address_set "tokenAddress" "$tokenAddress" "" || return 1
-init_extension_addresses "$tokenAddress" "" 24 25 26 27 28 29 30 || return 1
 init_pair_address "$tokenAddress" "$rootParentTokenAddress" "love20Tkm20PairAddress" || return 1
 init_pair_address "$tokenAddress" "$tusdtAddress" "love20TusdtPairAddress" || return 1
 
 life20Address=$(resolve_optional_address_from_call "life20Address" "$launchAddress" "tokenAddressBySymbol(string)(address)" "LIFE20") || return 1
 if is_nonzero_address "$life20Address"; then
   init_token_address_set "life20Address" "$life20Address" "life20" || return 1
-  init_extension_addresses "$life20Address" "life20" 0 1 2 3 4 5 6 7 || return 1
   init_pair_address "$firstTokenAddress" "$life20Address" "love20Life20PairAddress" || return 1
 fi
 
@@ -172,6 +145,7 @@ export maxConcurrentJobs=10  # Reduced concurrency to avoid RPC rate limiting
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PYTHON_PROCESSOR="$SCRIPT_DIR/event_processor.py"
 export BLOCK_PROCESSOR="$SCRIPT_DIR/block_processor.py"
+export DISCOVER_PROCESSOR="$SCRIPT_DIR/discover_extensions.py"
 export CONFIG_FILE="$SCRIPT_DIR/../network/$network/contracts.json"
 
 export output_dir="./output/$network"
