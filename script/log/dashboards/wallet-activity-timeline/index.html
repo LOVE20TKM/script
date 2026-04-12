@@ -1,877 +1,915 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>钱包地址时间线看板</title>
-  <style>
-    :root {
-      --bg: #f4efe6;
-      --bg-deep: #e8dfd0;
-      --panel: rgba(255, 252, 247, 0.88);
-      --panel-strong: rgba(255, 252, 247, 0.96);
-      --text: #1d2430;
-      --muted: #5e6775;
-      --line: rgba(29, 36, 48, 0.1);
-      --accent: #215b8f;
-      --accent-soft: rgba(33, 91, 143, 0.12);
-      --accent-2: #9a5221;
-      --accent-3: #1f7a62;
-      --danger: #8f2f2d;
-      --shadow: 0 28px 60px rgba(57, 45, 29, 0.12);
-      --radius: 24px;
-    }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>钱包地址时间线看板</title>
+    <style>
+      :root {
+        --bg: #f4efe6;
+        --bg-deep: #e8dfd0;
+        --panel: rgba(255, 252, 247, 0.88);
+        --panel-strong: rgba(255, 252, 247, 0.96);
+        --text: #1d2430;
+        --muted: #5e6775;
+        --line: rgba(29, 36, 48, 0.1);
+        --accent: #215b8f;
+        --accent-soft: rgba(33, 91, 143, 0.12);
+        --accent-2: #9a5221;
+        --accent-3: #1f7a62;
+        --danger: #8f2f2d;
+        --shadow: 0 28px 60px rgba(57, 45, 29, 0.12);
+        --radius: 24px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
 
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-      color: var(--text);
-      font-family: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-      background:
-        radial-gradient(circle at top left, rgba(154, 82, 33, 0.16), transparent 32%),
-        radial-gradient(circle at top right, rgba(31, 122, 98, 0.14), transparent 28%),
-        linear-gradient(180deg, #fbf7f0 0%, var(--bg) 48%, var(--bg-deep) 100%);
-      padding: 28px 18px 64px;
-    }
-
-    .shell {
-      max-width: 1280px;
-      margin: 0 auto;
-      display: grid;
-      gap: 18px;
-    }
-
-    .hero,
-    .panel {
-      background: var(--panel);
-      border: 1px solid rgba(29, 36, 48, 0.08);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(10px);
-    }
-
-    .hero {
-      padding: 28px;
-      display: grid;
-      gap: 18px;
-    }
-
-    .hero-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      flex-wrap: wrap;
-    }
-
-    .eyebrow {
-      margin: 0 0 10px;
-      font-size: 12px;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-
-    h1 {
-      margin: 0;
-      font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
-      font-size: clamp(30px, 4vw, 52px);
-      line-height: 1.04;
-      letter-spacing: -0.03em;
-    }
-
-    .hero p {
-      margin: 0;
-      max-width: 860px;
-      color: var(--muted);
-      line-height: 1.72;
-      font-size: 15px;
-    }
-
-    .hero-note {
-      padding: 15px 16px;
-      border-radius: 18px;
-      background: rgba(33, 91, 143, 0.08);
-      border: 1px solid rgba(33, 91, 143, 0.14);
-      color: var(--muted);
-      line-height: 1.65;
-      font-size: 14px;
-    }
-
-    .meta {
-      display: grid;
-      gap: 10px;
-      min-width: 290px;
-      padding: 18px;
-      border-radius: 20px;
-      background: var(--panel-strong);
-      border: 1px solid rgba(29, 36, 48, 0.08);
-    }
-
-    .meta-row {
-      display: grid;
-      gap: 4px;
-    }
-
-    .meta-label {
-      font-size: 12px;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-
-    .meta-value {
-      font-size: 14px;
-      word-break: break-all;
-    }
-
-    .query-bar {
-      display: grid;
-      gap: 12px;
-    }
-
-    .query-row {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-
-    .input-wrap {
-      flex: 1 1 460px;
-      display: grid;
-      gap: 8px;
-    }
-
-    .input-label {
-      font-size: 13px;
-      color: var(--muted);
-    }
-
-    .address-input {
-      width: 100%;
-      border: 1px solid rgba(29, 36, 48, 0.14);
-      background: rgba(255, 255, 255, 0.78);
-      color: var(--text);
-      border-radius: 16px;
-      padding: 14px 16px;
-      font-size: 15px;
-      outline: none;
-      transition: border-color 140ms ease, box-shadow 140ms ease;
-    }
-
-    .address-input:focus {
-      border-color: rgba(33, 91, 143, 0.46);
-      box-shadow: 0 0 0 4px rgba(33, 91, 143, 0.12);
-    }
-
-    .button-row {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-
-    .btn {
-      border: 1px solid transparent;
-      border-radius: 999px;
-      padding: 11px 16px;
-      font-size: 14px;
-      cursor: pointer;
-      background: rgba(29, 36, 48, 0.08);
-      color: var(--text);
-      transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
-    }
-
-    .btn:hover {
-      transform: translateY(-1px);
-    }
-
-    .btn:disabled {
-      opacity: 0.62;
-      cursor: wait;
-      transform: none;
-    }
-
-    .btn-primary {
-      background: var(--accent);
-      color: #fff;
-    }
-
-    .btn-file {
-      position: relative;
-      overflow: hidden;
-    }
-
-    .btn-file input {
-      position: absolute;
-      inset: 0;
-      opacity: 0;
-      cursor: pointer;
-    }
-
-    .filters {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
-    .filter-btn {
-      border: 1px solid rgba(29, 36, 48, 0.1);
-      background: rgba(255, 255, 255, 0.7);
-      color: var(--muted);
-      border-radius: 999px;
-      padding: 8px 12px;
-      font-size: 13px;
-      cursor: pointer;
-    }
-
-    .filter-btn.active {
-      background: rgba(33, 91, 143, 0.12);
-      border-color: rgba(33, 91, 143, 0.18);
-      color: var(--accent);
-      font-weight: 600;
-    }
-
-    .status-banner {
-      display: none;
-      padding: 14px 16px;
-      border-radius: 18px;
-      font-size: 14px;
-      line-height: 1.65;
-      border: 1px solid transparent;
-    }
-
-    .status-banner[data-tone="info"] {
-      display: block;
-      background: rgba(33, 91, 143, 0.1);
-      border-color: rgba(33, 91, 143, 0.16);
-    }
-
-    .status-banner[data-tone="success"] {
-      display: block;
-      background: rgba(31, 122, 98, 0.1);
-      border-color: rgba(31, 122, 98, 0.16);
-    }
-
-    .status-banner[data-tone="warning"] {
-      display: block;
-      background: rgba(154, 82, 33, 0.1);
-      border-color: rgba(154, 82, 33, 0.16);
-    }
-
-    .status-banner[data-tone="error"] {
-      display: block;
-      background: rgba(143, 47, 45, 0.1);
-      border-color: rgba(143, 47, 45, 0.16);
-    }
-
-    .summary-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 12px;
-    }
-
-    .card {
-      background: var(--panel-strong);
-      border: 1px solid rgba(29, 36, 48, 0.08);
-      border-radius: 20px;
-      padding: 18px;
-      display: grid;
-      gap: 8px;
-    }
-
-    .card-label {
-      font-size: 12px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-
-    .card-value {
-      font-size: clamp(24px, 3vw, 36px);
-      font-weight: 700;
-      line-height: 1.05;
-    }
-
-    .card-note {
-      font-size: 13px;
-      color: var(--muted);
-      line-height: 1.55;
-    }
-
-    .panel {
-      padding: 22px;
-      display: grid;
-      gap: 16px;
-    }
-
-    .panel-head {
-      display: flex;
-      justify-content: space-between;
-      gap: 14px;
-      align-items: flex-end;
-      flex-wrap: wrap;
-    }
-
-    .panel-title {
-      margin: 0;
-      font-size: 22px;
-      line-height: 1.2;
-    }
-
-    .panel-subtitle {
-      margin: 6px 0 0;
-      color: var(--muted);
-      font-size: 14px;
-      line-height: 1.6;
-    }
-
-    .table-wrap {
-      overflow: auto;
-      border-radius: 20px;
-      border: 1px solid rgba(29, 36, 48, 0.08);
-      background: rgba(255, 255, 255, 0.66);
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      min-width: 1160px;
-    }
-
-    thead th {
-      position: sticky;
-      top: 0;
-      z-index: 1;
-      background: rgba(248, 244, 237, 0.98);
-      color: var(--muted);
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      padding: 14px 12px;
-      text-align: left;
-      border-bottom: 1px solid var(--line);
-    }
-
-    tbody td {
-      padding: 14px 12px;
-      border-bottom: 1px solid rgba(29, 36, 48, 0.08);
-      vertical-align: top;
-      font-size: 14px;
-      line-height: 1.6;
-    }
-
-    tbody tr:hover {
-      background: rgba(33, 91, 143, 0.04);
-    }
-
-    .muted {
-      color: var(--muted);
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 5px 10px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 600;
-      white-space: nowrap;
-      background: rgba(29, 36, 48, 0.07);
-    }
-
-    .badge.reward { background: rgba(33, 91, 143, 0.12); color: var(--accent); }
-    .badge.groupJoin { background: rgba(31, 122, 98, 0.12); color: var(--accent-3); }
-    .badge.approval { background: rgba(154, 82, 33, 0.12); color: var(--accent-2); }
-    .badge.liquidity { background: rgba(82, 69, 153, 0.12); color: #524599; }
-    .badge.transfer { background: rgba(29, 36, 48, 0.08); color: var(--text); }
-    .badge.native { background: rgba(143, 47, 45, 0.1); color: var(--danger); }
-    .badge.complex { background: rgba(129, 92, 40, 0.12); color: #6f4f1a; }
-    .badge.other { background: rgba(29, 36, 48, 0.08); color: var(--muted); }
-
-    .action-cell {
-      display: grid;
-      gap: 8px;
-      min-width: 220px;
-    }
-
-    .action-top {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
-    .action-extra {
-      display: inline-flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 6px;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.5;
-    }
-
-    .action-meta {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
-    }
-
-    .action-id-chip {
-      display: inline-flex;
-      align-items: center;
-      padding: 4px 9px;
-      border-radius: 999px;
-      background: rgba(29, 36, 48, 0.08);
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 700;
-      white-space: nowrap;
-    }
-
-    .community-stack {
-      display: grid;
-      gap: 8px;
-    }
-
-    .community-card {
-      display: inline-flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 6px;
-      padding: 8px 10px;
-      border-radius: 14px;
-      background: rgba(29, 36, 48, 0.05);
-    }
-
-    .community-label {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-weight: 700;
-      color: var(--text);
-      flex-wrap: wrap;
-    }
-
-    .token-inline {
-      display: inline-flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 6px;
-    }
-
-    .token-lp-badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 34px;
-      padding: 3px 8px;
-      border-radius: 999px;
-      background: rgba(82, 69, 153, 0.14);
-      color: #524599;
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    .token-pair {
-      color: var(--muted);
-      font-size: 13px;
-    }
-
-    .amount-stack,
-    .counterparty-stack {
-      display: grid;
-      gap: 8px;
-    }
-
-    .amount-chip,
-    .counterparty-chip {
-      display: inline-flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      align-items: baseline;
-      padding: 7px 10px;
-      border-radius: 14px;
-      background: rgba(29, 36, 48, 0.05);
-    }
-
-    .amount-token {
-      font-weight: 700;
-      color: var(--text);
-    }
-
-    .counterparty-label {
-      font-weight: 700;
-      color: var(--text);
-    }
-
-    .counterparty-address {
-      color: var(--muted);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 12px;
-    }
-
-    .empty {
-      padding: 28px 16px 34px;
-      text-align: center;
-      color: var(--muted);
-      line-height: 1.7;
-    }
-
-    code {
-      background: rgba(29, 36, 48, 0.06);
-      padding: 2px 6px;
-      border-radius: 8px;
-      font-size: 0.94em;
-    }
-
-    @media (max-width: 720px) {
       body {
-        padding-left: 12px;
-        padding-right: 12px;
+        margin: 0;
+        min-height: 100vh;
+        color: var(--text);
+        font-family: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(154, 82, 33, 0.16), transparent 32%),
+          radial-gradient(circle at top right, rgba(31, 122, 98, 0.14), transparent 28%),
+          linear-gradient(180deg, #fbf7f0 0%, var(--bg) 48%, var(--bg-deep) 100%);
+        padding: 28px 18px 64px;
+      }
+
+      .shell {
+        max-width: 1280px;
+        margin: 0 auto;
+        display: grid;
+        gap: 18px;
       }
 
       .hero,
       .panel {
-        padding: 18px;
+        background: var(--panel);
+        border: 1px solid rgba(29, 36, 48, 0.08);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(10px);
+      }
+
+      .hero {
+        padding: 28px;
+        display: grid;
+        gap: 18px;
+      }
+
+      .hero-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 18px;
+        flex-wrap: wrap;
+      }
+
+      .eyebrow {
+        margin: 0 0 10px;
+        font-size: 12px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      h1 {
+        margin: 0;
+        font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+        font-size: clamp(30px, 4vw, 52px);
+        line-height: 1.04;
+        letter-spacing: -0.03em;
+      }
+
+      .hero p {
+        margin: 0;
+        max-width: 860px;
+        color: var(--muted);
+        line-height: 1.72;
+        font-size: 15px;
+      }
+
+      .hero-note {
+        padding: 15px 16px;
+        border-radius: 18px;
+        background: rgba(33, 91, 143, 0.08);
+        border: 1px solid rgba(33, 91, 143, 0.14);
+        color: var(--muted);
+        line-height: 1.65;
+        font-size: 14px;
       }
 
       .meta {
-        min-width: 0;
+        display: grid;
+        gap: 10px;
+        min-width: 290px;
+        padding: 18px;
+        border-radius: 20px;
+        background: var(--panel-strong);
+        border: 1px solid rgba(29, 36, 48, 0.08);
+      }
+
+      .meta-row {
+        display: grid;
+        gap: 4px;
+      }
+
+      .meta-label {
+        font-size: 12px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .meta-value {
+        font-size: 14px;
+        word-break: break-all;
+      }
+
+      .query-bar {
+        display: grid;
+        gap: 12px;
+      }
+
+      .query-row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .input-wrap {
+        flex: 1 1 460px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .input-label {
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .address-input {
         width: 100%;
+        border: 1px solid rgba(29, 36, 48, 0.14);
+        background: rgba(255, 255, 255, 0.78);
+        color: var(--text);
+        border-radius: 16px;
+        padding: 14px 16px;
+        font-size: 15px;
+        outline: none;
+        transition:
+          border-color 140ms ease,
+          box-shadow 140ms ease;
       }
-    }
-  </style>
-</head>
-<body>
-  <div class="shell">
-    <section class="hero">
-      <div class="hero-top">
-        <div>
-          <p class="eyebrow">Wallet Activity Timeline</p>
-          <h1>钱包地址时间线看板</h1>
-          <p>输入任意钱包地址后，页面会从专用看板 SQLite 里按区块和交易顺序拉出该地址的时间线，并把 `ClaimReward`、`groupJoin`、`Approval`、转账、加池 / LP 铸造这类行为归类成接近人工整理的表格。</p>
-        </div>
-        <aside class="meta" id="meta"></aside>
-      </div>
 
-      <div class="hero-note">
-        时间线主真相源是 <code>events</code>、<code>transactions</code>、<code>blocks</code>。页面显示的是基于这些记录归纳后的交易级摘要，不直接查询 6G 源库，因此需要先运行当前目录下的 <code>refresh.sh</code> 生成专用看板 DB。
-      </div>
+      .address-input:focus {
+        border-color: rgba(33, 91, 143, 0.46);
+        box-shadow: 0 0 0 4px rgba(33, 91, 143, 0.12);
+      }
 
-      <div class="query-bar">
-        <div class="query-row">
-          <div class="input-wrap">
-            <label class="input-label" for="address-input">钱包地址</label>
-            <input
-              class="address-input"
-              id="address-input"
-              type="text"
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="例如：0x61d322d536b4e2705d33a0013d957d8ba9c556f1"
-            />
+      .button-row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .btn {
+        border: 1px solid transparent;
+        border-radius: 999px;
+        padding: 11px 16px;
+        font-size: 14px;
+        cursor: pointer;
+        background: rgba(29, 36, 48, 0.08);
+        color: var(--text);
+        transition:
+          transform 140ms ease,
+          background 140ms ease,
+          border-color 140ms ease;
+      }
+
+      .btn:hover {
+        transform: translateY(-1px);
+      }
+
+      .btn:disabled {
+        opacity: 0.62;
+        cursor: wait;
+        transform: none;
+      }
+
+      .btn-primary {
+        background: var(--accent);
+        color: #fff;
+      }
+
+      .btn-file {
+        position: relative;
+        overflow: hidden;
+      }
+
+      .btn-file input {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        cursor: pointer;
+      }
+
+      .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .filter-btn {
+        border: 1px solid rgba(29, 36, 48, 0.1);
+        background: rgba(255, 255, 255, 0.7);
+        color: var(--muted);
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+
+      .filter-btn.active {
+        background: rgba(33, 91, 143, 0.12);
+        border-color: rgba(33, 91, 143, 0.18);
+        color: var(--accent);
+        font-weight: 600;
+      }
+
+      .status-banner {
+        display: none;
+        padding: 14px 16px;
+        border-radius: 18px;
+        font-size: 14px;
+        line-height: 1.65;
+        border: 1px solid transparent;
+      }
+
+      .status-banner[data-tone="info"] {
+        display: block;
+        background: rgba(33, 91, 143, 0.1);
+        border-color: rgba(33, 91, 143, 0.16);
+      }
+
+      .status-banner[data-tone="success"] {
+        display: block;
+        background: rgba(31, 122, 98, 0.1);
+        border-color: rgba(31, 122, 98, 0.16);
+      }
+
+      .status-banner[data-tone="warning"] {
+        display: block;
+        background: rgba(154, 82, 33, 0.1);
+        border-color: rgba(154, 82, 33, 0.16);
+      }
+
+      .status-banner[data-tone="error"] {
+        display: block;
+        background: rgba(143, 47, 45, 0.1);
+        border-color: rgba(143, 47, 45, 0.16);
+      }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+      }
+
+      .card {
+        background: var(--panel-strong);
+        border: 1px solid rgba(29, 36, 48, 0.08);
+        border-radius: 20px;
+        padding: 18px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .card-label {
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .card-value {
+        font-size: clamp(24px, 3vw, 36px);
+        font-weight: 700;
+        line-height: 1.05;
+      }
+
+      .card-note {
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .panel {
+        padding: 22px;
+        display: grid;
+        gap: 16px;
+      }
+
+      .panel-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        align-items: flex-end;
+        flex-wrap: wrap;
+      }
+
+      .panel-title {
+        margin: 0;
+        font-size: 22px;
+        line-height: 1.2;
+      }
+
+      .panel-subtitle {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.6;
+      }
+
+      .table-wrap {
+        overflow: auto;
+        border-radius: 20px;
+        border: 1px solid rgba(29, 36, 48, 0.08);
+        background: rgba(255, 255, 255, 0.66);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 1160px;
+      }
+
+      thead th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: rgba(248, 244, 237, 0.98);
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        padding: 14px 12px;
+        text-align: left;
+        border-bottom: 1px solid var(--line);
+      }
+
+      tbody td {
+        padding: 14px 12px;
+        border-bottom: 1px solid rgba(29, 36, 48, 0.08);
+        vertical-align: top;
+        font-size: 14px;
+        line-height: 1.6;
+      }
+
+      tbody tr:hover {
+        background: rgba(33, 91, 143, 0.04);
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+        background: rgba(29, 36, 48, 0.07);
+      }
+
+      .badge.reward {
+        background: rgba(33, 91, 143, 0.12);
+        color: var(--accent);
+      }
+      .badge.groupJoin {
+        background: rgba(31, 122, 98, 0.12);
+        color: var(--accent-3);
+      }
+      .badge.approval {
+        background: rgba(154, 82, 33, 0.12);
+        color: var(--accent-2);
+      }
+      .badge.liquidity {
+        background: rgba(82, 69, 153, 0.12);
+        color: #524599;
+      }
+      .badge.transfer {
+        background: rgba(29, 36, 48, 0.08);
+        color: var(--text);
+      }
+      .badge.native {
+        background: rgba(143, 47, 45, 0.1);
+        color: var(--danger);
+      }
+      .badge.complex {
+        background: rgba(129, 92, 40, 0.12);
+        color: #6f4f1a;
+      }
+      .badge.other {
+        background: rgba(29, 36, 48, 0.08);
+        color: var(--muted);
+      }
+
+      .action-cell {
+        display: grid;
+        gap: 8px;
+        min-width: 220px;
+      }
+
+      .action-top {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .action-extra {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .action-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .action-id-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 9px;
+        border-radius: 999px;
+        background: rgba(29, 36, 48, 0.08);
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .community-stack {
+        display: grid;
+        gap: 8px;
+      }
+
+      .community-card {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 8px 10px;
+        border-radius: 14px;
+        background: rgba(29, 36, 48, 0.05);
+      }
+
+      .community-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 700;
+        color: var(--text);
+        flex-wrap: wrap;
+      }
+
+      .token-inline {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .token-lp-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 34px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: rgba(82, 69, 153, 0.14);
+        color: #524599;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .token-pair {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .amount-stack,
+      .counterparty-stack {
+        display: grid;
+        gap: 8px;
+      }
+
+      .amount-chip,
+      .counterparty-chip {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: baseline;
+        padding: 7px 10px;
+        border-radius: 14px;
+        background: rgba(29, 36, 48, 0.05);
+      }
+
+      .amount-token {
+        font-weight: 700;
+        color: var(--text);
+      }
+
+      .counterparty-label {
+        font-weight: 700;
+        color: var(--text);
+      }
+
+      .counterparty-address {
+        color: var(--muted);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 12px;
+      }
+
+      .empty {
+        padding: 28px 16px 34px;
+        text-align: center;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      code {
+        background: rgba(29, 36, 48, 0.06);
+        padding: 2px 6px;
+        border-radius: 8px;
+        font-size: 0.94em;
+      }
+
+      @media (max-width: 720px) {
+        body {
+          padding-left: 12px;
+          padding-right: 12px;
+        }
+
+        .hero,
+        .panel {
+          padding: 18px;
+        }
+
+        .meta {
+          min-width: 0;
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <section class="hero">
+        <div class="hero-top">
+          <div>
+            <p class="eyebrow">Wallet Activity Timeline</p>
+            <h1>钱包地址时间线看板</h1>
+            <p>
+              输入任意钱包地址后，页面会从专用看板 SQLite 里按区块和交易顺序拉出该地址的时间线，并把
+              `ClaimReward`、`groupJoin`、`Approval`、转账、加池 / LP 铸造这类行为归类成接近人工整理的表格。
+            </p>
           </div>
-          <div class="button-row">
-            <button class="btn btn-primary" id="query-btn" type="button">查询时间线</button>
-            <button class="btn" id="reload-btn" type="button">重新加载默认 DB</button>
-            <label class="btn btn-file">
-              选择本地 DB
-              <input id="db-file" type="file" accept=".db,.sqlite,.sqlite3,application/octet-stream" />
-            </label>
+          <aside class="meta" id="meta"></aside>
+        </div>
+
+        <div class="hero-note">
+          时间线主真相源是
+          <code>events</code
+          >、<code>transactions</code>、<code>blocks</code>。页面显示的是基于这些记录归纳后的交易级摘要，不直接查询 6G
+          源库，因此需要先运行当前目录下的 <code>refresh.sh</code> 生成专用看板 DB。
+        </div>
+
+        <div class="query-bar">
+          <div class="query-row">
+            <div class="input-wrap">
+              <label class="input-label" for="address-input">钱包地址</label>
+              <input
+                class="address-input"
+                id="address-input"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="0x6458E25680765Add4e2ca8d5a31fA08f5e1b6e4a"
+              />
+            </div>
+            <div class="button-row">
+              <button class="btn btn-primary" id="query-btn" type="button">查询时间线</button>
+              <button class="btn" id="reload-btn" type="button">重新加载默认 DB</button>
+              <label class="btn btn-file">
+                选择本地 DB
+                <input id="db-file" type="file" accept=".db,.sqlite,.sqlite3,application/octet-stream" />
+              </label>
+            </div>
+          </div>
+          <div class="filters" id="filters"></div>
+        </div>
+
+        <div class="status-banner" id="load-banner"></div>
+        <div class="status-banner" id="query-banner"></div>
+      </section>
+
+      <section class="panel">
+        <div class="summary-grid" id="summary-cards"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2 class="panel-title">时间线明细</h2>
+            <p class="panel-subtitle" id="table-subtitle">先加载看板 DB，再输入钱包地址。</p>
           </div>
         </div>
-        <div class="filters" id="filters"></div>
-      </div>
-
-      <div class="status-banner" id="load-banner"></div>
-      <div class="status-banner" id="query-banner"></div>
-    </section>
-
-    <section class="panel">
-      <div class="summary-grid" id="summary-cards"></div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-head">
-        <div>
-          <h2 class="panel-title">时间线明细</h2>
-          <p class="panel-subtitle" id="table-subtitle">先加载看板 DB，再输入钱包地址。</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>区块</th>
+                <th>东八区时间</th>
+                <th>行动 / 社区</th>
+                <th>数量</th>
+                <th>对手方 / 目标地址</th>
+                <th>发生了什么</th>
+              </tr>
+            </thead>
+            <tbody id="table-body">
+              <tr>
+                <td colspan="6" class="empty">等待输入地址。</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>区块</th>
-              <th>东八区时间</th>
-              <th>行动 / 社区</th>
-              <th>数量</th>
-              <th>对手方 / 目标地址</th>
-              <th>发生了什么</th>
-            </tr>
-          </thead>
-          <tbody id="table-body">
-            <tr>
-              <td colspan="6" class="empty">等待输入地址。</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-  </div>
+      </section>
+    </div>
 
-  <script src="../vendor/sql.js/sql-wasm.js"></script>
-  <script>
-    const DEFAULT_NETWORK = "thinkium70001_public";
-    const DEFAULT_DB_URL = `./data/${DEFAULT_NETWORK}.db`;
-    const SQL_WASM_DIR = "../vendor/sql.js";
-    const TIMEZONE = "Asia/Shanghai";
+    <script src="../vendor/sql.js/sql-wasm.js"></script>
+    <script>
+      const DEFAULT_NETWORK = "thinkium70001_public";
+      const DEFAULT_DB_URL = `./data/${DEFAULT_NETWORK}.db`;
+      const SQL_WASM_DIR = "../vendor/sql.js";
+      const TIMEZONE = "Asia/Shanghai";
 
-    const timeFormatter = new Intl.DateTimeFormat("zh-CN", {
-      timeZone: TIMEZONE,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    });
+      const timeFormatter = new Intl.DateTimeFormat("zh-CN", {
+        timeZone: TIMEZONE,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      });
 
-    const FILTER_OPTIONS = [
-      { key: "all", label: "全部" },
-      { key: "reward", label: "奖励" },
-      { key: "groupJoin", label: "groupJoin" },
-      { key: "approval", label: "授权" },
-      { key: "liquidity", label: "流动性" },
-      { key: "transfer", label: "转账" },
-      { key: "native", label: "原生币" },
-      { key: "complex", label: "复杂交互" },
-      { key: "other", label: "其他" },
-    ];
+      const FILTER_OPTIONS = [
+        { key: "all", label: "全部" },
+        { key: "reward", label: "奖励" },
+        { key: "groupJoin", label: "groupJoin" },
+        { key: "approval", label: "授权" },
+        { key: "liquidity", label: "流动性" },
+        { key: "transfer", label: "转账" },
+        { key: "native", label: "原生币" },
+        { key: "complex", label: "复杂交互" },
+        { key: "other", label: "其他" },
+      ];
 
-    const state = {
-      db: null,
-      sqlModulePromise: null,
-      sourceLabel: DEFAULT_DB_URL,
-      metadata: null,
-      queriedAddress: "",
-      rows: [],
-      activeFilter: "all",
-      isBusy: false,
-    };
+      const state = {
+        db: null,
+        sqlModulePromise: null,
+        sourceLabel: DEFAULT_DB_URL,
+        metadata: null,
+        queriedAddress: "",
+        rows: [],
+        activeFilter: "all",
+        isBusy: false,
+      };
 
-    function escapeHtml(value) {
-      return String(value ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
-    }
-
-    function normalizeAddress(value) {
-      return String(value || "").trim().toLowerCase();
-    }
-
-    function isAddress(value) {
-      return /^0x[a-f0-9]{40}$/i.test(String(value || "").trim());
-    }
-
-    function shortAddress(value) {
-      const address = normalizeAddress(value);
-      if (address.length < 12) {
-        return address || "-";
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
       }
-      return `${address.slice(0, 10)}...${address.slice(-6)}`;
-    }
 
-    function parseLpLabel(label) {
-      const text = String(label || "").trim();
-      if (!text.endsWith(" LP")) {
-        return null;
+      function normalizeAddress(value) {
+        return String(value || "")
+          .trim()
+          .toLowerCase();
       }
-      return text.slice(0, -3);
-    }
 
-    function renderTokenInline(label) {
-      const lpPair = parseLpLabel(label);
-      if (!lpPair) {
-        return `<span class="amount-token">${escapeHtml(label || "-")}</span>`;
+      function isAddress(value) {
+        return /^0x[a-f0-9]{40}$/i.test(String(value || "").trim());
       }
-      return `
+
+      function shortAddress(value) {
+        const address = normalizeAddress(value);
+        if (address.length < 12) {
+          return address || "-";
+        }
+        return `${address.slice(0, 10)}...${address.slice(-6)}`;
+      }
+
+      function parseLpLabel(label) {
+        const text = String(label || "").trim();
+        if (!text.endsWith(" LP")) {
+          return null;
+        }
+        return text.slice(0, -3);
+      }
+
+      function renderTokenInline(label) {
+        const lpPair = parseLpLabel(label);
+        if (!lpPair) {
+          return `<span class="amount-token">${escapeHtml(label || "-")}</span>`;
+        }
+        return `
         <span class="token-inline">
           <span class="token-lp-badge">LP</span>
           <span class="token-pair">(${escapeHtml(lpPair)})</span>
         </span>
       `;
-    }
+      }
 
-    function splitActionLabel(label) {
-      const text = String(label || "").trim();
-      const match = /^(授权|转出|接收)\s+(.+)$/.exec(text);
-      if (!match) {
+      function splitActionLabel(label) {
+        const text = String(label || "").trim();
+        const match = /^(授权|转出|接收)\s+(.+)$/.exec(text);
+        if (!match) {
+          return {
+            primary: text || "-",
+            secondary: "",
+          };
+        }
         return {
-          primary: text || "-",
-          secondary: "",
+          primary: match[1],
+          secondary: match[2],
         };
       }
-      return {
-        primary: match[1],
-        secondary: match[2],
-      };
-    }
 
-    function setBusy(isBusy) {
-      state.isBusy = isBusy;
-      document.getElementById("query-btn").disabled = isBusy;
-      document.getElementById("reload-btn").disabled = isBusy;
-      document.getElementById("db-file").disabled = isBusy;
-    }
+      function setBusy(isBusy) {
+        state.isBusy = isBusy;
+        document.getElementById("query-btn").disabled = isBusy;
+        document.getElementById("reload-btn").disabled = isBusy;
+        document.getElementById("db-file").disabled = isBusy;
+      }
 
-    function setBanner(id, tone, message) {
-      const node = document.getElementById(id);
-      if (!message) {
-        node.style.display = "none";
-        node.removeAttribute("data-tone");
-        node.textContent = "";
-        return;
+      function setBanner(id, tone, message) {
+        const node = document.getElementById(id);
+        if (!message) {
+          node.style.display = "none";
+          node.removeAttribute("data-tone");
+          node.textContent = "";
+          return;
+        }
+        node.style.display = "block";
+        node.setAttribute("data-tone", tone);
+        node.innerHTML = message;
       }
-      node.style.display = "block";
-      node.setAttribute("data-tone", tone);
-      node.innerHTML = message;
-    }
 
-    function formatUnixTimestamp(seconds) {
-      if (!seconds) {
-        return "-";
+      function formatUnixTimestamp(seconds) {
+        if (!seconds) {
+          return "-";
+        }
+        return timeFormatter.format(new Date(Number(seconds) * 1000)).replace(/\//g, "-");
       }
-      return timeFormatter.format(new Date(Number(seconds) * 1000)).replace(/\//g, "-");
-    }
 
-    function formatBigInt(raw, decimals = 18) {
-      if (raw === null || raw === undefined || raw === "") {
-        return "-";
+      function formatBigInt(raw, decimals = 18) {
+        if (raw === null || raw === undefined || raw === "") {
+          return "-";
+        }
+        const value = String(raw);
+        const negative = value.startsWith("-");
+        let digits = negative ? value.slice(1) : value;
+        if (!/^\d+$/.test(digits)) {
+          return value;
+        }
+        const scale = Number(decimals || 18);
+        if (digits.length <= scale) {
+          digits = digits.padStart(scale + 1, "0");
+        }
+        const whole = digits.slice(0, digits.length - scale) || "0";
+        const fraction = digits.slice(digits.length - scale).replace(/0+$/, "");
+        const wholeText = BigInt(whole).toLocaleString("zh-CN");
+        const sign = negative ? "-" : "";
+        return fraction ? `${sign}${wholeText}.${fraction}` : `${sign}${wholeText}`;
       }
-      const value = String(raw);
-      const negative = value.startsWith("-");
-      let digits = negative ? value.slice(1) : value;
-      if (!/^\d+$/.test(digits)) {
-        return value;
-      }
-      const scale = Number(decimals || 18);
-      if (digits.length <= scale) {
-        digits = digits.padStart(scale + 1, "0");
-      }
-      const whole = digits.slice(0, digits.length - scale) || "0";
-      const fraction = digits.slice(digits.length - scale).replace(/0+$/, "");
-      const wholeText = BigInt(whole).toLocaleString("zh-CN");
-      const sign = negative ? "-" : "";
-      return fraction ? `${sign}${wholeText}.${fraction}` : `${sign}${wholeText}`;
-    }
 
-    function parseJson(value, fallback = []) {
-      try {
-        return JSON.parse(value || "[]");
-      } catch (error) {
-        return fallback;
+      function parseJson(value, fallback = []) {
+        try {
+          return JSON.parse(value || "[]");
+        } catch (error) {
+          return fallback;
+        }
       }
-    }
 
-    function rowsFromStatement(statement) {
-      const rows = [];
-      while (statement.step()) {
-        rows.push(statement.getAsObject());
+      function rowsFromStatement(statement) {
+        const rows = [];
+        while (statement.step()) {
+          rows.push(statement.getAsObject());
+        }
+        return rows;
       }
-      return rows;
-    }
 
-    async function ensureSqlJs() {
-      if (!window.initSqlJs) {
-        throw new Error("sql.js 未成功加载");
+      async function ensureSqlJs() {
+        if (!window.initSqlJs) {
+          throw new Error("sql.js 未成功加载");
+        }
+        if (!state.sqlModulePromise) {
+          state.sqlModulePromise = window.initSqlJs({
+            locateFile: (file) => `${SQL_WASM_DIR}/${file}`,
+          });
+        }
+        return state.sqlModulePromise;
       }
-      if (!state.sqlModulePromise) {
-        state.sqlModulePromise = window.initSqlJs({
-          locateFile: (file) => `${SQL_WASM_DIR}/${file}`,
-        });
-      }
-      return state.sqlModulePromise;
-    }
 
-    async function fetchBuffer(url) {
-      const response = await fetch(url, { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error(`加载 ${url} 失败: HTTP ${response.status}`);
+      async function fetchBuffer(url) {
+        const response = await fetch(url, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`加载 ${url} 失败: HTTP ${response.status}`);
+        }
+        return response.arrayBuffer();
       }
-      return response.arrayBuffer();
-    }
 
-    function closeDatabase() {
-      if (state.db) {
-        state.db.close();
-        state.db = null;
+      function closeDatabase() {
+        if (state.db) {
+          state.db.close();
+          state.db = null;
+        }
       }
-    }
 
-    function loadMetadata() {
-      if (!state.db) {
-        state.metadata = null;
-        return;
+      function loadMetadata() {
+        if (!state.db) {
+          state.metadata = null;
+          return;
+        }
+        const result = state.db.exec("SELECT network, source_db, generated_at, record_count FROM metadata LIMIT 1");
+        const row =
+          result[0] && result[0].values[0]
+            ? {
+                network: result[0].values[0][0],
+                source_db: result[0].values[0][1],
+                generated_at: result[0].values[0][2],
+                record_count: result[0].values[0][3],
+              }
+            : null;
+        state.metadata = row;
       }
-      const result = state.db.exec("SELECT network, source_db, generated_at, record_count FROM metadata LIMIT 1");
-      const row = result[0] && result[0].values[0]
-        ? {
-            network: result[0].values[0][0],
-            source_db: result[0].values[0][1],
-            generated_at: result[0].values[0][2],
-            record_count: result[0].values[0][3],
-          }
-        : null;
-      state.metadata = row;
-    }
 
-    async function loadDatabase({ label, arrayBufferPromise }) {
-      setBusy(true);
-      setBanner("load-banner", "info", "正在加载看板 SQLite，请稍等。");
-      setBanner("query-banner", "", "");
-      try {
-        const SQL = await ensureSqlJs();
-        const arrayBuffer = await arrayBufferPromise;
-        closeDatabase();
-        state.db = new SQL.Database(new Uint8Array(arrayBuffer));
-        state.sourceLabel = label;
-        loadMetadata();
-        renderMeta();
-        renderSummary([]);
-        renderTable([]);
-        setBanner("load-banner", "success", `已加载看板 DB：<code>${escapeHtml(label)}</code>`);
-      } catch (error) {
-        closeDatabase();
-        renderMeta();
-        renderSummary([]);
-        renderTable([]);
-        setBanner("load-banner", "error", escapeHtml(error.message || String(error)));
-      } finally {
-        setBusy(false);
+      async function loadDatabase({ label, arrayBufferPromise }) {
+        setBusy(true);
+        setBanner("load-banner", "info", "正在加载看板 SQLite，请稍等。");
+        setBanner("query-banner", "", "");
+        try {
+          const SQL = await ensureSqlJs();
+          const arrayBuffer = await arrayBufferPromise;
+          closeDatabase();
+          state.db = new SQL.Database(new Uint8Array(arrayBuffer));
+          state.sourceLabel = label;
+          loadMetadata();
+          renderMeta();
+          renderSummary([]);
+          renderTable([]);
+          setBanner("load-banner", "success", `已加载看板 DB：<code>${escapeHtml(label)}</code>`);
+        } catch (error) {
+          closeDatabase();
+          renderMeta();
+          renderSummary([]);
+          renderTable([]);
+          setBanner("load-banner", "error", escapeHtml(error.message || String(error)));
+        } finally {
+          setBusy(false);
+        }
       }
-    }
 
-    function queryActivityRows(address) {
-      if (!state.db) {
-        throw new Error("看板 DB 尚未加载。");
-      }
-      const statement = state.db.prepare(`
+      function queryActivityRows(address) {
+        if (!state.db) {
+          throw new Error("看板 DB 尚未加载。");
+        }
+        const statement = state.db.prepare(`
         SELECT
           id,
           block_number,
@@ -891,33 +929,33 @@
         WHERE account = ?
         ORDER BY block_number DESC, tx_index DESC, id DESC
       `);
-      try {
-        statement.bind([address]);
-        return rowsFromStatement(statement).map((row) => ({
-          ...row,
-          block_number: Number(row.block_number),
-          block_timestamp: Number(row.block_timestamp),
-          tx_index: Number(row.tx_index || 0),
-          status: row.status === null ? null : Number(row.status),
-          communities: parseJson(row.communities_json),
-          amounts: parseJson(row.amounts_json),
-          counterparties: parseJson(row.counterparties_json),
-        }));
-      } finally {
-        statement.free();
+        try {
+          statement.bind([address]);
+          return rowsFromStatement(statement).map((row) => ({
+            ...row,
+            block_number: Number(row.block_number),
+            block_timestamp: Number(row.block_timestamp),
+            tx_index: Number(row.tx_index || 0),
+            status: row.status === null ? null : Number(row.status),
+            communities: parseJson(row.communities_json),
+            amounts: parseJson(row.amounts_json),
+            counterparties: parseJson(row.counterparties_json),
+          }));
+        } finally {
+          statement.free();
+        }
       }
-    }
 
-    function getFilteredRows() {
-      if (state.activeFilter === "all") {
-        return state.rows;
+      function getFilteredRows() {
+        if (state.activeFilter === "all") {
+          return state.rows;
+        }
+        return state.rows.filter((row) => row.action_group === state.activeFilter);
       }
-      return state.rows.filter((row) => row.action_group === state.activeFilter);
-    }
 
-    function renderMeta() {
-      const metadata = state.metadata;
-      document.getElementById("meta").innerHTML = `
+      function renderMeta() {
+        const metadata = state.metadata;
+        document.getElementById("meta").innerHTML = `
         <div class="meta-row">
           <div class="meta-label">Network</div>
           <div class="meta-value">${escapeHtml(metadata?.network || DEFAULT_NETWORK)}</div>
@@ -935,17 +973,17 @@
           <div class="meta-value">${metadata?.record_count ? BigInt(metadata.record_count).toLocaleString("zh-CN") : "-"}</div>
         </div>
       `;
-    }
+      }
 
-    function renderFilters() {
-      const rows = state.rows;
-      const counts = rows.reduce((acc, row) => {
-        acc[row.action_group] = (acc[row.action_group] || 0) + 1;
-        return acc;
-      }, {});
-      document.getElementById("filters").innerHTML = FILTER_OPTIONS.map((item) => {
-        const count = item.key === "all" ? rows.length : (counts[item.key] || 0);
-        return `
+      function renderFilters() {
+        const rows = state.rows;
+        const counts = rows.reduce((acc, row) => {
+          acc[row.action_group] = (acc[row.action_group] || 0) + 1;
+          return acc;
+        }, {});
+        document.getElementById("filters").innerHTML = FILTER_OPTIONS.map((item) => {
+          const count = item.key === "all" ? rows.length : counts[item.key] || 0;
+          return `
           <button
             class="filter-btn ${state.activeFilter === item.key ? "active" : ""}"
             data-filter-key="${escapeHtml(item.key)}"
@@ -955,113 +993,123 @@
             ${escapeHtml(item.label)} (${count})
           </button>
         `;
-      }).join("");
+        }).join("");
 
-      document.querySelectorAll(".filter-btn").forEach((button) => {
-        button.addEventListener("click", () => {
-          state.activeFilter = button.dataset.filterKey;
-          renderTable(getFilteredRows());
-          renderFilters();
+        document.querySelectorAll(".filter-btn").forEach((button) => {
+          button.addEventListener("click", () => {
+            state.activeFilter = button.dataset.filterKey;
+            renderTable(getFilteredRows());
+            renderFilters();
+          });
         });
-      });
-    }
-
-    function renderSummary(rows) {
-      const cards = [];
-      if (!rows.length) {
-        cards.push(
-          {
-            label: "当前状态",
-            value: "等待查询",
-            note: "加载看板 DB 后，输入钱包地址开始查询。",
-          },
-          {
-            label: "默认 DB",
-            value: DEFAULT_NETWORK,
-            note: "也可以手动选择本地同结构的看板 SQLite 文件。",
-          },
-          {
-            label: "归类口径",
-            value: "交易级摘要",
-            note: "ClaimReward、groupJoin、Approval、Transfer、原生币转账都会归并成单行。",
-          }
-        );
-      } else {
-        const latest = rows[0];
-        const earliest = rows[rows.length - 1];
-        const uniqueActions = new Set(rows.map((row) => row.action)).size;
-        const uniqueActionIds = new Set(
-          rows.flatMap((row) => (row.action_id_text ? row.action_id_text.split(",").filter(Boolean) : []))
-        ).size;
-        cards.push(
-          {
-            label: "命中记录",
-            value: rows.length.toLocaleString("zh-CN"),
-            note: `地址 ${shortAddress(state.queriedAddress)} 的时间线条数`,
-          },
-          {
-            label: "最新一条时间",
-            value: formatUnixTimestamp(latest.block_timestamp),
-            note: `区块 ${latest.block_number.toLocaleString("zh-CN")}`,
-          },
-          {
-            label: "最早一条时间",
-            value: formatUnixTimestamp(earliest.block_timestamp),
-            note: `区块 ${earliest.block_number.toLocaleString("zh-CN")}`,
-          },
-          {
-            label: "动作类型",
-            value: uniqueActions.toLocaleString("zh-CN"),
-            note: `涉及 ${uniqueActionIds.toLocaleString("zh-CN")} 个 actionId`,
-          }
-        );
       }
 
-      document.getElementById("summary-cards").innerHTML = cards.map((card) => `
+      function renderSummary(rows) {
+        const cards = [];
+        if (!rows.length) {
+          cards.push(
+            {
+              label: "当前状态",
+              value: "等待查询",
+              note: "加载看板 DB 后，输入钱包地址开始查询。",
+            },
+            {
+              label: "默认 DB",
+              value: DEFAULT_NETWORK,
+              note: "也可以手动选择本地同结构的看板 SQLite 文件。",
+            },
+            {
+              label: "归类口径",
+              value: "交易级摘要",
+              note: "ClaimReward、groupJoin、Approval、Transfer、原生币转账都会归并成单行。",
+            },
+          );
+        } else {
+          const latest = rows[0];
+          const earliest = rows[rows.length - 1];
+          const uniqueActions = new Set(rows.map((row) => row.action)).size;
+          const uniqueActionIds = new Set(
+            rows.flatMap((row) => (row.action_id_text ? row.action_id_text.split(",").filter(Boolean) : [])),
+          ).size;
+          cards.push(
+            {
+              label: "命中记录",
+              value: rows.length.toLocaleString("zh-CN"),
+              note: `地址 ${shortAddress(state.queriedAddress)} 的时间线条数`,
+            },
+            {
+              label: "最新一条时间",
+              value: formatUnixTimestamp(latest.block_timestamp),
+              note: `区块 ${latest.block_number.toLocaleString("zh-CN")}`,
+            },
+            {
+              label: "最早一条时间",
+              value: formatUnixTimestamp(earliest.block_timestamp),
+              note: `区块 ${earliest.block_number.toLocaleString("zh-CN")}`,
+            },
+            {
+              label: "动作类型",
+              value: uniqueActions.toLocaleString("zh-CN"),
+              note: `涉及 ${uniqueActionIds.toLocaleString("zh-CN")} 个 actionId`,
+            },
+          );
+        }
+
+        document.getElementById("summary-cards").innerHTML = cards
+          .map(
+            (card) => `
         <article class="card">
           <div class="card-label">${escapeHtml(card.label)}</div>
           <div class="card-value">${escapeHtml(card.value)}</div>
           <div class="card-note">${escapeHtml(card.note)}</div>
         </article>
-      `).join("");
-    }
-
-    function renderAmountCell(items) {
-      if (!items.length) {
-        return '<span class="muted">-</span>';
+      `,
+          )
+          .join("");
       }
-      return `<div class="amount-stack">${items.map((item) => `
+
+      function renderAmountCell(items) {
+        if (!items.length) {
+          return '<span class="muted">-</span>';
+        }
+        return `<div class="amount-stack">${items
+          .map(
+            (item) => `
         <span class="amount-chip">
           ${renderTokenInline(item.token)}
           <span>${escapeHtml(formatBigInt(item.raw, item.decimals || 18))}</span>
         </span>
-      `).join("")}</div>`;
-    }
-
-    function renderCommunityStack(items) {
-      if (!items.length) {
-        return "";
+      `,
+          )
+          .join("")}</div>`;
       }
-      return `<div class="community-stack">${items.map((item) => `
+
+      function renderCommunityStack(items) {
+        if (!items.length) {
+          return "";
+        }
+        return `<div class="community-stack">${items
+          .map(
+            (item) => `
         <span class="community-card" title="${escapeHtml(item.address || "")}">
           <span class="community-label">${renderTokenInline(item.label || shortAddress(item.address || ""))}</span>
         </span>
-      `).join("")}</div>`;
-    }
+      `,
+          )
+          .join("")}</div>`;
+      }
 
-    function renderActionCell(row) {
-      const actionParts = splitActionLabel(row.action);
-      const communityHtml = renderCommunityStack(row.communities);
-      const actionExtra = actionParts.secondary
-        ? `<span class="action-extra">${renderTokenInline(actionParts.secondary)}</span>`
-        : "";
-      const actionIdHtml = row.action_id_text
-        ? `<span class="action-id-chip">ActionId ${escapeHtml(row.action_id_text)}</span>`
-        : "";
-      const communityBlock = row.communities.length
-        ? `<div>${communityHtml}</div>`
-        : "";
-      return `
+      function renderActionCell(row) {
+        const actionParts = splitActionLabel(row.action);
+        const communityHtml = renderCommunityStack(row.communities);
+        const actionExtra = actionParts.secondary
+          ? `<span class="action-extra">${renderTokenInline(actionParts.secondary)}</span>`
+          : "";
+        const actionIdHtml = row.action_id_text
+          ? `<span class="action-id-chip">ActionId ${escapeHtml(row.action_id_text)}</span>`
+          : "";
+        const communityBlock = row.communities.length ? `<div>${communityHtml}</div>` : "";
+        return `
         <div class="action-cell">
           <div class="action-top">
             <span class="badge ${escapeHtml(row.action_group)}">${escapeHtml(actionParts.primary)}</span>
@@ -1073,33 +1121,39 @@
           ${communityBlock}
         </div>
       `;
-    }
-
-    function renderCounterpartyCell(items) {
-      if (!items.length) {
-        return '<span class="muted">-</span>';
       }
-      return `<div class="counterparty-stack">${items.map((item) => `
+
+      function renderCounterpartyCell(items) {
+        if (!items.length) {
+          return '<span class="muted">-</span>';
+        }
+        return `<div class="counterparty-stack">${items
+          .map(
+            (item) => `
         <span class="counterparty-chip" title="${escapeHtml(item.address || "")}">
           ${item.label ? `<span class="counterparty-label">${escapeHtml(item.label)}</span>` : ""}
           <span class="counterparty-address">${escapeHtml(shortAddress(item.address || ""))}</span>
         </span>
-      `).join("")}</div>`;
-    }
-
-    function renderTable(rows) {
-      const tbody = document.getElementById("table-body");
-      const subtitle = document.getElementById("table-subtitle");
-      subtitle.textContent = state.queriedAddress
-        ? `${shortAddress(state.queriedAddress)} 共命中 ${rows.length} 条记录，按区块和交易顺序倒序显示。`
-        : "先加载看板 DB，再输入钱包地址。";
-
-      if (!rows.length) {
-        tbody.innerHTML = `<tr><td colspan="6" class="empty">${escapeHtml(state.queriedAddress ? "没有查到匹配记录。" : "等待输入地址。")}</td></tr>`;
-        return;
+      `,
+          )
+          .join("")}</div>`;
       }
 
-      tbody.innerHTML = rows.map((row) => `
+      function renderTable(rows) {
+        const tbody = document.getElementById("table-body");
+        const subtitle = document.getElementById("table-subtitle");
+        subtitle.textContent = state.queriedAddress
+          ? `${shortAddress(state.queriedAddress)} 共命中 ${rows.length} 条记录，按区块和交易顺序倒序显示。`
+          : "先加载看板 DB，再输入钱包地址。";
+
+        if (!rows.length) {
+          tbody.innerHTML = `<tr><td colspan="6" class="empty">${escapeHtml(state.queriedAddress ? "没有查到匹配记录。" : "等待输入地址。")}</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = rows
+          .map(
+            (row) => `
         <tr>
           <td>${row.block_number.toLocaleString("zh-CN")}</td>
           <td>${escapeHtml(formatUnixTimestamp(row.block_timestamp))}</td>
@@ -1108,100 +1162,106 @@
           <td>${renderCounterpartyCell(row.counterparties)}</td>
           <td>${escapeHtml(row.description)}</td>
         </tr>
-      `).join("");
-    }
-
-    async function runQuery() {
-      const addressInput = document.getElementById("address-input");
-      const address = normalizeAddress(addressInput.value);
-      if (!isAddress(address)) {
-        setBanner("query-banner", "warning", "请输入完整的钱包地址，格式需要是 42 位的 <code>0x...</code>。");
-        return;
-      }
-      if (!state.db) {
-        setBanner("query-banner", "warning", "请先加载看板 DB。");
-        return;
+      `,
+          )
+          .join("");
       }
 
-      setBusy(true);
-      setBanner("query-banner", "info", `正在查询地址 <code>${escapeHtml(address)}</code> 的时间线。`);
-      try {
-        state.queriedAddress = address;
-        state.rows = queryActivityRows(address);
-        state.activeFilter = "all";
-        renderFilters();
-        renderSummary(state.rows);
-        renderTable(state.rows);
-        if (state.rows.length) {
-          setBanner("query-banner", "success", `已查询到 <strong>${state.rows.length}</strong> 条记录。`);
-        } else {
-          setBanner("query-banner", "warning", `地址 <code>${escapeHtml(address)}</code> 在当前看板 DB 中没有命中记录。`);
+      async function runQuery() {
+        const addressInput = document.getElementById("address-input");
+        const address = normalizeAddress(addressInput.value);
+        if (!isAddress(address)) {
+          setBanner("query-banner", "warning", "请输入完整的钱包地址，格式需要是 42 位的 <code>0x...</code>。");
+          return;
         }
-      } catch (error) {
-        setBanner("query-banner", "error", escapeHtml(error.message || String(error)));
-      } finally {
-        setBusy(false);
-      }
-    }
+        if (!state.db) {
+          setBanner("query-banner", "warning", "请先加载看板 DB。");
+          return;
+        }
 
-    async function boot() {
-      renderMeta();
-      renderFilters();
-      renderSummary([]);
-      await loadDatabase({
-        label: DEFAULT_DB_URL,
-        arrayBufferPromise: fetchBuffer(DEFAULT_DB_URL),
+        setBusy(true);
+        setBanner("query-banner", "info", `正在查询地址 <code>${escapeHtml(address)}</code> 的时间线。`);
+        try {
+          state.queriedAddress = address;
+          state.rows = queryActivityRows(address);
+          state.activeFilter = "all";
+          renderFilters();
+          renderSummary(state.rows);
+          renderTable(state.rows);
+          if (state.rows.length) {
+            setBanner("query-banner", "success", `已查询到 <strong>${state.rows.length}</strong> 条记录。`);
+          } else {
+            setBanner(
+              "query-banner",
+              "warning",
+              `地址 <code>${escapeHtml(address)}</code> 在当前看板 DB 中没有命中记录。`,
+            );
+          }
+        } catch (error) {
+          setBanner("query-banner", "error", escapeHtml(error.message || String(error)));
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      async function boot() {
+        renderMeta();
+        renderFilters();
+        renderSummary([]);
+        await loadDatabase({
+          label: DEFAULT_DB_URL,
+          arrayBufferPromise: fetchBuffer(DEFAULT_DB_URL),
+        });
+
+        const params = new URLSearchParams(window.location.search);
+        const address = normalizeAddress(params.get("address"));
+        if (isAddress(address)) {
+          document.getElementById("address-input").value = address;
+          await runQuery();
+        }
+      }
+
+      document.getElementById("query-btn").addEventListener("click", runQuery);
+      document.getElementById("reload-btn").addEventListener("click", async () => {
+        await loadDatabase({
+          label: DEFAULT_DB_URL,
+          arrayBufferPromise: fetchBuffer(DEFAULT_DB_URL),
+        });
       });
 
-      const params = new URLSearchParams(window.location.search);
-      const address = normalizeAddress(params.get("address"));
-      if (isAddress(address)) {
-        document.getElementById("address-input").value = address;
-        await runQuery();
-      }
-    }
-
-    document.getElementById("query-btn").addEventListener("click", runQuery);
-    document.getElementById("reload-btn").addEventListener("click", async () => {
-      await loadDatabase({
-        label: DEFAULT_DB_URL,
-        arrayBufferPromise: fetchBuffer(DEFAULT_DB_URL),
+      document.getElementById("address-input").addEventListener("keydown", async (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          await runQuery();
+        }
       });
-    });
 
-    document.getElementById("address-input").addEventListener("keydown", async (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        await runQuery();
-      }
-    });
-
-    document.getElementById("db-file").addEventListener("change", async (event) => {
-      const [file] = event.target.files || [];
-      if (!file) {
-        return;
-      }
-      await loadDatabase({
-        label: file.name,
-        arrayBufferPromise: file.arrayBuffer(),
+      document.getElementById("db-file").addEventListener("change", async (event) => {
+        const [file] = event.target.files || [];
+        if (!file) {
+          return;
+        }
+        await loadDatabase({
+          label: file.name,
+          arrayBufferPromise: file.arrayBuffer(),
+        });
+        event.target.value = "";
       });
-      event.target.value = "";
-    });
 
-    if (!window.initSqlJs) {
-      setBanner("load-banner", "error", "sql.js 未成功加载，请确认 <code>../vendor/sql.js</code> 文件存在。");
-    } else if (window.location.protocol === "file:") {
-      setBanner(
-        "load-banner",
-        "warning",
-        `当前页面是通过 <code>file://</code> 打开的，浏览器通常不会直接读取默认的 <code>${DEFAULT_DB_URL}</code>。请在 <code>script/script/log</code> 目录启动静态服务后访问当前页面，或者直接点击“选择本地 DB”。`
-      );
-      renderMeta();
-      renderFilters();
-      renderSummary([]);
-    } else {
-      boot();
-    }
-  </script>
-</body>
+      if (!window.initSqlJs) {
+        setBanner("load-banner", "error", "sql.js 未成功加载，请确认 <code>../vendor/sql.js</code> 文件存在。");
+      } else if (window.location.protocol === "file:") {
+        setBanner(
+          "load-banner",
+          "warning",
+          `当前页面是通过 <code>file://</code> 打开的，浏览器通常不会直接读取默认的 <code>${DEFAULT_DB_URL}</code>。请在 <code>script/script/log</code> 目录启动静态服务后访问当前页面，或者直接点击“选择本地 DB”。`,
+        );
+        renderMeta();
+        renderFilters();
+        renderSummary([]);
+      } else {
+        boot();
+      }
+    </script>
+  </body>
 </html>
