@@ -215,12 +215,132 @@ def infer_exit_amounts(summary: dict, tx_to: str, contract_map: dict[str, str]) 
     ]
 
 
+def join_event_amounts(items: list[dict], contract_map: dict[str, str]) -> list[dict]:
+    return collapse_amounts(
+        [
+            {
+                "token": token_label(contract_map.get(item.get("token_address", ""), item.get("token_address"))),
+                "raw": str(item["amount"]),
+                "decimals": 18,
+            }
+            for item in items
+            if int(item.get("amount") or 0) > 0
+        ]
+    )
+
+
+def infer_action_join_amounts(summary: dict, tx_to: str, contract_map: dict[str, str]) -> list[dict]:
+    outgoing = group_transfer_items(summary["transfers_out"], counterparty=tx_to)
+    if outgoing:
+        return outgoing
+    tokens = {
+        token_label(contract_map.get(normalize_address(item.get("token_address")), item.get("token_address")))
+        for item in summary["action_joins"]
+        if item.get("token_address")
+    }
+    token_matched = collapse_amounts(
+        [
+            {
+                "token": item["token"],
+                "raw": str(item["raw"]),
+                "decimals": int(item.get("decimals", 18)),
+            }
+            for item in summary["transfers_out"]
+            if item["token"] in tokens
+        ]
+    )
+    if token_matched:
+        return token_matched
+    return join_event_amounts(summary["action_joins"], contract_map)
+
+
+def infer_action_exit_amounts(summary: dict, tx_to: str, contract_map: dict[str, str]) -> list[dict]:
+    incoming = group_transfer_items(summary["transfers_in"], counterparty=tx_to)
+    if incoming:
+        return incoming
+    tokens = {
+        token_label(contract_map.get(normalize_address(item.get("token_address")), item.get("token_address")))
+        for item in summary["action_exits"]
+        if item.get("token_address")
+    }
+    token_matched = collapse_amounts(
+        [
+            {
+                "token": item["token"],
+                "raw": str(item["raw"]),
+                "decimals": int(item.get("decimals", 18)),
+            }
+            for item in summary["transfers_in"]
+            if item["token"] in tokens
+        ]
+    )
+    if token_matched:
+        return token_matched
+    return join_event_amounts(summary["action_exits"], contract_map)
+
+
 def has_non_lp(items: list[dict]) -> bool:
     return any(not is_lp_token(item["token"]) for item in items)
 
 
 def is_lp_token(token: str | None) -> bool:
     return bool(token) and str(token).endswith("LP")
+
+
+def has_token_activity(summary: dict) -> bool:
+    return any(
+        summary[key]
+        for key in (
+            "claims",
+            "reward_mints",
+            "group_joins",
+            "group_exits",
+            "action_joins",
+            "action_exits",
+            "transfers_in",
+            "transfers_out",
+            "mints_in",
+            "burns_out",
+        )
+    )
+
+
+def action_membership_key(account: str, item: dict) -> tuple[str, str, str, int]:
+    return (
+        normalize_address(account),
+        normalize_address(item.get("contract_address")),
+        normalize_address(item.get("token_address")),
+        int(item.get("action_id") or 0),
+    )
+
+
+def parse_transfer_payload(payload: dict, contract_name: str, contract_map: dict[str, str]) -> dict | None:
+    from_address = normalize_address(payload.get("from") or payload.get("_from") or payload.get("src"))
+    to_address = normalize_address(payload.get("to") or payload.get("_to") or payload.get("dst"))
+
+    if payload.get("_tokenId") is not None:
+        token_id = int(payload.get("_tokenId") or 0)
+        return {
+            "from_address": from_address,
+            "to_address": to_address,
+            "token": f"{token_label(contract_name)} #{token_id}",
+            "raw": 1,
+            "decimals": 0,
+        }
+
+    value = payload.get("value")
+    if value is None:
+        value = payload.get("wad")
+    if value is None:
+        return None
+
+    return {
+        "from_address": from_address,
+        "to_address": to_address,
+        "token": token_label(contract_name),
+        "raw": int(value or 0),
+        "decimals": 18,
+    }
 
 
 def build_row(
@@ -331,6 +451,35 @@ def build_row(
         add_counterparty(counterparties, tx_to or summary["group_exits"][0]["contract_address"], contract_map, skip_address=account_address)
         for item in summary["group_exits"]:
             add_community(communities, item.get("token_address"), contract_map)
+    elif summary["action_joins"]:
+        is_additional = any(item.get("is_additional") for item in summary["action_joins"])
+        action = "追加行动代币" if is_additional else "参与行动"
+        action_group = "actionJoin"
+        action_id_text = stringify_numbers([item["action_id"] for item in summary["action_joins"]])
+        description = f"{action}，actionId={action_id_text}"
+        amounts = infer_action_join_amounts(summary, tx_to, contract_map)
+        add_counterparty(counterparties, tx_to or summary["action_joins"][0]["contract_address"], contract_map, skip_address=account_address)
+        for item in summary["action_joins"]:
+            add_community(communities, item.get("token_address"), contract_map)
+    elif summary["action_exits"]:
+        action = "退出行动"
+        action_group = "actionJoin"
+        action_id_text = stringify_numbers([item["action_id"] for item in summary["action_exits"]])
+        description = f"退出行动，actionId={action_id_text}"
+        amounts = infer_action_exit_amounts(summary, tx_to, contract_map)
+        add_counterparty(counterparties, tx_to or summary["action_exits"][0]["contract_address"], contract_map, skip_address=account_address)
+        for item in summary["action_exits"]:
+            add_community(communities, item.get("token_address"), contract_map)
+    elif summary["group_verify_submissions"]:
+        action = "提交 groupVerify 评分"
+        action_group = "verify"
+        action_id_text = stringify_numbers([item["action_id"] for item in summary["group_verify_submissions"]])
+        group_id_text = stringify_numbers([item["group_id"] for item in summary["group_verify_submissions"]])
+        total_count = sum(int(item["count"]) for item in summary["group_verify_submissions"])
+        description = f"向 groupVerify 提交原始评分，actionId={action_id_text}，groupId={group_id_text}，共 {total_count} 条"
+        add_counterparty(counterparties, tx_to or summary["group_verify_submissions"][0]["contract_address"], contract_map, skip_address=account_address)
+        for item in summary["group_verify_submissions"]:
+            add_community(communities, item.get("token_address"), contract_map)
     elif summary["mints_in"] and has_non_lp(summary["transfers_out"]) and any(is_lp_token(item["token"]) for item in summary["mints_in"]):
         action = "加池 / LP 铸造"
         action_group = "liquidity"
@@ -374,7 +523,7 @@ def build_row(
                 {
                     "token": item["token"],
                     "raw": str(item["raw"]),
-                    "decimals": 18,
+                    "decimals": int(item.get("decimals", 18)),
                 }
                 for item in summary["transfers_in"]
             ]
@@ -393,7 +542,7 @@ def build_row(
                 {
                     "token": item["token"],
                     "raw": str(item["raw"]),
-                    "decimals": 18,
+                    "decimals": int(item.get("decimals", 18)),
                 }
                 for item in summary["transfers_out"]
             ]
@@ -408,11 +557,11 @@ def build_row(
         amounts = collapse_amounts(
             [
                 *[
-                    {"token": item["token"], "raw": str(item["raw"]), "decimals": 18}
+                    {"token": item["token"], "raw": str(item["raw"]), "decimals": int(item.get("decimals", 18))}
                     for item in summary["transfers_out"]
                 ],
                 *[
-                    {"token": item["token"], "raw": str(item["raw"]), "decimals": 18}
+                    {"token": item["token"], "raw": str(item["raw"]), "decimals": int(item.get("decimals", 18))}
                     for item in summary["transfers_in"]
                 ],
             ]
@@ -466,6 +615,9 @@ def default_summary() -> dict:
         "reward_mints": [],
         "group_joins": [],
         "group_exits": [],
+        "action_joins": [],
+        "action_exits": [],
+        "group_verify_submissions": [],
         "approvals": [],
         "transfers_in": [],
         "transfers_out": [],
@@ -583,8 +735,7 @@ def process_event_stream(
         """
         SELECT COUNT(*)
         FROM events
-        WHERE event_name IN ('Transfer', 'Approval', 'ClaimReward', 'MintActionReward', 'MintGovReward')
-           OR (contract_name = 'groupJoin' AND event_name IN ('Join', 'Exit'))
+        WHERE event_name IN ('Transfer', 'ClaimReward', 'MintActionReward', 'MintGovReward', 'Join', 'Exit', 'Withdraw')
         """
     ).fetchone()[0]
     print(f"Relevant events: {relevant_count}")
@@ -608,8 +759,7 @@ def process_event_stream(
         FROM events e
         JOIN blocks b ON b.block_number = e.block_number
         LEFT JOIN transactions t ON t.tx_hash = e.tx_hash
-        WHERE e.event_name IN ('Transfer', 'Approval', 'ClaimReward', 'MintActionReward', 'MintGovReward')
-           OR (e.contract_name = 'groupJoin' AND e.event_name IN ('Join', 'Exit'))
+        WHERE e.event_name IN ('Transfer', 'ClaimReward', 'MintActionReward', 'MintGovReward', 'Join', 'Exit', 'Withdraw')
         ORDER BY e.block_number, COALESCE(e.tx_index, t.tx_index, 0), e.log_index, e.id
     """
 
@@ -617,6 +767,7 @@ def process_event_stream(
     current_key: tuple[int, str] | None = None
     current_meta: dict | None = None
     summaries: defaultdict[str, dict] = defaultdict(default_summary)
+    action_memberships: set[tuple[str, str, str, int]] = set()
     buffer: list[dict] = []
     inserted = 0
     processed = 0
@@ -626,17 +777,8 @@ def process_event_stream(
         if not current_meta:
             return
 
-        tx_from = normalize_address(current_meta.get("tx_from"))
-        tx_to = normalize_address(current_meta.get("tx_to"))
-        value_raw = int(current_meta.get("value_wei") or 0)
-        if value_raw > 0:
-            if tx_from:
-                summaries[tx_from]["native_out"] += value_raw
-            if tx_to:
-                summaries[tx_to]["native_in"] += value_raw
-
         for account, summary in summaries.items():
-            if not account or is_zero_address(account):
+            if not account or is_zero_address(account) or not has_token_activity(summary):
                 continue
             buffer.append(build_row(account, summary, current_meta, contract_map))
             if len(buffer) >= 1000:
@@ -720,30 +862,22 @@ def process_event_stream(
                     "reward_amount": reward_total,
                 }
             )
-        elif event_name == "Approval":
-            owner = normalize_address(payload.get("owner"))
-            spender = normalize_address(payload.get("spender"))
-            if not owner:
-                continue
-            summaries[owner]["approvals"].append(
-                {
-                    "token": token_label(contract_name),
-                    "spender": spender,
-                    "raw": int(payload.get("value") or 0),
-                    "contract_address": contract_address,
-                }
-            )
         elif event_name == "Transfer":
-            from_address = normalize_address(payload.get("from"))
-            to_address = normalize_address(payload.get("to"))
-            value = int(payload.get("value") or 0)
-            token = token_label(contract_name)
+            transfer = parse_transfer_payload(payload, contract_name, contract_map)
+            if not transfer:
+                continue
+            from_address = transfer["from_address"]
+            to_address = transfer["to_address"]
+            value = int(transfer["raw"])
+            token = transfer["token"]
+            decimals = int(transfer["decimals"])
             if is_zero_address(from_address):
                 if to_address:
                     summaries[to_address]["mints_in"].append(
                         {
                             "token": token,
                             "raw": value,
+                            "decimals": decimals,
                             "counterparty": from_address,
                             "contract_address": contract_address,
                         }
@@ -754,6 +888,7 @@ def process_event_stream(
                         {
                             "token": token,
                             "raw": value,
+                            "decimals": decimals,
                             "counterparty": to_address,
                             "contract_address": contract_address,
                         }
@@ -763,6 +898,7 @@ def process_event_stream(
                     {
                         "token": token,
                         "raw": value,
+                        "decimals": decimals,
                         "counterparty": to_address,
                         "contract_address": contract_address,
                     }
@@ -771,6 +907,7 @@ def process_event_stream(
                     {
                         "token": token,
                         "raw": value,
+                        "decimals": decimals,
                         "counterparty": from_address,
                         "contract_address": contract_address,
                     }
@@ -788,7 +925,42 @@ def process_event_stream(
             }
             key_name = "group_joins" if event_name == "Join" else "group_exits"
             summaries[account][key_name].append(entry)
-
+        elif contract_name == "join" and event_name in {"Join", "Withdraw"}:
+            account = normalize_address(payload.get("account"))
+            if not account:
+                continue
+            entry = {
+                "contract_address": contract_address,
+                "token_address": normalize_address(payload.get("tokenAddress")),
+                "action_id": int(payload.get("actionId") or 0),
+                "amount": int(payload.get("additionalStakeAmount") or payload.get("amount") or 0),
+            }
+            key = action_membership_key(account, entry)
+            if event_name == "Join":
+                entry["is_additional"] = key in action_memberships
+                summaries[account]["action_joins"].append(entry)
+                action_memberships.add(key)
+            else:
+                summaries[account]["action_exits"].append(entry)
+                action_memberships.discard(key)
+        elif event_name in {"Join", "Exit"} and payload.get("actionId") is not None and payload.get("amount") is not None and payload.get("account"):
+            account = normalize_address(payload.get("account"))
+            if not account:
+                continue
+            entry = {
+                "contract_address": contract_address,
+                "token_address": normalize_address(payload.get("tokenAddress")),
+                "action_id": int(payload.get("actionId") or 0),
+                "amount": int(payload.get("amount") or 0),
+            }
+            key = action_membership_key(account, entry)
+            if event_name == "Join":
+                entry["is_additional"] = key in action_memberships
+                summaries[account]["action_joins"].append(entry)
+                action_memberships.add(key)
+            else:
+                summaries[account]["action_exits"].append(entry)
+                action_memberships.discard(key)
         if processed % 100000 == 0:
             print(f"Processed events: {processed}/{relevant_count}")
 

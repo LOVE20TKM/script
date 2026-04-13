@@ -346,7 +346,7 @@
       table {
         width: 100%;
         border-collapse: collapse;
-        min-width: 1160px;
+        table-layout: fixed;
       }
 
       thead th {
@@ -369,6 +369,32 @@
         vertical-align: top;
         font-size: 14px;
         line-height: 1.6;
+        overflow-wrap: anywhere;
+      }
+
+      th:nth-child(1),
+      td:nth-child(1) {
+        width: 92px;
+      }
+
+      th:nth-child(2),
+      td:nth-child(2) {
+        width: 148px;
+      }
+
+      th:nth-child(3),
+      td:nth-child(3) {
+        width: 22%;
+      }
+
+      th:nth-child(4),
+      td:nth-child(4) {
+        width: 18%;
+      }
+
+      th:nth-child(5),
+      td:nth-child(5) {
+        width: 22%;
       }
 
       tbody tr:hover {
@@ -394,6 +420,10 @@
       .badge.reward {
         background: rgba(33, 91, 143, 0.12);
         color: var(--accent);
+      }
+      .badge.actionJoin {
+        background: rgba(31, 122, 98, 0.12);
+        color: var(--accent-3);
       }
       .badge.groupJoin {
         background: rgba(31, 122, 98, 0.12);
@@ -427,7 +457,7 @@
       .action-cell {
         display: grid;
         gap: 8px;
-        min-width: 220px;
+        min-width: 0;
       }
 
       .action-top {
@@ -525,13 +555,14 @@
 
       .amount-chip,
       .counterparty-chip {
-        display: inline-flex;
+        display: flex;
         flex-wrap: wrap;
         gap: 6px;
         align-items: baseline;
         padding: 7px 10px;
         border-radius: 14px;
         background: rgba(29, 36, 48, 0.05);
+        max-width: 100%;
       }
 
       .amount-token {
@@ -548,6 +579,7 @@
         color: var(--muted);
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
         font-size: 12px;
+        overflow-wrap: anywhere;
       }
 
       .empty {
@@ -578,6 +610,19 @@
         .meta {
           min-width: 0;
           width: 100%;
+        }
+
+        th:nth-child(1),
+        td:nth-child(1),
+        th:nth-child(2),
+        td:nth-child(2),
+        th:nth-child(3),
+        td:nth-child(3),
+        th:nth-child(4),
+        td:nth-child(4),
+        th:nth-child(5),
+        td:nth-child(5) {
+          width: auto;
         }
       }
     </style>
@@ -672,6 +717,7 @@
       const DEFAULT_DB_URL = `./data/${DEFAULT_NETWORK}.db`;
       const SQL_WASM_DIR = "../vendor/sql.js";
       const TIMEZONE = "Asia/Shanghai";
+      const RECENT_ADDRESS_KEY = "wallet-activity-timeline:recent-address";
 
       const timeFormatter = new Intl.DateTimeFormat("zh-CN", {
         timeZone: TIMEZONE,
@@ -687,13 +733,12 @@
       const FILTER_OPTIONS = [
         { key: "all", label: "全部" },
         { key: "reward", label: "奖励" },
+        { key: "actionJoin", label: "行动" },
         { key: "groupJoin", label: "groupJoin" },
-        { key: "approval", label: "授权" },
         { key: "liquidity", label: "流动性" },
         { key: "transfer", label: "转账" },
         { key: "native", label: "原生币" },
         { key: "complex", label: "复杂交互" },
-        { key: "other", label: "其他" },
       ];
 
       const state = {
@@ -724,6 +769,23 @@
 
       function isAddress(value) {
         return /^0x[a-f0-9]{40}$/i.test(String(value || "").trim());
+      }
+
+      function loadRecentAddress() {
+        try {
+          const value = window.localStorage.getItem(RECENT_ADDRESS_KEY);
+          return isAddress(value) ? normalizeAddress(value) : "";
+        } catch (error) {
+          return "";
+        }
+      }
+
+      function saveRecentAddress(address) {
+        try {
+          window.localStorage.setItem(RECENT_ADDRESS_KEY, normalizeAddress(address));
+        } catch (error) {
+          // Ignore storage errors and keep query flow working.
+        }
       }
 
       function shortAddress(value) {
@@ -1183,6 +1245,7 @@
         setBanner("query-banner", "info", `正在查询地址 <code>${escapeHtml(address)}</code> 的时间线。`);
         try {
           state.queriedAddress = address;
+          saveRecentAddress(address);
           state.rows = queryActivityRows(address);
           state.activeFilter = "all";
           renderFilters();
@@ -1214,7 +1277,7 @@
         });
 
         const params = new URLSearchParams(window.location.search);
-        const address = normalizeAddress(params.get("address"));
+        const address = normalizeAddress(params.get("address")) || loadRecentAddress();
         if (isAddress(address)) {
           document.getElementById("address-input").value = address;
           await runQuery();
