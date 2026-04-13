@@ -417,17 +417,42 @@
         background: rgba(29, 36, 48, 0.07);
       }
 
+      .badge.flow-in {
+        background: rgba(31, 122, 98, 0.14);
+        color: var(--accent-3);
+      }
+      .badge.flow-out {
+        background: rgba(143, 47, 45, 0.14);
+        color: var(--danger);
+      }
+      .badge.flow-position {
+        background: rgba(33, 91, 143, 0.14);
+        color: var(--accent);
+      }
+      .badge.flow-return {
+        background: rgba(154, 82, 33, 0.14);
+        color: var(--accent-2);
+      }
+      .badge.flow-reward {
+        background: rgba(129, 92, 40, 0.14);
+        color: #6f4f1a;
+      }
+      .badge.flow-complex {
+        background: rgba(29, 36, 48, 0.1);
+        color: var(--muted);
+      }
+
       .badge.reward {
         background: rgba(33, 91, 143, 0.12);
         color: var(--accent);
       }
       .badge.actionJoin {
-        background: rgba(31, 122, 98, 0.12);
-        color: var(--accent-3);
+        background: rgba(33, 91, 143, 0.12);
+        color: var(--accent);
       }
       .badge.groupJoin {
-        background: rgba(31, 122, 98, 0.12);
-        color: var(--accent-3);
+        background: rgba(33, 91, 143, 0.12);
+        color: var(--accent);
       }
       .badge.approval {
         background: rgba(154, 82, 33, 0.12);
@@ -440,6 +465,14 @@
       .badge.transfer {
         background: rgba(29, 36, 48, 0.08);
         color: var(--text);
+      }
+      .badge.transfer-out {
+        background: rgba(143, 47, 45, 0.14);
+        color: var(--danger);
+      }
+      .badge.transfer-in {
+        background: rgba(31, 122, 98, 0.12);
+        color: var(--accent-3);
       }
       .badge.native {
         background: rgba(143, 47, 45, 0.1);
@@ -465,6 +498,16 @@
         align-items: center;
         flex-wrap: wrap;
         gap: 8px;
+      }
+
+      .action-title {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        font-weight: 700;
+        color: var(--text);
+        line-height: 1.5;
       }
 
       .action-extra {
@@ -636,7 +679,7 @@
             <h1>钱包地址时间线看板</h1>
             <p>
               输入任意钱包地址后，页面会从专用看板 SQLite 里按区块和交易顺序拉出该地址的时间线，并把
-              `ClaimReward`、`groupJoin`、`Approval`、转账、加池 / LP 铸造这类行为归类成接近人工整理的表格。
+              奖励、行动参与 / 追加 / 退出、转账、加池 / LP 铸造这类资产流动归类成接近人工整理的表格。
             </p>
           </div>
           <aside class="meta" id="meta"></aside>
@@ -734,7 +777,6 @@
         { key: "all", label: "全部" },
         { key: "reward", label: "奖励" },
         { key: "actionJoin", label: "行动" },
-        { key: "groupJoin", label: "groupJoin" },
         { key: "liquidity", label: "流动性" },
         { key: "transfer", label: "转账" },
         { key: "native", label: "原生币" },
@@ -830,6 +872,38 @@
           primary: match[1],
           secondary: match[2],
         };
+      }
+
+      function actionVisual(row) {
+        const action = String(row.action || "").trim();
+        if (row.action_group === "transfer") {
+          if (action.startsWith("转出")) {
+            return { flowLabel: "流出", flowClass: "flow-out", categoryLabel: "转账", categoryClass: "transfer" };
+          }
+          return { flowLabel: "流入", flowClass: "flow-in", categoryLabel: "转账", categoryClass: "transfer" };
+        }
+        if (row.action_group === "actionJoin") {
+          if (action.startsWith("退出")) {
+            return { flowLabel: "取回", flowClass: "flow-return", categoryLabel: "行动", categoryClass: "actionJoin" };
+          }
+          if (action.startsWith("追加")) {
+            return { flowLabel: "追加", flowClass: "flow-position", categoryLabel: "行动", categoryClass: "actionJoin" };
+          }
+          return { flowLabel: "投入", flowClass: "flow-position", categoryLabel: "行动", categoryClass: "actionJoin" };
+        }
+        if (row.action_group === "reward") {
+          return { flowLabel: "奖励", flowClass: "flow-reward", categoryLabel: "奖励", categoryClass: "reward" };
+        }
+        if (row.action_group === "liquidity") {
+          return { flowLabel: "投入", flowClass: "flow-position", categoryLabel: "流动性", categoryClass: "liquidity" };
+        }
+        if (row.action_group === "native") {
+          if (action.includes("转账")) {
+            return { flowLabel: "流出", flowClass: "flow-out", categoryLabel: "原生币", categoryClass: "native" };
+          }
+          return { flowLabel: "流入", flowClass: "flow-in", categoryLabel: "原生币", categoryClass: "native" };
+        }
+        return { flowLabel: "复杂", flowClass: "flow-complex", categoryLabel: action || "其他", categoryClass: row.action_group || "other" };
       }
 
       function setBusy(isBusy) {
@@ -1083,7 +1157,7 @@
             {
               label: "归类口径",
               value: "交易级摘要",
-              note: "ClaimReward、groupJoin、Approval、Transfer、原生币转账都会归并成单行。",
+              note: "奖励、行动参与 / 追加 / 退出、Transfer、原生币转账都会归并成单行。",
             },
           );
         } else {
@@ -1163,6 +1237,7 @@
 
       function renderActionCell(row) {
         const actionParts = splitActionLabel(row.action);
+        const visual = actionVisual(row);
         const communityHtml = renderCommunityStack(row.communities);
         const actionExtra = actionParts.secondary
           ? `<span class="action-extra">${renderTokenInline(actionParts.secondary)}</span>`
@@ -1174,7 +1249,11 @@
         return `
         <div class="action-cell">
           <div class="action-top">
-            <span class="badge ${escapeHtml(row.action_group)}">${escapeHtml(actionParts.primary)}</span>
+            <span class="badge ${escapeHtml(visual.flowClass)}">${escapeHtml(visual.flowLabel)}</span>
+            <span class="badge ${escapeHtml(visual.categoryClass)}">${escapeHtml(visual.categoryLabel)}</span>
+          </div>
+          <div class="action-title">
+            <span>${escapeHtml(actionParts.primary)}</span>
             ${actionExtra}
           </div>
           <div class="action-meta">

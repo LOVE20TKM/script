@@ -314,6 +314,16 @@ def action_membership_key(account: str, item: dict) -> tuple[str, str, str, int]
     )
 
 
+def group_membership_key(account: str, item: dict) -> tuple[str, str, str, int, int]:
+    return (
+        normalize_address(account),
+        normalize_address(item.get("contract_address")),
+        normalize_address(item.get("token_address")),
+        int(item.get("action_id") or 0),
+        int(item.get("group_id") or 0),
+    )
+
+
 def parse_transfer_payload(payload: dict, contract_name: str, contract_map: dict[str, str]) -> dict | None:
     from_address = normalize_address(payload.get("from") or payload.get("_from") or payload.get("src"))
     to_address = normalize_address(payload.get("to") or payload.get("_to") or payload.get("dst"))
@@ -432,21 +442,22 @@ def build_row(
         for item in summary["reward_mints"]:
             add_community(communities, item.get("token_address"), contract_map)
     elif summary["group_joins"]:
-        action = "加入 groupJoin"
-        action_group = "groupJoin"
+        is_additional = any(item.get("is_additional") for item in summary["group_joins"])
+        action = "追加行动代币" if is_additional else "参与行动"
+        action_group = "actionJoin"
         action_id_text = stringify_numbers([item["action_id"] for item in summary["group_joins"]])
         group_id_text = stringify_numbers([item["group_id"] for item in summary["group_joins"]])
-        description = f"加入 groupJoin，actionId={action_id_text}，groupId={group_id_text}"
+        description = f"{action}，actionId={action_id_text}"
         amounts = infer_group_amounts(summary, tx_to, contract_map)
         add_counterparty(counterparties, tx_to or summary["group_joins"][0]["contract_address"], contract_map, skip_address=account_address)
         for item in summary["group_joins"]:
             add_community(communities, item.get("token_address"), contract_map)
     elif summary["group_exits"]:
-        action = "退出 groupJoin"
-        action_group = "groupJoin"
+        action = "退出行动"
+        action_group = "actionJoin"
         action_id_text = stringify_numbers([item["action_id"] for item in summary["group_exits"]])
         group_id_text = stringify_numbers([item["group_id"] for item in summary["group_exits"]])
-        description = f"退出 groupJoin，actionId={action_id_text}，groupId={group_id_text}"
+        description = f"退出行动，actionId={action_id_text}"
         amounts = infer_exit_amounts(summary, tx_to, contract_map)
         add_counterparty(counterparties, tx_to or summary["group_exits"][0]["contract_address"], contract_map, skip_address=account_address)
         for item in summary["group_exits"]:
@@ -768,6 +779,7 @@ def process_event_stream(
     current_meta: dict | None = None
     summaries: defaultdict[str, dict] = defaultdict(default_summary)
     action_memberships: set[tuple[str, str, str, int]] = set()
+    group_memberships: set[tuple[str, str, str, int, int]] = set()
     buffer: list[dict] = []
     inserted = 0
     processed = 0
@@ -923,8 +935,14 @@ def process_event_stream(
                 "group_id": int(payload.get("groupId") or 0),
                 "amount": int(payload.get("amount") or 0),
             }
-            key_name = "group_joins" if event_name == "Join" else "group_exits"
-            summaries[account][key_name].append(entry)
+            key = group_membership_key(account, entry)
+            if event_name == "Join":
+                entry["is_additional"] = key in group_memberships
+                summaries[account]["group_joins"].append(entry)
+                group_memberships.add(key)
+            else:
+                summaries[account]["group_exits"].append(entry)
+                group_memberships.discard(key)
         elif contract_name == "join" and event_name in {"Join", "Withdraw"}:
             account = normalize_address(payload.get("account"))
             if not account:
