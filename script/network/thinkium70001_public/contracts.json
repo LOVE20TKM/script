@@ -81,7 +81,8 @@
     "address_env_var": "firstTokenAddress",
     "abi_files": [
       "../../abi/ILOVE20Token.sol/ILOVE20Token.json"
-    ]
+    ],
+    "contract_type": "launch_token"
   },
   {
     "name": "TKM20",
@@ -227,7 +228,8 @@
     "from_block": 71274532,
     "abi_files": [
       "../../abi/ILOVE20Token.sol/ILOVE20Token.json"
-    ]
+    ],
+    "contract_type": "launch_token"
   },
   {
     "name": "life20SlToken",
@@ -257,6 +259,47 @@
     "name": "life20TusdtPair",
     "address_env_var": "life20TusdtPairAddress",
     "from_block": 71597303,
+    "abi_files": [
+      "../../abi/IUniswapV2Pair.sol/IUniswapV2Pair.0.5.16.json"
+    ]
+  },
+  {
+    "name": "GROW20",
+    "address": "0x2800d80fdA396248a7fE433c9Dc003595F5C3bD7",
+    "from_block": 71290468,
+    "abi_files": [
+      "../../abi/ILOVE20Token.sol/ILOVE20Token.json"
+    ],
+    "contract_type": "launch_token"
+  },
+  {
+    "name": "grow20SlToken",
+    "address": "0xAF26e1464ED373Cb8aB193a0cAe5f893091A39Cd",
+    "from_block": 71290468,
+    "abi_files": [
+      "../../abi/ILOVE20SLToken.sol/ILOVE20SLToken.json"
+    ]
+  },
+  {
+    "name": "grow20StToken",
+    "address": "0xE745a4ee6E1E7C22D713ebb334B3D23499B1AA7e",
+    "from_block": 71290468,
+    "abi_files": [
+      "../../abi/ILOVE20STToken.sol/ILOVE20STToken.json"
+    ]
+  },
+  {
+    "name": "love20Grow20Pair",
+    "address": "0x08726BB3d01708dCb754C1c6448170d14E8A987B",
+    "from_block": 71290468,
+    "abi_files": [
+      "../../abi/IUniswapV2Pair.sol/IUniswapV2Pair.0.5.16.json"
+    ]
+  },
+  {
+    "name": "grow20TusdtPair",
+    "address": "0xCaF241398b80D11952fa30d0993fcf7c0480901E",
+    "from_block": 71716443,
     "abi_files": [
       "../../abi/IUniswapV2Pair.sol/IUniswapV2Pair.0.5.16.json"
     ]
@@ -518,6 +561,138 @@
     ],
     "token_address": "0x772127e10d2905951a302f482cd1de7f4a98aab6",
     "action_id": 9,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "grow20Ext4",
+    "address": "0xbabe2a1df2394c2901267e58c8697a91e174b22a",
+    "from_block": 71676896,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json",
+      "../../abi/IGroupService.sol/IGroupServiceEvents.json",
+      "../../abi/IJoin.sol/IJoinEvents.json"
+    ],
+    "token_address": "0x2800d80fda396248a7fe433c9dc003595f5c3bd7",
+    "action_id": 4,
+    "factory_name": "groupServiceFactory",
+    "factory_address": "0x0b915a64ae1c263e6230d8e8a7cc39e3f4f4c29f",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "grow20Ext5",
+    "address": "0x5d19654f4de3d2d1b08e7e8b1c3443f4e6e8997a",
+    "from_block": 71682023,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x2800d80fda396248a7fe433c9dc003595f5c3bd7",
+    "action_id": 5,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "grow20Ext7",
+    "address": "0xb2bc0860a91590e17ab226f3afbbed8a037a4224",
+    "from_block": 71706735,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x2800d80fda396248a7fe433c9dc003595f5c3bd7",
+    "action_id": 7,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "grow20Ext8",
+    "address": "0x4405cfaabb29ee2ee072f882ddc158438760d6f2",
+    "from_block": 71710330,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json",
+      "../../abi/IGroupService.sol/IGroupServiceEvents.json",
+      "../../abi/IJoin.sol/IJoinEvents.json"
+    ],
+    "token_address": "0x2800d80fda396248a7fe433c9dc003595f5c3bd7",
+    "action_id": 8,
+    "factory_name": "groupServiceFactory",
+    "factory_address": "0x0b915a64ae1c263e6230d8e8a7cc39e3f4f4c29f",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "grow20Ext9",
+    "address": "0x09e8ee6cc94147275a3fb16fc2b0820b20459cfe",
+    "from_block": 71730024,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json",
+      "../../abi/ITokenJoin.sol/ITokenJoinEvents.json"
+    ],
+    "token_address": "0x2800d80fda396248a7fe433c9dc003595f5c3bd7",
+    "action_id": 9,
+    "factory_name": "lpFactory",
+    "factory_address": "0x4d53728af3db35ec5df0f717d5ffec19749d7f11",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "grow20Ext10",
+    "address": "0xa2ce3f7ec94098c2c19f3a09565fee7b141750c7",
+    "from_block": 71785419,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x2800d80fda396248a7fe433c9dc003595f5c3bd7",
+    "action_id": 10,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "grow20Ext12",
+    "address": "0x3c4c4860a2c87f612d61324d78315fb999d3ca61",
+    "from_block": 71859650,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json",
+      "../../abi/ITokenJoin.sol/ITokenJoinEvents.json"
+    ],
+    "token_address": "0x2800d80fda396248a7fe433c9dc003595f5c3bd7",
+    "action_id": 12,
+    "factory_name": "lpFactory",
+    "factory_address": "0x4d53728af3db35ec5df0f717d5ffec19749d7f11",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "grow20Ext13",
+    "address": "0xf8d5b2bfffe977b595e5a31b8f2f7e73b84e76ac",
+    "from_block": 71863792,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x2800d80fda396248a7fe433c9dc003595f5c3bd7",
+    "action_id": 13,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "grow20Ext14",
+    "address": "0x9ca4175c174a09ec0ae30d8456347e8ef5fcb94b",
+    "from_block": 72046576,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x2800d80fda396248a7fe433c9dc003595f5c3bd7",
+    "action_id": 14,
     "factory_name": "groupActionFactory",
     "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
     "managed_by": "auto-discovery"

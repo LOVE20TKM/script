@@ -5,7 +5,8 @@ Rebuild auto-discovered extension config entries from events.db.
 Discovery rules:
 1. Read ActionCreate events from submit.
 2. Extract actionBody.whiteListAddress as the candidate extension address.
-3. Keep only monitored tokens (LOVE20 and optional LIFE20) with non-zero whitelist addresses.
+3. Keep only tokens marked `contract_type = "launch_token"` in contracts.json
+   with non-zero whitelist addresses.
 4. Match whitelist address + token address against CreateExtension events emitted by
    known extension factories configured in contracts.json.
 5. Generate extension config entries using the matching factory's extension_abi_files.
@@ -89,23 +90,16 @@ def query_rows(
 def resolve_monitored_tokens(config_entries: list[dict[str, Any]]) -> dict[str, str]:
     tokens: dict[str, str] = {}
 
-    love20 = normalize_address(os.environ.get("firstTokenAddress"))
-    if not love20:
-        for entry in config_entries:
-            if entry.get("name") == "LOVE20":
-                love20 = resolve_entry_address(entry)
-                break
-    if love20:
-        tokens[love20] = "love20"
+    for entry in config_entries:
+        name = entry.get("name")
+        if entry.get("contract_type") != "launch_token":
+            continue
+        if not isinstance(name, str):
+            continue
 
-    life20 = normalize_address(os.environ.get("life20Address"))
-    if not life20:
-        for entry in config_entries:
-            if entry.get("name") == "LIFE20":
-                life20 = resolve_entry_address(entry)
-                break
-    if life20:
-        tokens[life20] = "life20"
+        token = resolve_entry_address(entry)
+        if token:
+            tokens[token] = name.lower()
 
     if not tokens:
         raise RuntimeError("failed to resolve monitored token addresses")
@@ -262,10 +256,17 @@ def generate_extension_entries(
     created_extensions: dict[tuple[str, str], list[dict[str, Any]]],
     monitored_tokens: dict[str, str],
 ) -> list[dict[str, Any]]:
-    love20_entries: list[dict[str, Any]] = []
-    life20_entries: list[dict[str, Any]] = []
+    token_kinds = list(dict.fromkeys(monitored_tokens.values()))
+    entries_by_kind: dict[str, list[dict[str, Any]]] = {kind: [] for kind in token_kinds}
+    token_kind_rank = {kind: idx for idx, kind in enumerate(token_kinds)}
 
-    for key, action in sorted(action_creates.items(), key=lambda item: (item[0][0], item[0][1])):
+    for key, action in sorted(
+        action_creates.items(),
+        key=lambda item: (
+            token_kind_rank[monitored_tokens[item[1]["token_address"]]],
+            int(item[1]["action_id"]),
+        ),
+    ):
         matches = created_extensions.get((action["whitelist_address"], action["token_address"]))
         if not matches:
             continue
@@ -283,10 +284,8 @@ def generate_extension_entries(
             )
 
         token_kind = monitored_tokens[action["token_address"]]
-        if token_kind == "life20":
-            name = f"life20Ext{action['action_id']}"
-        else:
-            name = f"ext{action['action_id']}"
+        name_prefix = "ext" if token_kind == "love20" else f"{token_kind}Ext"
+        name = f"{name_prefix}{action['action_id']}"
 
         entry = {
             "name": name,
@@ -300,14 +299,13 @@ def generate_extension_entries(
             "managed_by": AUTO_DISCOVERY_MARKER,
         }
 
-        if token_kind == "life20":
-            life20_entries.append(entry)
-        else:
-            love20_entries.append(entry)
+        entries_by_kind[token_kind].append(entry)
 
-    love20_entries.sort(key=lambda item: int(item["action_id"]))
-    life20_entries.sort(key=lambda item: int(item["action_id"]))
-    return love20_entries + life20_entries
+    ordered_entries: list[dict[str, Any]] = []
+    for kind in token_kinds:
+        entries_by_kind[kind].sort(key=lambda item: int(item["action_id"]))
+        ordered_entries.extend(entries_by_kind[kind])
+    return ordered_entries
 
 
 def rebuild_config(
