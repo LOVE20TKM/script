@@ -10,6 +10,7 @@
 - 看板默认展示 `log_round` 口径；`log_round` 是按区块推导出的协议轮次，不等同于事件 payload 里的 `round` 字段。
 - 页面默认通过本地 `dashboard_server.py` 查询活 `events.db`。
 - 浏览器只负责展示与手动查询，SQL 与时间线归并都在服务端执行。
+- 服务端直接查询活库，不做过期缓存。
 
 当前看板：
 
@@ -21,7 +22,7 @@
 - `wallet-activity-timeline/`
   输入钱包地址后，按区块和交易顺序展示该地址的时间线。
   页面会把 `ClaimReward`、`groupJoin`、`Approval`、转账、加池 / LP 铸造等动作归并成交易级摘要表格。
-  现在由服务端按地址实时聚合活 `events.db`。
+  现在由服务端按地址实时聚合活 `events.db`，并按页加载更早记录。
 
 使用说明：
 

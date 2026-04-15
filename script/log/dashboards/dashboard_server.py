@@ -3,7 +3,6 @@ import argparse
 import json
 import sqlite3
 import threading
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -16,43 +15,16 @@ DASHBOARDS_DIR = Path(__file__).resolve().parent
 LOG_DIR = DASHBOARDS_DIR.parent
 MINT_DIR = DASHBOARDS_DIR / "mint-addresses-by-log-round"
 DEFAULT_NETWORK = "thinkium70001_public"
-CACHE_TTL_SECONDS = 30
+DEFAULT_TIMELINE_LIMIT = 200
+MAX_TIMELINE_LIMIT = 500
 MINT_SOURCE_QUERY_SQL = (MINT_DIR / "source_query.sql").read_text(encoding="utf-8")
 MINT_SOURCE_SUMMARY_SQL = (MINT_DIR / "source_summary.sql").read_text(encoding="utf-8")
-
-
-@dataclass
-class CacheEntry:
-    expires_at: float
-    value: dict
-
-
-_CACHE: dict[tuple, CacheEntry] = {}
-_CACHE_LOCK = threading.Lock()
 _ENSURED_DB_MTIMES: dict[str, float] = {}
 _ENSURE_LOCK = threading.Lock()
 
 
 def iso_from_timestamp(value: float) -> str:
     return datetime.fromtimestamp(value, timezone.utc).replace(microsecond=0).isoformat()
-
-
-def get_cache(key: tuple) -> dict | None:
-    now_ts = datetime.now(timezone.utc).timestamp()
-    with _CACHE_LOCK:
-        entry = _CACHE.get(key)
-        if not entry:
-            return None
-        if entry.expires_at < now_ts:
-            _CACHE.pop(key, None)
-            return None
-        return entry.value
-
-
-def set_cache(key: tuple, value: dict) -> None:
-    expires_at = datetime.now(timezone.utc).timestamp() + CACHE_TTL_SECONDS
-    with _CACHE_LOCK:
-        _CACHE[key] = CacheEntry(expires_at=expires_at, value=value)
 
 
 def resolve_db_path(network: str | None = None, *, db_path: str | None = None) -> Path:
@@ -87,10 +59,6 @@ def ensure_events_db_indexes(db_path: Path) -> None:
 
 def mint_payload(network: str, db_path: Path) -> dict:
     db_mtime = db_path.stat().st_mtime
-    cache_key = ("mint", network, str(db_path), db_mtime)
-    cached = get_cache(cache_key)
-    if cached:
-        return cached
 
     conn = sqlite3.connect(db_path, timeout=60.0)
     conn.row_factory = sqlite3.Row
@@ -115,25 +83,25 @@ def mint_payload(network: str, db_path: Path) -> dict:
             "history_summary": history_summary,
         },
     }
-    set_cache(cache_key, payload)
     return payload
 
 
-def timeline_payload(network: str, db_path: Path, address: str | None) -> dict:
+def timeline_payload(network: str, db_path: Path, address: str | None, *, limit: int, cursor: dict | None) -> dict:
     normalized_address = (address or "").strip().lower()
     db_mtime = db_path.stat().st_mtime
-    cache_key = ("timeline", network, normalized_address, str(db_path), db_mtime)
-    cached = get_cache(cache_key)
-    if cached:
-        return cached
 
     conn = sqlite3.connect(db_path, timeout=60.0)
     conn.row_factory = sqlite3.Row
     try:
-        rows: list[dict] = []
+        result = {
+            "rows": [],
+            "has_more": False,
+            "next_cursor": None,
+            "page_size": limit,
+        }
         if normalized_address:
             contract_map = load_contract_map(conn)
-            rows = query_activity_rows_by_account(conn, contract_map, normalized_address)
+            result = query_activity_rows_by_account(conn, contract_map, normalized_address, limit=limit, cursor=cursor)
     finally:
         conn.close()
 
@@ -144,11 +112,12 @@ def timeline_payload(network: str, db_path: Path, address: str | None) -> dict:
         "updated_at": now_iso(),
         "data": {
             "address": normalized_address,
-            "total": len(rows),
-            "rows": rows,
+            "rows": result["rows"],
+            "page_size": result["page_size"],
+            "has_more": result["has_more"],
+            "next_cursor": result["next_cursor"],
         },
     }
-    set_cache(cache_key, payload)
     return payload
 
 
@@ -180,13 +149,17 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 if address and not is_address(address):
                     self.respond_json(400, {"error": "invalid address"})
                     return
-                payload = timeline_payload(network, db_path, address)
+                limit = parse_limit(params.get("limit", [""])[0])
+                cursor = parse_timeline_cursor(params)
+                payload = timeline_payload(network, db_path, address, limit=limit, cursor=cursor)
                 self.respond_json(200, payload)
                 return
 
             self.respond_json(404, {"error": "not found"})
         except FileNotFoundError as error:
             self.respond_json(404, {"error": str(error)})
+        except ValueError as error:
+            self.respond_json(400, {"error": str(error)})
         except Exception as error:  # noqa: BLE001
             self.respond_json(500, {"error": str(error)})
 
@@ -202,6 +175,33 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
 
 def is_address(value: str) -> bool:
     return len(value) == 42 and value.startswith("0x") and all(ch in "0123456789abcdef" for ch in value[2:])
+
+
+def parse_limit(value: str) -> int:
+    if not value:
+        return DEFAULT_TIMELINE_LIMIT
+    parsed = int(value)
+    if parsed <= 0:
+        raise ValueError("invalid limit")
+    return min(parsed, MAX_TIMELINE_LIMIT)
+
+
+def parse_timeline_cursor(params: dict[str, list[str]]) -> dict | None:
+    block_value = params.get("before_block_number", [""])[0]
+    tx_index_value = params.get("before_tx_index", [""])[0]
+    tx_hash_value = params.get("before_tx_hash", [""])[0].strip().lower()
+    provided = [bool(block_value), bool(tx_index_value), bool(tx_hash_value)]
+    if not any(provided):
+        return None
+    if not all(provided):
+        raise ValueError("invalid timeline cursor")
+    if not tx_hash_value.startswith("0x"):
+        raise ValueError("invalid timeline cursor")
+    return {
+        "block_number": int(block_value),
+        "tx_index": int(tx_index_value),
+        "tx_hash": tx_hash_value,
+    }
 
 
 def parse_args() -> argparse.Namespace:

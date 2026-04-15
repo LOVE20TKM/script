@@ -754,7 +754,7 @@
         <div class="panel-head">
           <div>
             <h2 class="panel-title">时间线明细</h2>
-            <p class="panel-subtitle" id="table-subtitle">先加载看板 DB，再输入钱包地址。</p>
+            <p class="panel-subtitle" id="table-subtitle">输入钱包地址后直接查询活库。</p>
           </div>
         </div>
         <div class="table-wrap">
@@ -776,6 +776,10 @@
             </tbody>
           </table>
         </div>
+        <div class="button-row" id="load-more-wrap" style="display: none; margin-top: 16px;">
+          <button class="btn" id="load-more-btn" type="button">加载更多</button>
+          <span class="panel-subtitle" id="load-more-note"></span>
+        </div>
       </section>
     </div>
 
@@ -783,9 +787,9 @@
       const pageParams = new URLSearchParams(window.location.search);
       const DEFAULT_NETWORK = pageParams.get("network") || "thinkium70001_public";
       const API_URL = "/api/dashboards/wallet-activity-timeline";
+      const PAGE_SIZE = 200;
       const TIMEZONE = "Asia/Shanghai";
       const RECENT_ADDRESS_KEY = "wallet-activity-timeline:recent-address";
-      const STALE_TIME_MS = 30_000;
 
       const timeFormatter = new Intl.DateTimeFormat("zh-CN", {
         timeZone: TIMEZONE,
@@ -816,11 +820,12 @@
         queriedAddress: "",
         pendingAddress: "",
         rows: [],
+        hasMore: false,
+        nextCursor: null,
+        pageSize: PAGE_SIZE,
         activeFilter: "all",
         showFailed: false,
         isFetching: false,
-        lastMetaFetchedAt: 0,
-        lastQueryFetchedAt: 0,
         abortController: null,
         requestSeq: 0,
       };
@@ -936,6 +941,7 @@
         state.isFetching = isFetching;
         document.getElementById("query-btn").disabled = isFetching;
         document.getElementById("refresh-btn").disabled = isFetching;
+        document.getElementById("load-more-btn").disabled = isFetching || !state.hasMore;
       }
 
       function setBanner(id, tone, message) {
@@ -1013,13 +1019,16 @@
             setBanner(
               "query-banner",
               "warning",
-              `当前可见 <strong>0</strong> 条记录，已隐藏 <strong>${failedRows.length}</strong> 条失败交易。`
+              `当前已加载 <strong>${state.rows.length}</strong> 条记录；筛选后可见 <strong>0</strong> 条，已隐藏 <strong>${failedRows.length}</strong> 条失败交易。`
             );
             return;
           }
-          let message = `已查询到 <strong>${visibleRows.length}</strong> 条记录。`;
+          let message = `当前已加载 <strong>${state.rows.length}</strong> 条记录，可见 <strong>${visibleRows.length}</strong> 条。`;
           if (!state.showFailed && failedRows.length) {
             message += ` 已隐藏 <strong>${failedRows.length}</strong> 条失败交易。`;
+          }
+          if (state.hasMore) {
+            message += " 可继续加载更早记录。";
           }
           setBanner("query-banner", "success", message);
           return;
@@ -1111,7 +1120,7 @@
               {
                 label: "默认网络",
                 value: DEFAULT_NETWORK,
-                note: "页面首次进入不自动加载，只有手动查询或点击刷新时才会更新。",
+                note: "页面首次进入不自动加载；每次先拉最近一页，可手动继续加载更早记录。",
               },
               {
                 label: "归类口径",
@@ -1129,24 +1138,24 @@
           ).size;
           cards.push(
             {
-              label: "命中记录",
+              label: "已加载记录",
               value: rows.length.toLocaleString("zh-CN"),
-              note: `地址 ${shortAddress(state.queriedAddress)} 的时间线条数`,
+              note: `地址 ${shortAddress(state.queriedAddress)} 当前已加载的时间线条数`,
             },
             {
-              label: "最新一条时间",
+              label: "当前窗口最新一条",
               value: formatUnixTimestamp(latest.block_timestamp),
               note: `区块 ${latest.block_number.toLocaleString("zh-CN")}`,
             },
             {
-              label: "最早一条时间",
+              label: "当前窗口最早一条",
               value: formatUnixTimestamp(earliest.block_timestamp),
               note: `区块 ${earliest.block_number.toLocaleString("zh-CN")}`,
             },
             {
               label: "动作类型",
               value: uniqueActions.toLocaleString("zh-CN"),
-              note: `涉及 ${uniqueActionIds.toLocaleString("zh-CN")} 个 actionId`,
+              note: `按当前已加载窗口计算，涉及 ${uniqueActionIds.toLocaleString("zh-CN")} 个 actionId`,
             },
           );
         }
@@ -1244,7 +1253,7 @@
         const tbody = document.getElementById("table-body");
         const subtitle = document.getElementById("table-subtitle");
         subtitle.textContent = state.queriedAddress
-          ? `${shortAddress(state.queriedAddress)} 共命中 ${rows.length} 条记录，按区块和交易顺序倒序显示。`
+          ? `${shortAddress(state.queriedAddress)} 当前已加载 ${rows.length} 条记录，按区块和交易顺序倒序显示。`
           : "输入钱包地址后直接查询活库。";
 
         if (!rows.length) {
@@ -1268,6 +1277,26 @@
           .join("");
       }
 
+      function renderLoadMore() {
+        const wrap = document.getElementById("load-more-wrap");
+        const note = document.getElementById("load-more-note");
+        const button = document.getElementById("load-more-btn");
+        if (!state.queriedAddress || !state.rows.length) {
+          wrap.style.display = "none";
+          note.textContent = "";
+          button.disabled = true;
+          return;
+        }
+        wrap.style.display = "flex";
+        if (state.hasMore) {
+          note.textContent = `当前已加载 ${state.rows.length.toLocaleString("zh-CN")} 条，点击继续加载更早记录。`;
+          button.disabled = state.isFetching;
+          return;
+        }
+        note.textContent = `当前已加载 ${state.rows.length.toLocaleString("zh-CN")} 条，已经到最早记录。`;
+        button.disabled = true;
+      }
+
       function parseErrorPayload(payload, fallbackMessage) {
         if (payload && typeof payload === "object" && payload.error) {
           return String(payload.error);
@@ -1275,15 +1304,8 @@
         return fallbackMessage;
       }
 
-      async function requestTimeline(address, { force = false, silent = false, metadataOnly = false } = {}) {
+      async function requestTimeline(address, { silent = false, metadataOnly = false, append = false } = {}) {
         const normalizedAddress = normalizeAddress(address);
-        const now = Date.now();
-        if (!force) {
-          const lastFetchedAt = normalizedAddress ? state.lastQueryFetchedAt : state.lastMetaFetchedAt;
-          if (lastFetchedAt && now - lastFetchedAt < STALE_TIME_MS) {
-            return;
-          }
-        }
 
         if (state.abortController) {
           state.abortController.abort();
@@ -1309,6 +1331,12 @@
           url.searchParams.set("network", DEFAULT_NETWORK);
           if (normalizedAddress) {
             url.searchParams.set("address", normalizedAddress);
+            url.searchParams.set("limit", String(state.pageSize || PAGE_SIZE));
+          }
+          if (append && state.nextCursor) {
+            url.searchParams.set("before_block_number", String(state.nextCursor.block_number));
+            url.searchParams.set("before_tx_index", String(state.nextCursor.tx_index));
+            url.searchParams.set("before_tx_hash", state.nextCursor.tx_hash);
           }
 
           const response = await fetch(url, { cache: "no-store", signal: controller.signal });
@@ -1325,7 +1353,6 @@
           state.loadedAt = payload.updated_at || state.loadedAt;
 
           if (metadataOnly) {
-            state.lastMetaFetchedAt = now;
             renderMeta();
             if (!silent) {
               setBanner("load-banner", "success", "已连接活库，可直接查询任意钱包地址。");
@@ -1335,15 +1362,21 @@
 
           state.queriedAddress = normalizedAddress;
           state.pendingAddress = "";
-          state.rows = Array.isArray(payload.data?.rows) ? payload.data.rows : [];
-          state.activeFilter = "all";
-          state.lastQueryFetchedAt = now;
+          const pageRows = Array.isArray(payload.data?.rows) ? payload.data.rows : [];
+          state.rows = append ? state.rows.concat(pageRows) : pageRows;
+          state.hasMore = Boolean(payload.data?.has_more);
+          state.nextCursor = payload.data?.next_cursor || null;
+          state.pageSize = Number(payload.data?.page_size || PAGE_SIZE);
+          if (!append) {
+            state.activeFilter = "all";
+          }
           saveRecentAddress(normalizedAddress);
 
           renderMeta();
           renderFilters();
           renderSummary(getVisibleRows());
           renderTable(getFilteredRows());
+          renderLoadMore();
           renderQueryResultBanner();
           setBanner("load-banner", "", "");
           return payload;
@@ -1364,6 +1397,7 @@
           renderFilters();
           renderSummary(getVisibleRows());
           renderTable(getFilteredRows());
+          renderLoadMore();
           renderQueryResultBanner();
         } finally {
           if (requestSeq === state.requestSeq) {
@@ -1373,14 +1407,14 @@
         }
       }
 
-      async function runQuery({ force = true, silent = false } = {}) {
+      async function runQuery({ silent = false, append = false } = {}) {
         const addressInput = document.getElementById("address-input");
-        const address = normalizeAddress(addressInput.value);
+        const address = normalizeAddress(append ? state.queriedAddress : addressInput.value);
         if (!isAddress(address)) {
           setBanner("query-banner", "warning", "请输入完整的钱包地址，格式需要是 42 位的 <code>0x...</code>。");
           return;
         }
-        await requestTimeline(address, { force, silent, metadataOnly: false });
+        await requestTimeline(address, { silent, metadataOnly: false, append });
       }
 
       function renderAll() {
@@ -1388,11 +1422,12 @@
         renderFilters();
         renderSummary(getVisibleRows());
         renderTable(getFilteredRows());
+        renderLoadMore();
         renderQueryResultBanner();
       }
 
       document.getElementById("query-btn").addEventListener("click", () => {
-        runQuery({ force: true }).catch(() => {});
+        runQuery({}).catch(() => {});
       });
 
       document.getElementById("refresh-btn").addEventListener("click", () => {
@@ -1403,21 +1438,28 @@
             setBanner("query-banner", "warning", "请输入完整的钱包地址，格式需要是 42 位的 <code>0x...</code>。");
             return;
           }
-          runQuery({ force: true }).catch(() => {});
+          runQuery({}).catch(() => {});
           return;
         }
         if (state.queriedAddress) {
           addressInput.value = state.queriedAddress;
-          runQuery({ force: true }).catch(() => {});
+          runQuery({}).catch(() => {});
           return;
         }
-        requestTimeline("", { force: true, metadataOnly: true }).catch(() => {});
+        requestTimeline("", { metadataOnly: true }).catch(() => {});
+      });
+
+      document.getElementById("load-more-btn").addEventListener("click", () => {
+        if (!state.hasMore || !state.queriedAddress) {
+          return;
+        }
+        runQuery({ append: true, silent: true }).catch(() => {});
       });
 
       document.getElementById("address-input").addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
           event.preventDefault();
-          runQuery({ force: true }).catch(() => {});
+          runQuery({}).catch(() => {});
         }
       });
 

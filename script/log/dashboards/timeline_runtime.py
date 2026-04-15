@@ -1423,74 +1423,148 @@ def process_native_only_transactions(source: sqlite3.Connection, dest: sqlite3.C
     return inserted
 
 
-CANDIDATE_TXS_CTE = """
-WITH candidate_txs AS (
-    SELECT tx_hash
-    FROM transactions
-    WHERE "from" = :address OR "to" = :address
+CANDIDATE_TXS_INSERT_SQL = """
+INSERT OR IGNORE INTO temp_candidate_txs(tx_hash)
+SELECT tx_hash
+FROM transactions
+WHERE "from" = :address
 
-    UNION
+UNION
 
-    SELECT tx_hash
-    FROM events
-    WHERE event_name IN ('ClaimReward', 'MintActionReward', 'MintGovReward', 'Join', 'Exit', 'Withdraw', 'Withdrawal')
-      AND lower(json_extract(decoded_data, '$.account')) = :address
+SELECT tx_hash
+FROM transactions
+WHERE "to" = :address
 
-    UNION
+UNION
 
-    SELECT tx_hash
-    FROM events
-    WHERE event_name = 'Transfer'
-      AND (
-        lower(json_extract(decoded_data, '$.from')) = :address
-        OR lower(json_extract(decoded_data, '$.to')) = :address
-        OR lower(json_extract(decoded_data, '$.src')) = :address
-        OR lower(json_extract(decoded_data, '$.dst')) = :address
-      )
-),
-candidate_event_meta AS (
-    SELECT
-        e.tx_hash,
-        MIN(e.block_number) AS block_number,
-        MIN(COALESCE(e.tx_index, 0)) AS tx_index
-    FROM events e
-    JOIN candidate_txs c ON c.tx_hash = e.tx_hash
-    GROUP BY e.tx_hash
-)
+SELECT tx_hash
+FROM events
+WHERE event_name IN ('ClaimReward', 'MintActionReward', 'MintGovReward', 'Join', 'Exit', 'Withdraw', 'Withdrawal')
+  AND lower(json_extract(decoded_data, '$.account')) = :address
+
+UNION
+
+SELECT tx_hash
+FROM events
+WHERE event_name = 'Transfer'
+  AND lower(json_extract(decoded_data, '$.from')) = :address
+
+UNION
+
+SELECT tx_hash
+FROM events
+WHERE event_name = 'Transfer'
+  AND lower(json_extract(decoded_data, '$.to')) = :address
+
+UNION
+
+SELECT tx_hash
+FROM events
+WHERE event_name = 'Transfer'
+  AND lower(json_extract(decoded_data, '$.src')) = :address
+
+UNION
+
+SELECT tx_hash
+FROM events
+WHERE event_name = 'Transfer'
+  AND lower(json_extract(decoded_data, '$.dst')) = :address
 """
 
 
-def query_activity_rows_by_account(source: sqlite3.Connection, contract_map: dict[str, str], account: str) -> list[dict]:
-    account = normalize_address(account)
-    if not account:
-        return []
-
-    meta_query = (
-        CANDIDATE_TXS_CTE
-        + """
-        SELECT
-            COALESCE(t.block_number, m.block_number, 0) AS block_number,
-            COALESCE(b.timestamp, t.block_timestamp, 0) AS block_timestamp,
-            c.tx_hash,
-            COALESCE(t.tx_index, m.tx_index, 0) AS tx_index,
-            t."from" AS tx_from,
-            t."to" AS tx_to,
-            t.status,
-            t.value_wei,
-            t.input
-        FROM candidate_txs c
-        LEFT JOIN transactions t ON t.tx_hash = c.tx_hash
-        LEFT JOIN candidate_event_meta m ON m.tx_hash = c.tx_hash
-        LEFT JOIN blocks b ON b.block_number = COALESCE(t.block_number, m.block_number)
-        ORDER BY COALESCE(t.block_number, m.block_number, 0), COALESCE(t.tx_index, m.tx_index, 0), c.tx_hash
+def prepare_candidate_txs(source: sqlite3.Connection, account: str) -> None:
+    source.execute("DROP TABLE IF EXISTS temp_candidate_txs")
+    source.execute("DROP TABLE IF EXISTS temp_page_txs")
+    source.execute(
+        """
+        CREATE TEMP TABLE temp_candidate_txs (
+            tx_hash TEXT PRIMARY KEY
+        ) WITHOUT ROWID
         """
     )
-    event_query = (
-        CANDIDATE_TXS_CTE
-        + """
+    source.execute(CANDIDATE_TXS_INSERT_SQL, {"address": account})
+
+
+def build_cursor_filter(cursor: dict | None) -> tuple[str, dict]:
+    if not cursor:
+        return "", {}
+    return (
+        """
+        WHERE t.block_number < :cursor_block_number
+           OR (t.block_number = :cursor_block_number AND COALESCE(t.tx_index, 0) < :cursor_tx_index)
+           OR (t.block_number = :cursor_block_number AND COALESCE(t.tx_index, 0) = :cursor_tx_index AND c.tx_hash < :cursor_tx_hash)
+        """,
+        {
+            "cursor_block_number": int(cursor["block_number"]),
+            "cursor_tx_index": int(cursor["tx_index"]),
+            "cursor_tx_hash": str(cursor["tx_hash"]).lower(),
+        },
+    )
+
+
+def select_candidate_meta_batch(source: sqlite3.Connection, limit: int, cursor: dict | None) -> tuple[list[sqlite3.Row], bool]:
+    where_sql, params = build_cursor_filter(cursor)
+    params["page_limit"] = int(limit) + 1
+    rows = source.execute(
+        f"""
+        WITH page AS (
+            SELECT
+                c.tx_hash,
+                t.block_number,
+                COALESCE(t.block_timestamp, 0) AS block_timestamp,
+                COALESCE(t.tx_index, 0) AS tx_index,
+                t."from" AS tx_from,
+                t."to" AS tx_to,
+                t.status,
+                t.value_wei,
+                COALESCE(t.input, '') AS input
+            FROM temp_candidate_txs c
+            JOIN transactions t ON t.tx_hash = c.tx_hash
+            {where_sql}
+            ORDER BY t.block_number DESC, COALESCE(t.tx_index, 0) DESC, c.tx_hash DESC
+            LIMIT :page_limit
+        )
+        SELECT
+            block_number,
+            block_timestamp,
+            tx_hash,
+            tx_index,
+            tx_from,
+            tx_to,
+            status,
+            value_wei,
+            input
+        FROM page
+        ORDER BY block_number DESC, tx_index DESC, tx_hash DESC
+        """,
+        params,
+    ).fetchall()
+    return rows[:limit], len(rows) > limit
+
+
+def load_event_rows_by_tx(
+    source: sqlite3.Connection,
+    tx_meta_rows: list[sqlite3.Row],
+) -> dict[str, list[sqlite3.Row]]:
+    source.execute("DROP TABLE IF EXISTS temp_page_txs")
+    source.execute(
+        """
+        CREATE TEMP TABLE temp_page_txs (
+            tx_hash TEXT PRIMARY KEY
+        ) WITHOUT ROWID
+        """
+    )
+    source.executemany(
+        "INSERT INTO temp_page_txs(tx_hash) VALUES (?)",
+        [(row["tx_hash"],) for row in tx_meta_rows],
+    )
+
+    event_rows_by_tx: defaultdict[str, list[sqlite3.Row]] = defaultdict(list)
+    for row in source.execute(
+        """
         SELECT
             e.block_number,
-            b.timestamp AS block_timestamp,
+            COALESCE(t.block_timestamp, 0) AS block_timestamp,
             e.tx_hash,
             COALESCE(e.tx_index, t.tx_index, 0) AS tx_index,
             e.log_index,
@@ -1504,27 +1578,93 @@ def query_activity_rows_by_account(source: sqlite3.Connection, contract_map: dic
             t.value_wei,
             t.input
         FROM events e
-        JOIN candidate_txs c ON c.tx_hash = e.tx_hash
-        JOIN blocks b ON b.block_number = e.block_number
+        JOIN temp_page_txs p ON p.tx_hash = e.tx_hash
         LEFT JOIN transactions t ON t.tx_hash = e.tx_hash
         WHERE e.event_name IN ('Transfer', 'ClaimReward', 'MintActionReward', 'MintGovReward', 'Join', 'Exit', 'Withdraw', 'Withdrawal')
         ORDER BY e.block_number, COALESCE(e.tx_index, t.tx_index, 0), e.log_index, e.id
         """
-    )
-
-    tx_meta_rows = source.execute(meta_query, {"address": account}).fetchall()
-    if not tx_meta_rows:
-        return []
-
-    event_rows_by_tx: defaultdict[str, list[sqlite3.Row]] = defaultdict(list)
-    for row in source.execute(event_query, {"address": account}):
+    ):
         event_rows_by_tx[row["tx_hash"]].append(row)
+    return event_rows_by_tx
 
+
+def seed_membership_state(
+    source: sqlite3.Connection,
+    account: str,
+    oldest_row: sqlite3.Row,
+) -> tuple[set[tuple[str, str, str, int]], set[tuple[str, str, str, int, int]]]:
     action_memberships: set[tuple[str, str, str, int]] = set()
     group_memberships: set[tuple[str, str, str, int, int]] = set()
+    summaries: defaultdict[str, dict] = defaultdict(default_summary)
+    for row in source.execute(
+        """
+        SELECT
+            e.block_number,
+            COALESCE(e.tx_index, t.tx_index, 0) AS tx_index,
+            e.log_index,
+            e.tx_hash,
+            e.contract_name,
+            e.event_name,
+            e.address,
+            e.decoded_data,
+            t."from" AS tx_from,
+            t."to" AS tx_to,
+            COALESCE(t.input, '') AS input
+        FROM events e
+        LEFT JOIN transactions t ON t.tx_hash = e.tx_hash
+        WHERE lower(json_extract(e.decoded_data, '$.account')) = :address
+          AND (
+                (e.contract_name = 'groupJoin' AND e.event_name IN ('Join', 'Exit'))
+             OR (e.contract_name = 'join' AND e.event_name IN ('Join', 'Withdraw'))
+             OR (
+                    e.event_name IN ('Join', 'Exit')
+                AND json_extract(e.decoded_data, '$.actionId') IS NOT NULL
+                AND json_extract(e.decoded_data, '$.amount') IS NOT NULL
+             )
+          )
+          AND (
+                e.block_number < :oldest_block_number
+             OR (e.block_number = :oldest_block_number AND COALESCE(e.tx_index, t.tx_index, 0) < :oldest_tx_index)
+             OR (e.block_number = :oldest_block_number AND COALESCE(e.tx_index, t.tx_index, 0) = :oldest_tx_index AND e.tx_hash < :oldest_tx_hash)
+          )
+        ORDER BY e.block_number, COALESCE(e.tx_index, t.tx_index, 0), e.log_index, e.id
+        """,
+        {
+            "address": account,
+            "oldest_block_number": int(oldest_row["block_number"]),
+            "oldest_tx_index": int(oldest_row["tx_index"] or 0),
+            "oldest_tx_hash": oldest_row["tx_hash"],
+        },
+    ):
+        apply_event_to_summaries(row, summaries, action_memberships, group_memberships, {}, tx_meta={})
+    return action_memberships, group_memberships
+
+
+def query_activity_rows_by_account(
+    source: sqlite3.Connection,
+    contract_map: dict[str, str],
+    account: str,
+    *,
+    limit: int = 200,
+    cursor: dict | None = None,
+) -> dict:
+    account = normalize_address(account)
+    if not account:
+        return {"rows": [], "has_more": False, "next_cursor": None, "page_size": int(limit)}
+
+    safe_limit = max(1, int(limit))
+    prepare_candidate_txs(source, account)
+
+    tx_meta_rows, has_more = select_candidate_meta_batch(source, safe_limit, cursor)
+    if not tx_meta_rows:
+        return {"rows": [], "has_more": False, "next_cursor": None, "page_size": safe_limit}
+
+    event_rows_by_tx = load_event_rows_by_tx(source, tx_meta_rows)
+
+    action_memberships, group_memberships = seed_membership_state(source, account, tx_meta_rows[-1])
     raw_rows: list[dict] = []
 
-    for tx_meta_row in tx_meta_rows:
+    for tx_meta_row in reversed(tx_meta_rows):
         tx_meta = {
             "block_number": int(tx_meta_row["block_number"] or 0),
             "block_timestamp": int(tx_meta_row["block_timestamp"] or 0),
@@ -1551,7 +1691,20 @@ def query_activity_rows_by_account(source: sqlite3.Connection, contract_map: dic
 
     rows = [materialize_activity_row(row) for row in raw_rows]
     rows.sort(key=lambda item: (item["block_number"], item["tx_index"], item["tx_hash"]), reverse=True)
-    return rows
+    next_cursor = None
+    if has_more:
+        last_row = tx_meta_rows[-1]
+        next_cursor = {
+            "block_number": int(last_row["block_number"]),
+            "tx_index": int(last_row["tx_index"] or 0),
+            "tx_hash": last_row["tx_hash"],
+        }
+    return {
+        "rows": rows,
+        "has_more": has_more,
+        "next_cursor": next_cursor,
+        "page_size": safe_limit,
+    }
 
 
 def materialize_activity_row(row: dict) -> dict:
