@@ -26,7 +26,7 @@
 使用说明：
 
 ```bash
-cd /Users/BigPolarBear/Documents/github/LOVE20TKM/script/script/log
+cd /Users/BigPolarBear/Documents/github/LOVE20TKM/script/script/log/dashboards
 python3 dashboard_server.py --host 127.0.0.1 --port 8000 --network thinkium70001_public
 ```
 

@@ -12,8 +12,8 @@ from urllib.parse import parse_qs, urlparse
 from timeline_runtime import TIMELINE_INDEX_DEFINITIONS, load_contract_map, now_iso, query_activity_rows_by_account
 
 
-LOG_DIR = Path(__file__).resolve().parent
-DASHBOARDS_DIR = LOG_DIR / "dashboards"
+DASHBOARDS_DIR = Path(__file__).resolve().parent
+LOG_DIR = DASHBOARDS_DIR.parent
 MINT_DIR = DASHBOARDS_DIR / "mint-addresses-by-log-round"
 DEFAULT_NETWORK = "thinkium70001_public"
 CACHE_TTL_SECONDS = 30

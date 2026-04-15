@@ -123,23 +123,6 @@ $PYTHON_CMD "$BLOCK_PROCESSOR" \
   --retries "$maxRetries"
 
 block_exit=$?
-echo ""
-echo "====================================================================="
-echo "📌 Ensuring dashboard query indexes..."
-echo "====================================================================="
-
-"$PYTHON_CMD" "$SCRIPT_DIR/dashboard_server.py" \
-  --ensure-indexes-only \
-  --db-path "$db_dir/events.db"
-
-dashboard_index_exit=$?
-if [ $dashboard_index_exit -ne 0 ]; then
-  echo ""
-  echo "⚠️ Dashboard index preparation failed."
-  if [ $block_exit -eq 0 ]; then
-    script_return_or_exit $dashboard_index_exit
-  fi
-fi
 
 if [ $block_exit -eq 0 ]; then
   echo ""
