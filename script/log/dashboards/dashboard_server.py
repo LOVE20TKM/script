@@ -15,7 +15,7 @@ DASHBOARDS_DIR = Path(__file__).resolve().parent
 LOG_DIR = DASHBOARDS_DIR.parent
 MINT_DIR = DASHBOARDS_DIR / "mint-addresses-by-log-round"
 DEFAULT_NETWORK = "thinkium70001_public"
-DEFAULT_TIMELINE_LIMIT = 200
+DEFAULT_TIMELINE_LIMIT = 100
 MAX_TIMELINE_LIMIT = 500
 MINT_SOURCE_QUERY_SQL = (MINT_DIR / "source_query.sql").read_text(encoding="utf-8")
 MINT_SOURCE_SUMMARY_SQL = (MINT_DIR / "source_summary.sql").read_text(encoding="utf-8")

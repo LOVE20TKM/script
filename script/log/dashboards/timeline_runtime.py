@@ -28,6 +28,7 @@ ROUTER_SELECTORS = {
 }
 RELEVANT_EVENT_NAMES = (
     "Transfer",
+    "Approval",
     "ClaimReward",
     "MintActionReward",
     "MintGovReward",
@@ -35,7 +36,9 @@ RELEVANT_EVENT_NAMES = (
     "Exit",
     "Withdraw",
     "Withdrawal",
+    "SubmitOriginScores",
 )
+RELEVANT_EVENT_NAMES_SQL = ", ".join(f"'{name}'" for name in RELEVANT_EVENT_NAMES)
 TIMELINE_INDEX_DEFINITIONS = (
     (
         "idx_events_event_account_expr",
@@ -379,6 +382,8 @@ def has_token_activity(summary: dict) -> bool:
             "group_exits",
             "action_joins",
             "action_exits",
+            "group_verify_submissions",
+            "approvals",
             "transfers_in",
             "transfers_out",
             "mints_in",
@@ -1059,6 +1064,25 @@ def apply_event_to_summaries(
         )
         return
 
+    if event_name == "Approval":
+        owner = normalize_address(payload.get("owner") or payload.get("_owner") or payload.get("src"))
+        spender = normalize_address(payload.get("spender") or payload.get("_spender") or payload.get("guy"))
+        value = payload.get("value")
+        if value is None:
+            value = payload.get("wad")
+        if not owner or not spender or value is None:
+            return
+        summaries[owner]["approvals"].append(
+            {
+                "token": token_label(contract_name),
+                "raw": int(value or 0),
+                "decimals": 18,
+                "spender": spender,
+                "contract_address": contract_address,
+            }
+        )
+        return
+
     if event_name == "Transfer":
         transfer = parse_transfer_payload(payload, contract_name, contract_map)
         if not transfer:
@@ -1125,6 +1149,21 @@ def apply_event_to_summaries(
             summaries[tx_sender]["native_in"] += amount
         return
 
+    if contract_name == "groupVerify" and event_name == "SubmitOriginScores":
+        account = normalize_address(current_meta.get("tx_from"))
+        if not account:
+            return
+        summaries[account]["group_verify_submissions"].append(
+            {
+                "contract_address": contract_address,
+                "token_address": normalize_address(payload.get("tokenAddress")),
+                "action_id": int(payload.get("actionId") or 0),
+                "group_id": int(payload.get("groupId") or 0),
+                "count": int(payload.get("count") or 0),
+            }
+        )
+        return
+
     if event_name in {"Join", "Exit"} and contract_name == "groupJoin":
         account = normalize_address(payload.get("account"))
         if not account:
@@ -1188,15 +1227,15 @@ def apply_event_to_summaries(
 
 def process_event_stream(source: sqlite3.Connection, dest: sqlite3.Connection, contract_map: dict[str, str]) -> int:
     relevant_count = source.execute(
-        """
+        f"""
         SELECT COUNT(*)
         FROM events
-        WHERE event_name IN ('Transfer', 'ClaimReward', 'MintActionReward', 'MintGovReward', 'Join', 'Exit', 'Withdraw', 'Withdrawal')
+        WHERE event_name IN ({RELEVANT_EVENT_NAMES_SQL})
         """
     ).fetchone()[0]
     print(f"Relevant events: {relevant_count}")
 
-    query = """
+    query = f"""
         SELECT
             e.block_number,
             b.timestamp AS block_timestamp,
@@ -1215,7 +1254,7 @@ def process_event_stream(source: sqlite3.Connection, dest: sqlite3.Connection, c
         FROM events e
         JOIN blocks b ON b.block_number = e.block_number
         LEFT JOIN transactions t ON t.tx_hash = e.tx_hash
-        WHERE e.event_name IN ('Transfer', 'ClaimReward', 'MintActionReward', 'MintGovReward', 'Join', 'Exit', 'Withdraw', 'Withdrawal')
+        WHERE e.event_name IN ({RELEVANT_EVENT_NAMES_SQL})
         ORDER BY e.block_number, COALESCE(e.tx_index, t.tx_index, 0), e.log_index, e.id
     """
 
@@ -1382,6 +1421,129 @@ def rows_for_native_only_transaction(
     return rows
 
 
+def rows_for_unclassified_transaction(
+    tx_meta: dict,
+    contract_map: dict[str, str],
+    *,
+    account_filter: str | None = None,
+) -> list[dict]:
+    rows: list[dict] = []
+    sender = normalize_address(tx_meta.get("tx_from"))
+    receiver = normalize_address(tx_meta.get("tx_to"))
+    input_selector = (tx_meta.get("input") or "")[:10]
+    selector = selector_name(input_selector)
+    normalized_filter = normalize_address(account_filter)
+
+    def should_include(account: str) -> bool:
+        if not account:
+            return False
+        if not normalized_filter:
+            return True
+        return normalize_address(account) == normalized_filter
+
+    if selector.startswith("swap"):
+        action_group = "swap"
+    elif selector in {"addLiquidity", "removeLiquidity"}:
+        action_group = "liquidity"
+    else:
+        action_group = "other"
+
+    if tx_meta.get("status") == 0 and is_router_address(receiver, contract_map):
+        sender_action, sender_description = failed_router_action(selector, for_router=False)
+        router_action, router_description = failed_router_action(selector, for_router=True)
+        if should_include(sender):
+            rows.append(
+                {
+                    "account": sender,
+                    "block_number": tx_meta["block_number"],
+                    "block_timestamp": tx_meta["block_timestamp"],
+                    "tx_hash": tx_meta["tx_hash"],
+                    "tx_index": tx_meta["tx_index"],
+                    "status": tx_meta["status"],
+                    "action": sender_action,
+                    "action_group": action_group,
+                    "action_id_text": "",
+                    "group_id_text": "",
+                    "communities_json": "[]",
+                    "amounts_json": "[]",
+                    "counterparties_json": json.dumps(unique_counterparties([{"address": receiver, "label": contract_map.get(receiver, "")}]), ensure_ascii=False),
+                    "description": sender_description,
+                    "tx_from": sender,
+                    "tx_to": receiver,
+                    "input_selector": input_selector,
+                }
+            )
+        if receiver != sender and should_include(receiver):
+            rows.append(
+                {
+                    "account": receiver,
+                    "block_number": tx_meta["block_number"],
+                    "block_timestamp": tx_meta["block_timestamp"],
+                    "tx_hash": tx_meta["tx_hash"],
+                    "tx_index": tx_meta["tx_index"],
+                    "status": tx_meta["status"],
+                    "action": router_action,
+                    "action_group": action_group,
+                    "action_id_text": "",
+                    "group_id_text": "",
+                    "communities_json": "[]",
+                    "amounts_json": "[]",
+                    "counterparties_json": json.dumps(unique_counterparties([{"address": sender, "label": contract_map.get(sender, "")}]), ensure_ascii=False),
+                    "description": router_description,
+                    "tx_from": sender,
+                    "tx_to": receiver,
+                    "input_selector": input_selector,
+                }
+            )
+        return rows
+
+    if should_include(sender):
+        rows.append(
+            {
+                "account": sender,
+                "block_number": tx_meta["block_number"],
+                "block_timestamp": tx_meta["block_timestamp"],
+                "tx_hash": tx_meta["tx_hash"],
+                "tx_index": tx_meta["tx_index"],
+                "status": tx_meta["status"],
+                "action": "未归类调用",
+                "action_group": action_group,
+                "action_id_text": "",
+                "group_id_text": "",
+                "communities_json": "[]",
+                "amounts_json": "[]",
+                "counterparties_json": json.dumps(unique_counterparties([{"address": receiver, "label": contract_map.get(receiver, "")}]), ensure_ascii=False),
+                "description": f"向 {describe_counterparty(receiver, contract_map)} 发起调用，未命中已解析事件模式",
+                "tx_from": sender,
+                "tx_to": receiver,
+                "input_selector": input_selector,
+            }
+        )
+    if receiver != sender and should_include(receiver):
+        rows.append(
+            {
+                "account": receiver,
+                "block_number": tx_meta["block_number"],
+                "block_timestamp": tx_meta["block_timestamp"],
+                "tx_hash": tx_meta["tx_hash"],
+                "tx_index": tx_meta["tx_index"],
+                "status": tx_meta["status"],
+                "action": "收到未归类调用",
+                "action_group": action_group,
+                "action_id_text": "",
+                "group_id_text": "",
+                "communities_json": "[]",
+                "amounts_json": "[]",
+                "counterparties_json": json.dumps(unique_counterparties([{"address": sender, "label": contract_map.get(sender, "")}]), ensure_ascii=False),
+                "description": f"收到 {describe_counterparty(sender, contract_map)} 发起的调用，未命中已解析事件模式",
+                "tx_from": sender,
+                "tx_to": receiver,
+                "input_selector": input_selector,
+            }
+        )
+    return rows
+
+
 def process_native_only_transactions(source: sqlite3.Connection, dest: sqlite3.Connection, contract_map: dict[str, str]) -> int:
     query = """
         SELECT
@@ -1510,14 +1672,33 @@ def select_candidate_meta_batch(source: sqlite3.Connection, limit: int, cursor: 
         WITH page AS (
             SELECT
                 c.tx_hash,
+                t.id,
                 t.block_number,
+                t.block_hash,
                 COALESCE(t.block_timestamp, 0) AS block_timestamp,
                 COALESCE(t.tx_index, 0) AS tx_index,
                 t."from" AS tx_from,
                 t."to" AS tx_to,
+                t.amount,
+                t.gas,
+                t.gas_price,
+                t.max_fee_per_gas,
+                t.max_priority_fee_per_gas,
+                t.type,
+                t.chain_id,
                 t.status,
                 t.value_wei,
-                COALESCE(t.input, '') AS input
+                COALESCE(t.input, '') AS input,
+                t.nonce,
+                t.v,
+                t.r,
+                t.s,
+                t.access_list,
+                t.gas_used,
+                t.cumulative_gas_used,
+                t.contract_address,
+                t.effective_gas_price,
+                t.created_at
             FROM temp_candidate_txs c
             JOIN transactions t ON t.tx_hash = c.tx_hash
             {where_sql}
@@ -1525,15 +1706,34 @@ def select_candidate_meta_batch(source: sqlite3.Connection, limit: int, cursor: 
             LIMIT :page_limit
         )
         SELECT
+            id,
             block_number,
+            block_hash,
             block_timestamp,
             tx_hash,
             tx_index,
             tx_from,
             tx_to,
+            amount,
+            gas,
+            gas_price,
+            max_fee_per_gas,
+            max_priority_fee_per_gas,
+            type,
+            chain_id,
             status,
             value_wei,
-            input
+            input,
+            nonce,
+            v,
+            r,
+            s,
+            access_list,
+            gas_used,
+            cumulative_gas_used,
+            contract_address,
+            effective_gas_price,
+            created_at
         FROM page
         ORDER BY block_number DESC, tx_index DESC, tx_hash DESC
         """,
@@ -1542,10 +1742,10 @@ def select_candidate_meta_batch(source: sqlite3.Connection, limit: int, cursor: 
     return rows[:limit], len(rows) > limit
 
 
-def load_event_rows_by_tx(
+def refresh_temp_page_txs(
     source: sqlite3.Connection,
     tx_meta_rows: list[sqlite3.Row],
-) -> dict[str, list[sqlite3.Row]]:
+) -> None:
     source.execute("DROP TABLE IF EXISTS temp_page_txs")
     source.execute(
         """
@@ -1559,9 +1759,16 @@ def load_event_rows_by_tx(
         [(row["tx_hash"],) for row in tx_meta_rows],
     )
 
+
+def load_event_rows_by_tx(
+    source: sqlite3.Connection,
+    tx_meta_rows: list[sqlite3.Row],
+) -> dict[str, list[sqlite3.Row]]:
+    refresh_temp_page_txs(source, tx_meta_rows)
+
     event_rows_by_tx: defaultdict[str, list[sqlite3.Row]] = defaultdict(list)
     for row in source.execute(
-        """
+        f"""
         SELECT
             e.block_number,
             COALESCE(t.block_timestamp, 0) AS block_timestamp,
@@ -1580,8 +1787,39 @@ def load_event_rows_by_tx(
         FROM events e
         JOIN temp_page_txs p ON p.tx_hash = e.tx_hash
         LEFT JOIN transactions t ON t.tx_hash = e.tx_hash
-        WHERE e.event_name IN ('Transfer', 'ClaimReward', 'MintActionReward', 'MintGovReward', 'Join', 'Exit', 'Withdraw', 'Withdrawal')
+        WHERE e.event_name IN ({RELEVANT_EVENT_NAMES_SQL})
         ORDER BY e.block_number, COALESCE(e.tx_index, t.tx_index, 0), e.log_index, e.id
+        """
+    ):
+        event_rows_by_tx[row["tx_hash"]].append(row)
+    return event_rows_by_tx
+
+
+def load_all_event_rows_by_tx(
+    source: sqlite3.Connection,
+    tx_meta_rows: list[sqlite3.Row],
+) -> dict[str, list[sqlite3.Row]]:
+    refresh_temp_page_txs(source, tx_meta_rows)
+
+    event_rows_by_tx: defaultdict[str, list[sqlite3.Row]] = defaultdict(list)
+    for row in source.execute(
+        """
+        SELECT
+            e.id,
+            e.contract_name,
+            e.event_name,
+            e.log_round,
+            e.round,
+            e.block_number,
+            e.tx_hash,
+            e.tx_index,
+            e.log_index,
+            e.address,
+            e.decoded_data,
+            e.created_at
+        FROM events e
+        JOIN temp_page_txs p ON p.tx_hash = e.tx_hash
+        ORDER BY e.block_number, COALESCE(e.tx_index, 0), COALESCE(e.log_index, 0), e.id
         """
     ):
         event_rows_by_tx[row["tx_hash"]].append(row)
@@ -1660,6 +1898,7 @@ def query_activity_rows_by_account(
         return {"rows": [], "has_more": False, "next_cursor": None, "page_size": safe_limit}
 
     event_rows_by_tx = load_event_rows_by_tx(source, tx_meta_rows)
+    raw_event_rows_by_tx = load_all_event_rows_by_tx(source, tx_meta_rows)
 
     action_memberships, group_memberships = seed_membership_state(source, account, tx_meta_rows[-1])
     raw_rows: list[dict] = []
@@ -1677,17 +1916,30 @@ def query_activity_rows_by_account(
             "input": tx_meta_row["input"] or "",
         }
         event_rows = event_rows_by_tx.get(tx_meta["tx_hash"], [])
+        raw_transaction = materialize_detail_transaction_row(tx_meta_row)
+        raw_events = [materialize_detail_event_row(row) for row in raw_event_rows_by_tx.get(tx_meta["tx_hash"], [])]
+
+        def extend_with_raw_data(rows_to_extend: list[dict]) -> list[dict]:
+            for item in rows_to_extend:
+                item["transaction"] = raw_transaction
+                item["events"] = raw_events
+            return rows_to_extend
+
         if event_rows:
             summaries: defaultdict[str, dict] = defaultdict(default_summary)
             for event_row in event_rows:
                 apply_event_to_summaries(event_row, summaries, action_memberships, group_memberships, contract_map, tx_meta=tx_meta)
             summary_rows = summary_rows_for_accounts(summaries, tx_meta, contract_map, account_filter=account)
             if summary_rows:
-                raw_rows.extend(summary_rows)
+                raw_rows.extend(extend_with_raw_data(summary_rows))
             elif int(tx_meta.get("value_wei") or 0) > 0:
-                raw_rows.extend(rows_for_native_only_transaction(tx_meta, contract_map, account_filter=account))
+                raw_rows.extend(extend_with_raw_data(rows_for_native_only_transaction(tx_meta, contract_map, account_filter=account)))
+            else:
+                raw_rows.extend(extend_with_raw_data(rows_for_unclassified_transaction(tx_meta, contract_map, account_filter=account)))
         elif int(tx_meta.get("value_wei") or 0) > 0:
-            raw_rows.extend(rows_for_native_only_transaction(tx_meta, contract_map, account_filter=account))
+            raw_rows.extend(extend_with_raw_data(rows_for_native_only_transaction(tx_meta, contract_map, account_filter=account)))
+        else:
+            raw_rows.extend(extend_with_raw_data(rows_for_unclassified_transaction(tx_meta, contract_map, account_filter=account)))
 
     rows = [materialize_activity_row(row) for row in raw_rows]
     rows.sort(key=lambda item: (item["block_number"], item["tx_index"], item["tx_hash"]), reverse=True)
@@ -1722,4 +1974,64 @@ def materialize_activity_row(row: dict) -> dict:
         "amounts": json.loads(row.get("amounts_json") or "[]"),
         "counterparties": json.loads(row.get("counterparties_json") or "[]"),
         "description": row["description"],
+        "transaction": row.get("transaction"),
+        "events": row.get("events") or [],
+    }
+
+
+def materialize_detail_transaction_row(row: sqlite3.Row | dict | None) -> dict | None:
+    if row is None:
+        return None
+    return {
+        "id": None if row["id"] is None else int(row["id"]),
+        "block_number": None if row["block_number"] is None else int(row["block_number"]),
+        "block_hash": row["block_hash"],
+        "block_timestamp": None if row["block_timestamp"] is None else int(row["block_timestamp"]),
+        "tx_hash": row["tx_hash"],
+        "tx_index": None if row["tx_index"] is None else int(row["tx_index"]),
+        "from": row["tx_from"],
+        "to": row["tx_to"],
+        "value_wei": row["value_wei"],
+        "amount": row["amount"],
+        "gas": None if row["gas"] is None else int(row["gas"]),
+        "gas_price": None if row["gas_price"] is None else int(row["gas_price"]),
+        "max_fee_per_gas": None if row["max_fee_per_gas"] is None else int(row["max_fee_per_gas"]),
+        "max_priority_fee_per_gas": None if row["max_priority_fee_per_gas"] is None else int(row["max_priority_fee_per_gas"]),
+        "type": None if row["type"] is None else int(row["type"]),
+        "chain_id": None if row["chain_id"] is None else int(row["chain_id"]),
+        "input": row["input"],
+        "nonce": None if row["nonce"] is None else int(row["nonce"]),
+        "v": None if row["v"] is None else int(row["v"]),
+        "r": row["r"],
+        "s": row["s"],
+        "access_list": row["access_list"],
+        "gas_used": None if row["gas_used"] is None else int(row["gas_used"]),
+        "cumulative_gas_used": None if row["cumulative_gas_used"] is None else int(row["cumulative_gas_used"]),
+        "status": None if row["status"] is None else int(row["status"]),
+        "contract_address": row["contract_address"],
+        "effective_gas_price": None if row["effective_gas_price"] is None else int(row["effective_gas_price"]),
+        "created_at": row["created_at"],
+    }
+
+
+def materialize_detail_event_row(row: sqlite3.Row | dict) -> dict:
+    decoded_data_raw = row["decoded_data"]
+    try:
+        decoded_data = json.loads(decoded_data_raw)
+    except json.JSONDecodeError:
+        decoded_data = decoded_data_raw
+    return {
+        "id": None if row["id"] is None else int(row["id"]),
+        "contract_name": row["contract_name"],
+        "event_name": row["event_name"],
+        "log_round": None if row["log_round"] is None else int(row["log_round"]),
+        "round": None if row["round"] is None else int(row["round"]),
+        "block_number": None if row["block_number"] is None else int(row["block_number"]),
+        "tx_hash": row["tx_hash"],
+        "tx_index": None if row["tx_index"] is None else int(row["tx_index"]),
+        "log_index": None if row["log_index"] is None else int(row["log_index"]),
+        "address": row["address"],
+        "decoded_data": decoded_data,
+        "decoded_data_raw": decoded_data_raw,
+        "created_at": row["created_at"],
     }

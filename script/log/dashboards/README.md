@@ -21,7 +21,8 @@
 
 - `wallet-activity-timeline/`
   输入钱包地址后，按区块和交易顺序展示该地址的时间线。
-  页面会把 `ClaimReward`、`groupJoin`、`Approval`、转账、加池 / LP 铸造等动作归并成交易级摘要表格。
+  页面支持输入每页 tx 数，默认 100。服务端会一次返回最近 N 笔交易的交易级摘要、原始交易数据、以及该 tx 下全部原始事件。
+  页面会把 `ClaimReward`、`groupJoin`、`Approval`、`groupVerify.SubmitOriginScores`、转账、加池 / LP 铸造等动作归并成交易级摘要表格；默认每条对应单笔交易，未命中已识别事件模式的调用也会保留，并可在前端直接展开原始 tx / events。
   现在由服务端按地址实时聚合活 `events.db`，并按页加载更早记录。
 
 使用说明：

@@ -171,6 +171,31 @@
         box-shadow: 0 0 0 4px rgba(33, 91, 143, 0.12);
       }
 
+      .page-size-wrap {
+        flex: 0 0 148px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .page-size-input {
+        width: 100%;
+        border: 1px solid rgba(29, 36, 48, 0.14);
+        background: rgba(255, 255, 255, 0.78);
+        color: var(--text);
+        border-radius: 16px;
+        padding: 14px 16px;
+        font-size: 15px;
+        outline: none;
+        transition:
+          border-color 140ms ease,
+          box-shadow 140ms ease;
+      }
+
+      .page-size-input:focus {
+        border-color: rgba(33, 91, 143, 0.46);
+        box-shadow: 0 0 0 4px rgba(33, 91, 143, 0.12);
+      }
+
       .button-row {
         display: flex;
         gap: 10px;
@@ -483,9 +508,17 @@
         background: rgba(154, 82, 33, 0.12);
         color: var(--accent-2);
       }
+      .badge.verify {
+        background: rgba(21, 101, 90, 0.12);
+        color: #15655a;
+      }
       .badge.liquidity {
         background: rgba(82, 69, 153, 0.12);
         color: #524599;
+      }
+      .badge.swap {
+        background: rgba(33, 91, 143, 0.12);
+        color: var(--accent);
       }
       .badge.transfer {
         background: rgba(29, 36, 48, 0.08);
@@ -562,6 +595,99 @@
         font-size: 12px;
         font-weight: 700;
         white-space: nowrap;
+      }
+
+      .row-toggle-btn {
+        border: 0;
+        border-radius: 999px;
+        padding: 4px 10px;
+        background: rgba(33, 91, 143, 0.12);
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .summary-row {
+        cursor: pointer;
+      }
+
+      .summary-row.is-expanded {
+        background: rgba(33, 91, 143, 0.05);
+      }
+
+      .detail-row td {
+        padding: 0;
+        background: rgba(248, 244, 237, 0.72);
+      }
+
+      .raw-detail-wrap {
+        padding: 18px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .raw-grid {
+        display: grid;
+        grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr);
+        gap: 14px;
+      }
+
+      .raw-section {
+        display: grid;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .raw-title {
+        font-size: 13px;
+        color: var(--muted);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        font-weight: 800;
+      }
+
+      .raw-event-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .raw-event-card {
+        display: grid;
+        gap: 8px;
+        padding: 12px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(29, 36, 48, 0.08);
+      }
+
+      .raw-event-head {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        font-weight: 700;
+      }
+
+      .raw-empty {
+        padding: 12px 14px;
+        border-radius: 14px;
+        background: rgba(29, 36, 48, 0.05);
+        color: var(--muted);
+      }
+
+      .raw-pre {
+        margin: 0;
+        padding: 12px 14px;
+        border-radius: 14px;
+        background: rgba(29, 36, 48, 0.06);
+        color: var(--text);
+        font-size: 12px;
+        line-height: 1.55;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       }
 
       .community-stack {
@@ -692,6 +818,10 @@
         td:nth-child(5) {
           width: auto;
         }
+
+        .raw-grid {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
@@ -704,7 +834,7 @@
             <h1>钱包地址时间线看板</h1>
             <p>
               输入任意钱包地址后，页面会直接查询活 <code>events.db</code>，按区块和交易顺序拉出该地址的时间线，并把
-              奖励、行动参与 / 追加 / 退出、转账、加池 / LP 铸造这类资产流动归类成接近人工整理的表格。
+              奖励、行动参与 / 追加 / 退出、授权、groupVerify 提交、转账、加池 / LP 铸造这类交易归类成接近人工整理的表格。
             </p>
           </div>
           <aside class="meta" id="meta"></aside>
@@ -712,7 +842,7 @@
 
         <div class="hero-note">
           时间线主真相源是 <code>events</code>、<code>transactions</code>、<code>blocks</code>。页面显示的是基于这些记录归纳后的交易级摘要，
-          由本地看板服务按地址实时聚合，不再依赖预生成专用 DB。
+          默认每一条对应 1 笔交易；命中已识别事件时会解析动作和代币数量，没命中时也会保留未归类调用。每次按页加载最近 N 笔 tx，且每条已自带原始 tx 与全部原始 events，可直接展开查看。
         </div>
 
         <div class="query-bar">
@@ -727,6 +857,10 @@
                 spellcheck="false"
                 placeholder="0x6458E25680765Add4e2ca8d5a31fA08f5e1b6e4a"
               />
+            </div>
+            <div class="page-size-wrap">
+              <label class="input-label" for="page-size-input">每页 tx 数</label>
+              <input class="page-size-input" id="page-size-input" type="number" min="1" max="500" step="1" value="100" />
             </div>
             <div class="button-row">
               <button class="btn btn-primary" id="query-btn" type="button">查询时间线</button>
@@ -787,7 +921,8 @@
       const pageParams = new URLSearchParams(window.location.search);
       const DEFAULT_NETWORK = pageParams.get("network") || "thinkium70001_public";
       const API_URL = "/api/dashboards/wallet-activity-timeline";
-      const PAGE_SIZE = 200;
+      const PAGE_SIZE = 100;
+      const MAX_PAGE_SIZE = 500;
       const TIMEZONE = "Asia/Shanghai";
       const RECENT_ADDRESS_KEY = "wallet-activity-timeline:recent-address";
 
@@ -806,6 +941,8 @@
         { key: "all", label: "全部" },
         { key: "reward", label: "奖励" },
         { key: "actionJoin", label: "行动" },
+        { key: "verify", label: "评分" },
+        { key: "approval", label: "授权" },
         { key: "liquidity", label: "流动性" },
         { key: "swap", label: "兑换" },
         { key: "transfer", label: "转账" },
@@ -828,6 +965,7 @@
         isFetching: false,
         abortController: null,
         requestSeq: 0,
+        expandedTxs: new Set(),
       };
 
       function escapeHtml(value) {
@@ -845,6 +983,18 @@
 
       function isAddress(value) {
         return /^0x[a-f0-9]{40}$/i.test(String(value || "").trim());
+      }
+
+      function normalizeTxHash(value) {
+        return String(value || "").trim().toLowerCase();
+      }
+
+      function parsePageSizeInput(value) {
+        const parsed = Number.parseInt(String(value || "").trim(), 10);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+          return null;
+        }
+        return Math.min(parsed, MAX_PAGE_SIZE);
       }
 
       function loadRecentAddress() {
@@ -921,6 +1071,12 @@
         }
         if (row.action_group === "reward") {
           return { flowLabel: "奖励", flowClass: "flow-reward", categoryLabel: "奖励", categoryClass: "reward" };
+        }
+        if (row.action_group === "verify") {
+          return { flowLabel: "提交", flowClass: "flow-position", categoryLabel: "评分", categoryClass: "verify" };
+        }
+        if (row.action_group === "approval") {
+          return { flowLabel: "授权", flowClass: "flow-complex", categoryLabel: "授权", categoryClass: "approval" };
         }
         if (row.action_group === "liquidity") {
           return { flowLabel: "投入", flowClass: "flow-position", categoryLabel: "流动性", categoryClass: "liquidity" };
@@ -1028,7 +1184,7 @@
             message += ` 已隐藏 <strong>${failedRows.length}</strong> 条失败交易。`;
           }
           if (state.hasMore) {
-            message += " 可继续加载更早记录。";
+            message += " 可继续加载更早交易。";
           }
           setBanner("query-banner", "success", message);
           return;
@@ -1107,7 +1263,7 @@
               {
                 label: "归类口径",
                 value: "交易级摘要",
-                note: "奖励、行动参与 / 追加 / 退出、Transfer、原生币转账都会归并成单行。",
+                note: "默认每条对应 1 笔 tx；奖励、行动、授权、groupVerify、Transfer、原生币转账都会归并成单行，未识别调用也会保留。",
               },
             );
           } else {
@@ -1120,12 +1276,12 @@
               {
                 label: "默认网络",
                 value: DEFAULT_NETWORK,
-                note: "页面首次进入不自动加载；每次先拉最近一页，可手动继续加载更早记录。",
+                note: "页面首次进入不自动加载；每次先拉最近一页交易，可手动继续加载更早交易。",
               },
               {
                 label: "归类口径",
                 value: "交易级摘要",
-                note: "奖励、行动参与 / 追加 / 退出、Transfer、原生币转账都会归并成单行。",
+                note: "默认每条对应 1 笔 tx；奖励、行动、授权、groupVerify、Transfer、原生币转账都会归并成单行，未识别调用也会保留。",
               },
             );
           }
@@ -1140,7 +1296,7 @@
             {
               label: "已加载记录",
               value: rows.length.toLocaleString("zh-CN"),
-              note: `地址 ${shortAddress(state.queriedAddress)} 当前已加载的时间线条数`,
+              note: `地址 ${shortAddress(state.queriedAddress)} 当前已加载的交易条目数`,
             },
             {
               label: "当前窗口最新一条",
@@ -1208,11 +1364,22 @@
         const actionParts = splitActionLabel(row.action);
         const visual = actionVisual(row);
         const communityHtml = renderCommunityStack(row.communities);
+        const txKey = normalizeTxHash(row.tx_hash);
+        const expanded = state.expandedTxs.has(txKey);
         const actionExtra = actionParts.secondary
           ? `<span class="action-extra">${renderTokenInline(actionParts.secondary)}</span>`
           : "";
         const actionIdHtml = row.action_id_text
           ? `<span class="action-id-chip">ActionId ${escapeHtml(row.action_id_text)}</span>`
+          : "";
+        const groupIdHtml = row.group_id_text
+          ? `<span class="action-id-chip">GroupId ${escapeHtml(row.group_id_text)}</span>`
+          : "";
+        const txHashHtml = row.tx_hash
+          ? `<span class="action-id-chip" title="${escapeHtml(row.tx_hash)}">Tx ${escapeHtml(shortAddress(row.tx_hash))}</span>`
+          : "";
+        const toggleHtml = row.tx_hash
+          ? `<button class="row-toggle-btn" data-toggle-tx-hash="${escapeHtml(txKey)}" type="button">${expanded ? "收起明细" : "查看原始数据"}</button>`
           : "";
         const communityBlock = row.communities.length ? `<div>${communityHtml}</div>` : "";
         return `
@@ -1227,6 +1394,9 @@
           </div>
           <div class="action-meta">
             ${actionIdHtml}
+            ${groupIdHtml}
+            ${txHashHtml}
+            ${toggleHtml}
           </div>
           ${communityBlock}
         </div>
@@ -1249,11 +1419,65 @@
           .join("")}</div>`;
       }
 
+      function stringifyJson(value) {
+        try {
+          return JSON.stringify(value, null, 2);
+        } catch (error) {
+          return String(value);
+        }
+      }
+
+      function renderRawEventCard(item) {
+        return `
+        <article class="raw-event-card">
+          <div class="raw-event-head">
+            <span>#${escapeHtml(item.log_index ?? "-")} ${escapeHtml(item.contract_name || "-")} / ${escapeHtml(item.event_name || "-")}</span>
+            <span class="action-id-chip" title="${escapeHtml(item.address || "")}">${escapeHtml(shortAddress(item.address || ""))}</span>
+          </div>
+          <pre class="raw-pre">${escapeHtml(stringifyJson(item))}</pre>
+        </article>
+      `;
+      }
+
+      function renderRawDetails(row) {
+        const txHtml = row.transaction
+          ? `<pre class="raw-pre">${escapeHtml(stringifyJson(row.transaction))}</pre>`
+          : '<div class="raw-empty">transactions 表里未找到这笔交易。</div>';
+        const eventHtml = row.events && row.events.length
+          ? `<div class="raw-event-list">${row.events.map((item) => renderRawEventCard(item)).join("")}</div>`
+          : '<div class="raw-empty">events 表里没有这笔交易的事件。</div>';
+        return `
+        <div class="raw-grid">
+          <section class="raw-section">
+            <div class="raw-title">交易原始数据</div>
+            ${txHtml}
+          </section>
+          <section class="raw-section">
+            <div class="raw-title">相关事件原始数据 (${row.events ? row.events.length : 0})</div>
+            ${eventHtml}
+          </section>
+        </div>
+      `;
+      }
+
+      function toggleExpandedTx(txHash) {
+        const normalized = normalizeTxHash(txHash);
+        if (!normalized) {
+          return;
+        }
+        if (state.expandedTxs.has(normalized)) {
+          state.expandedTxs.delete(normalized);
+        } else {
+          state.expandedTxs.add(normalized);
+        }
+        renderTable(getFilteredRows());
+      }
+
       function renderTable(rows) {
         const tbody = document.getElementById("table-body");
         const subtitle = document.getElementById("table-subtitle");
         subtitle.textContent = state.queriedAddress
-          ? `${shortAddress(state.queriedAddress)} 当前已加载 ${rows.length} 条记录，按区块和交易顺序倒序显示。`
+          ? `${shortAddress(state.queriedAddress)} 当前已加载 ${rows.length} 条记录；默认每条对应 1 笔交易，按区块和交易顺序倒序显示，点击条目可展开原始 tx / events。`
           : "输入钱包地址后直接查询活库。";
 
         if (!rows.length) {
@@ -1263,8 +1487,11 @@
 
         tbody.innerHTML = rows
           .map(
-            (row) => `
-        <tr>
+            (row) => {
+              const txKey = normalizeTxHash(row.tx_hash);
+              const expanded = state.expandedTxs.has(txKey);
+              return `
+        <tr class="summary-row ${expanded ? "is-expanded" : ""}" data-row-tx-hash="${escapeHtml(txKey)}">
           <td>${row.block_number.toLocaleString("zh-CN")}</td>
           <td>${escapeHtml(formatUnixTimestamp(row.block_timestamp))}</td>
           <td>${renderActionCell(row)}</td>
@@ -1272,9 +1499,28 @@
           <td>${renderCounterpartyCell(row.counterparties)}</td>
           <td>${escapeHtml(row.description)}</td>
         </tr>
-      `
+        ${
+          expanded
+            ? `<tr class="detail-row"><td colspan="6"><div class="raw-detail-wrap">${renderRawDetails(row)}</div></td></tr>`
+            : ""
+        }
+      `;
+            }
           )
           .join("");
+
+        tbody.querySelectorAll(".summary-row").forEach((node) => {
+          node.addEventListener("click", () => {
+            toggleExpandedTx(node.dataset.rowTxHash);
+          });
+        });
+        tbody.querySelectorAll("[data-toggle-tx-hash]").forEach((node) => {
+          node.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            toggleExpandedTx(node.dataset.toggleTxHash);
+          });
+        });
       }
 
       function renderLoadMore() {
@@ -1289,11 +1535,11 @@
         }
         wrap.style.display = "flex";
         if (state.hasMore) {
-          note.textContent = `当前已加载 ${state.rows.length.toLocaleString("zh-CN")} 条，点击继续加载更早记录。`;
+          note.textContent = `当前已加载 ${state.rows.length.toLocaleString("zh-CN")} 条，点击继续加载更早交易。`;
           button.disabled = state.isFetching;
           return;
         }
-        note.textContent = `当前已加载 ${state.rows.length.toLocaleString("zh-CN")} 条，已经到最早记录。`;
+          note.textContent = `当前已加载 ${state.rows.length.toLocaleString("zh-CN")} 条，已经到最早交易。`;
         button.disabled = true;
       }
 
@@ -1302,6 +1548,10 @@
           return String(payload.error);
         }
         return fallbackMessage;
+      }
+
+      function syncPageSizeInput() {
+        document.getElementById("page-size-input").value = String(state.pageSize || PAGE_SIZE);
       }
 
       async function requestTimeline(address, { silent = false, metadataOnly = false, append = false } = {}) {
@@ -1369,7 +1619,9 @@
           state.pageSize = Number(payload.data?.page_size || PAGE_SIZE);
           if (!append) {
             state.activeFilter = "all";
+            state.expandedTxs = new Set();
           }
+          syncPageSizeInput();
           saveRecentAddress(normalizedAddress);
 
           renderMeta();
@@ -1409,10 +1661,20 @@
 
       async function runQuery({ silent = false, append = false } = {}) {
         const addressInput = document.getElementById("address-input");
+        const pageSizeInput = document.getElementById("page-size-input");
         const address = normalizeAddress(append ? state.queriedAddress : addressInput.value);
         if (!isAddress(address)) {
           setBanner("query-banner", "warning", "请输入完整的钱包地址，格式需要是 42 位的 <code>0x...</code>。");
           return;
+        }
+        if (!append) {
+          const parsedPageSize = parsePageSizeInput(pageSizeInput.value);
+          if (!parsedPageSize) {
+            setBanner("query-banner", "warning", "每页 tx 数需要是 1 到 500 的整数。");
+            return;
+          }
+          state.pageSize = parsedPageSize;
+          syncPageSizeInput();
         }
         await requestTimeline(address, { silent, metadataOnly: false, append });
       }
@@ -1463,6 +1725,13 @@
         }
       });
 
+      document.getElementById("page-size-input").addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          runQuery({}).catch(() => {});
+        }
+      });
+
       document.getElementById("show-failed-toggle").addEventListener("change", (event) => {
         state.showFailed = event.target.checked;
         renderAll();
@@ -1484,6 +1753,7 @@
           document.getElementById("address-input").value = address;
         }
 
+        syncPageSizeInput();
         setupFilterRendering();
       }
 
