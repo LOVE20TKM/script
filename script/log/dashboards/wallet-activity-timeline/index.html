@@ -1737,10 +1737,6 @@
         renderAll();
       });
 
-      function setupFilterRendering() {
-        renderFilters();
-      }
-
       async function boot() {
         renderAll();
         if (window.location.protocol === "file:") {
@@ -1754,7 +1750,7 @@
         }
 
         syncPageSizeInput();
-        setupFilterRendering();
+        renderFilters();
       }
 
       boot();
