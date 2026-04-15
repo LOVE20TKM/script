@@ -26,12 +26,32 @@ ROUTER_SELECTORS = {
     "0xe8e33700": "addLiquidity",
     "0xbaa2abde": "removeLiquidity",
 }
+KNOWN_CALL_SELECTORS = {
+    **ROUTER_SELECTORS,
+    "0x095ea7b3": "approve",
+    "0x203dd666": "submit",
+    "0x20fe512e": "launchToken",
+    "0x22ad487f": "vote",
+    "0x7fc34362": "join",
+    "0x823ed39d": "mintActionReward",
+    "0xa1d43e1d": "stakeToken",
+    "0xae169a50": "claimReward",
+    "0xca52204e": "submitNewAction",
+    "0xd85d3d27": "mintGroup",
+    "0xfe43a47e": "verify",
+}
 RELEVANT_EVENT_NAMES = (
     "Transfer",
     "Approval",
     "ClaimReward",
     "MintActionReward",
     "MintGovReward",
+    "Vote",
+    "Verify",
+    "ActionSubmit",
+    "ActionCreate",
+    "StakeToken",
+    "LaunchToken",
     "Join",
     "Exit",
     "Withdraw",
@@ -210,6 +230,14 @@ def is_sl_token_label(label: str | None) -> bool:
     return bool(label) and str(label).lower().endswith("sltoken")
 
 
+def is_st_token_label(label: str | None) -> bool:
+    return bool(label) and str(label).lower().endswith("sttoken")
+
+
+def is_group_token_label(label: str | None) -> bool:
+    return bool(label) and str(label).lower().startswith("group #")
+
+
 def transfer_amounts(items: list[dict]) -> list[dict]:
     return collapse_amounts(
         [
@@ -228,7 +256,72 @@ def amount_item(token: str, raw: int | str, decimals: int = 18) -> dict:
 
 
 def selector_name(input_selector: str | None) -> str:
-    return ROUTER_SELECTORS.get((input_selector or "").lower(), "")
+    return KNOWN_CALL_SELECTORS.get((input_selector or "").lower(), "")
+
+
+def summary_event_where(alias: str = "e") -> str:
+    return f"{alias}.event_name IN ({RELEVANT_EVENT_NAMES_SQL}) OR ({alias}.contract_name = 'group' AND {alias}.event_name = 'Mint')"
+
+
+def calldata_words(input_data: str | None) -> list[str]:
+    raw = (input_data or "").strip().lower()
+    if not raw.startswith("0x") or len(raw) < 10:
+        return []
+    payload = raw[10:]
+    if not payload or len(payload) % 64 != 0:
+        return []
+    return [payload[index:index + 64] for index in range(0, len(payload), 64)]
+
+
+def decode_uint_word(word: str | None) -> int:
+    if not word:
+        return 0
+    return int(word, 16)
+
+
+def decode_address_word(word: str | None) -> str:
+    if not word or len(word) != 64:
+        return ""
+    return normalize_address(f"0x{word[-40:]}")
+
+
+def decode_known_call(input_data: str | None) -> dict:
+    selector = (input_data or "")[:10].lower()
+    function_name = selector_name(selector)
+    words = calldata_words(input_data)
+    decoded = {"selector": selector, "function": function_name}
+    if function_name == "approve" and len(words) >= 2:
+        decoded["spender"] = decode_address_word(words[0])
+        decoded["value"] = decode_uint_word(words[1])
+    elif function_name == "submit" and len(words) >= 2:
+        decoded["token_address"] = decode_address_word(words[0])
+        decoded["action_id"] = decode_uint_word(words[1])
+    elif function_name == "launchToken" and len(words) >= 2:
+        decoded["parent_token_address"] = decode_address_word(words[1])
+    elif function_name == "vote" and len(words) >= 1:
+        decoded["token_address"] = decode_address_word(words[0])
+    elif function_name == "join" and len(words) >= 3:
+        decoded["token_address"] = decode_address_word(words[0])
+        decoded["action_id"] = decode_uint_word(words[1])
+        decoded["amount"] = decode_uint_word(words[2])
+    elif function_name == "mintActionReward" and len(words) >= 3:
+        decoded["token_address"] = decode_address_word(words[0])
+        decoded["round"] = decode_uint_word(words[1])
+        decoded["action_id"] = decode_uint_word(words[2])
+    elif function_name == "stakeToken" and len(words) >= 4:
+        decoded["token_address"] = decode_address_word(words[0])
+        decoded["token_amount"] = decode_uint_word(words[1])
+        decoded["promised_waiting_phases"] = decode_uint_word(words[2])
+        decoded["receiver"] = decode_address_word(words[3])
+    elif function_name == "claimReward" and len(words) >= 1:
+        decoded["round"] = decode_uint_word(words[0])
+    elif function_name == "submitNewAction" and len(words) >= 1:
+        decoded["token_address"] = decode_address_word(words[0])
+    elif function_name == "verify" and len(words) >= 3:
+        decoded["token_address"] = decode_address_word(words[0])
+        decoded["action_id"] = decode_uint_word(words[1])
+        decoded["abstention_score"] = decode_uint_word(words[2])
+    return decoded
 
 
 def is_router_address(address: str | None, contract_map: dict[str, str]) -> bool:
@@ -372,12 +465,31 @@ def has_non_lp(items: list[dict]) -> bool:
     return any(not is_lp_token(item["token"]) for item in items)
 
 
+def json_list_length(value) -> int:
+    if isinstance(value, list):
+        return len(value)
+    if isinstance(value, str) and value:
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return 0
+        return len(parsed) if isinstance(parsed, list) else 0
+    return 0
+
+
 def has_token_activity(summary: dict) -> bool:
     return any(
         summary[key]
         for key in (
             "claims",
             "reward_mints",
+            "votes",
+            "verifications",
+            "action_submissions",
+            "action_creations",
+            "stakes",
+            "launches",
+            "group_mints",
             "group_joins",
             "group_exits",
             "action_joins",
@@ -560,29 +672,41 @@ def build_row(account: str, summary: dict, tx_meta: dict, contract_map: dict[str
         for pair_address in pair_counterparties([*summary["burns_out"], *summary["transfers_in"]], contract_map):
             add_counterparty(counterparties, pair_address, contract_map, skip_address=account_address)
     elif summary["claims"] or summary["reward_mints"]:
-        action_group = "reward"
+        reward_kinds = {item["kind"] for item in summary["reward_mints"]}
+        has_action_incentive = bool(summary["claims"]) or "MintActionReward" in reward_kinds
+        has_governance_incentive = "MintGovReward" in reward_kinds
+        action_group = "incentive"
         action_ids = [item["action_id"] for item in summary["claims"] if item.get("action_id")] + [
             item["action_id"] for item in summary["reward_mints"] if item.get("action_id")
         ]
         action_id_text = stringify_numbers(action_ids) if action_ids else ""
 
         if summary["claims"] and not summary["reward_mints"]:
-            action = "领取奖励"
-            description = f"从 {summary['claims'][0]['contract_name']} 领取 actionId={summary['claims'][0]['action_id']} 奖励"
+            action = "领取行动激励"
+            description = f"从 {summary['claims'][0]['contract_name']} 领取 actionId={summary['claims'][0]['action_id']} 行动激励"
         elif summary["reward_mints"] and not summary["claims"]:
-            reward_kinds = {item["kind"] for item in summary["reward_mints"]}
             if reward_kinds == {"MintGovReward"}:
-                action = "治理奖励入账"
-                description = f"mint 合约给该地址铸入治理奖励，第 {summary['reward_mints'][0]['round']} 轮"
+                action = "治理激励入账"
+                description = f"mint 合约给该地址铸入治理激励，第 {summary['reward_mints'][0]['round']} 轮"
             elif reward_kinds == {"MintActionReward"} and len(summary["reward_mints"]) == 1:
-                action = "行动奖励入账"
-                description = f"mint 合约给该地址铸入 actionId={summary['reward_mints'][0]['action_id']} 奖励"
+                action = "行动激励入账"
+                description = f"mint 合约给该地址铸入 actionId={summary['reward_mints'][0]['action_id']} 行动激励"
+            elif reward_kinds == {"MintActionReward"}:
+                action = "行动激励入账"
+                description = "mint 合约给该地址铸入行动激励"
             else:
-                action = "奖励入账"
-                description = "mint 合约给该地址铸入奖励"
+                action = "激励入账"
+                description = "mint 合约给该地址铸入行动激励和治理激励"
         else:
-            action = "奖励入账"
-            description = f"批量领取奖励，actionId={action_id_text}"
+            if has_governance_incentive and not has_action_incentive:
+                action = "治理激励入账"
+                description = "批量领取治理激励"
+            elif has_governance_incentive:
+                action = "激励入账"
+                description = f"批量领取激励，actionId={action_id_text}" if action_id_text else "批量领取行动激励和治理激励"
+            else:
+                action = "行动激励入账"
+                description = f"批量领取行动激励，actionId={action_id_text}" if action_id_text else "批量领取行动激励"
         amounts = collapse_amounts(
             [
                 {"token": item["token"], "raw": str(item["mint_amount"]), "decimals": 18}
@@ -648,7 +772,7 @@ def build_row(account: str, summary: dict, tx_meta: dict, contract_map: dict[str
             add_community(communities, item.get("token_address"), contract_map)
     elif summary["group_verify_submissions"]:
         action = "提交 groupVerify 评分"
-        action_group = "verify"
+        action_group = "governance"
         action_id_text = stringify_numbers([item["action_id"] for item in summary["group_verify_submissions"]])
         group_id_text = stringify_numbers([item["group_id"] for item in summary["group_verify_submissions"]])
         total_count = sum(int(item["count"]) for item in summary["group_verify_submissions"])
@@ -656,10 +780,177 @@ def build_row(account: str, summary: dict, tx_meta: dict, contract_map: dict[str
         add_counterparty(counterparties, tx_to or summary["group_verify_submissions"][0]["contract_address"], contract_map, skip_address=account_address)
         for item in summary["group_verify_submissions"]:
             add_community(communities, item.get("token_address"), contract_map)
+    elif summary["votes"]:
+        action = "投票"
+        action_group = "governance"
+        action_id_text = stringify_numbers([item["action_id"] for item in summary["votes"]])
+        description = f"对 actionId={action_id_text} 投票" if action_id_text else "提交投票"
+        amounts = collapse_amounts(
+            [
+                {
+                    "token": item["token"],
+                    "raw": str(item["votes"]),
+                    "decimals": 18,
+                }
+                for item in summary["votes"]
+                if int(item.get("votes") or 0) > 0
+            ]
+        )
+        add_counterparty(counterparties, tx_to or summary["votes"][0]["contract_address"], contract_map, skip_address=account_address)
+        for item in summary["votes"]:
+            add_community(communities, item.get("token_address"), contract_map)
+    elif summary["verifications"]:
+        action = "提交验证"
+        action_group = "governance"
+        action_id_text = stringify_numbers([item["action_id"] for item in summary["verifications"]])
+        score_count = sum(int(item.get("scores_count") or 0) for item in summary["verifications"])
+        if action_id_text and score_count > 0:
+            description = f"提交验证，actionId={action_id_text}，共 {score_count} 条评分"
+        elif action_id_text:
+            description = f"提交验证，actionId={action_id_text}"
+        else:
+            description = "提交验证"
+        add_counterparty(counterparties, tx_to or summary["verifications"][0]["contract_address"], contract_map, skip_address=account_address)
+        for item in summary["verifications"]:
+            add_community(communities, item.get("token_address"), contract_map)
+    elif summary["action_creations"]:
+        created_and_submitted = bool(summary["action_submissions"])
+        action = "创建并提交行动" if created_and_submitted else "创建行动"
+        action_group = "submit"
+        action_id_text = stringify_numbers([item["action_id"] for item in summary["action_creations"]])
+        title = next((str(item.get("title") or "").strip() for item in summary["action_creations"] if item.get("title")), "")
+        if action_id_text and title:
+            description = f"{action}，actionId={action_id_text}，标题“{title}”"
+        elif action_id_text:
+            description = f"{action}，actionId={action_id_text}"
+        else:
+            description = action
+        add_counterparty(counterparties, tx_to or summary["action_creations"][0]["contract_address"], contract_map, skip_address=account_address)
+        for item in summary["action_creations"]:
+            add_community(communities, item.get("token_address"), contract_map)
+    elif summary["action_submissions"]:
+        action = "提交行动"
+        action_group = "submit"
+        action_id_text = stringify_numbers([item["action_id"] for item in summary["action_submissions"]])
+        description = f"提交行动，actionId={action_id_text}" if action_id_text else "提交行动"
+        add_counterparty(counterparties, tx_to or summary["action_submissions"][0]["contract_address"], contract_map, skip_address=account_address)
+        for item in summary["action_submissions"]:
+            add_community(communities, item.get("token_address"), contract_map)
+    elif summary["launches"]:
+        launch = summary["launches"][0]
+        action = "发起代币"
+        action_group = "launch"
+        child_label = launch.get("token_symbol") or token_label(contract_map.get(launch.get("token_address"), launch.get("token_address")))
+        parent_label = token_label(contract_map.get(launch.get("parent_token_address"), launch.get("parent_token_address")))
+        description = f"发起 {child_label}，父代币 {parent_label}" if parent_label else f"发起 {child_label}"
+        launch_token_addresses = {normalize_address(item.get("token_address")) for item in summary["launches"] if item.get("token_address")}
+        amounts = collapse_amounts(
+            [
+                {
+                    "token": item["token"],
+                    "raw": str(item["raw"]),
+                    "decimals": int(item.get("decimals", 18)),
+                }
+                for item in summary["mints_in"]
+                if normalize_address(item.get("contract_address")) in launch_token_addresses
+            ]
+        )
+        add_counterparty(counterparties, tx_to or launch.get("contract_address"), contract_map, skip_address=account_address)
+        for item in summary["launches"]:
+            add_community(communities, item.get("token_address"), contract_map)
+            add_community(communities, item.get("parent_token_address"), contract_map)
+    elif summary["stakes"]:
+        action = "质押代币"
+        action_group = "stake"
+        stake = summary["stakes"][0]
+        stake_token_labels = {
+            token_label(contract_map.get(normalize_address(item.get("token_address")), item.get("token_address")))
+            for item in summary["stakes"]
+            if item.get("token_address")
+        }
+        outgoing_amounts = [
+            {
+                "token": item["token"],
+                "raw": str(item["raw"]),
+                "decimals": int(item.get("decimals", 18)),
+            }
+            for item in summary["transfers_out"]
+            if item["token"] in stake_token_labels
+        ]
+        st_mints = [
+            {
+                "token": item["token"],
+                "raw": str(item["raw"]),
+                "decimals": int(item.get("decimals", 18)),
+            }
+            for item in summary["mints_in"]
+            if is_st_token_label(item["token"])
+        ]
+        if not outgoing_amounts:
+            outgoing_amounts = [
+                {
+                    "token": token_label(contract_map.get(normalize_address(item.get("token_address")), item.get("token_address"))),
+                    "raw": str(item["token_amount"]),
+                    "decimals": 18,
+                }
+                for item in summary["stakes"]
+                if int(item.get("token_amount") or 0) > 0
+            ]
+        if not st_mints:
+            st_mints = [
+                {
+                    "token": "stToken",
+                    "raw": str(item["st_amount"]),
+                    "decimals": 18,
+                }
+                for item in summary["stakes"]
+                if int(item.get("st_amount") or 0) > 0
+            ]
+        amounts = collapse_amounts([*outgoing_amounts, *st_mints])
+        token_name = token_label(contract_map.get(normalize_address(stake.get("token_address")), stake.get("token_address")))
+        waiting = int(stake.get("promised_waiting_phases") or 0)
+        description = f"质押 {token_name}，承诺等待 {waiting} phases" if waiting > 0 else f"质押 {token_name}"
+        add_counterparty(counterparties, tx_to or stake.get("contract_address"), contract_map, skip_address=account_address)
+        for item in summary["stakes"]:
+            add_community(communities, item.get("token_address"), contract_map)
+    elif summary["group_mints"]:
+        group_mint = summary["group_mints"][0]
+        action = "创建群组"
+        action_group = "group"
+        group_name = str(group_mint.get("group_name") or "").strip()
+        token_id = int(group_mint.get("token_id") or 0)
+        if group_name:
+            description = f"创建群组“{group_name}”"
+        elif token_id > 0:
+            description = f"创建群组 NFT #{token_id}"
+        else:
+            description = "创建群组"
+        amounts = collapse_amounts(
+            [
+                *[
+                    {
+                        "token": item["token"],
+                        "raw": str(item["raw"]),
+                        "decimals": int(item.get("decimals", 18)),
+                    }
+                    for item in summary["transfers_out"]
+                ],
+                *[
+                    {
+                        "token": item["token"],
+                        "raw": str(item["raw"]),
+                        "decimals": int(item.get("decimals", 18)),
+                    }
+                    for item in summary["mints_in"]
+                    if is_group_token_label(item["token"])
+                ],
+            ]
+        )
+        add_counterparty(counterparties, tx_to or group_mint.get("contract_address"), contract_map, skip_address=account_address)
     elif summary["mints_in"] and has_non_lp(summary["transfers_out"]) and any(is_sl_token_label(item["token"]) for item in summary["mints_in"]):
         sl_mints = [item for item in summary["mints_in"] if is_sl_token_label(item["token"])]
         action = "质押流动性"
-        action_group = "liquidity"
+        action_group = "stake"
         first_sl_token = sl_mints[0]["token"]
         description = f"通过 hub 质押流动性，收到 {first_sl_token}" if contract_map.get(tx_to) == "hub" else f"质押流动性，收到 {first_sl_token}"
         amounts = collapse_amounts(
@@ -705,7 +996,7 @@ def build_row(account: str, summary: dict, tx_meta: dict, contract_map: dict[str
         ]
         if sl_targets:
             action = "Hub 中转质押"
-            action_group = "liquidity"
+            action_group = "stake"
             description = f"hub 收到用户代币后转给 {describe_counterparty(sl_targets[0], contract_map)}"
             amounts = transfer_amounts(
                 [
@@ -845,6 +1136,13 @@ def default_summary() -> dict:
     return {
         "claims": [],
         "reward_mints": [],
+        "votes": [],
+        "verifications": [],
+        "action_submissions": [],
+        "action_creations": [],
+        "stakes": [],
+        "launches": [],
+        "group_mints": [],
         "group_joins": [],
         "group_exits": [],
         "action_joins": [],
@@ -1064,6 +1362,119 @@ def apply_event_to_summaries(
         )
         return
 
+    if contract_name == "vote" and event_name == "Vote":
+        account = normalize_address(payload.get("voter"))
+        if not account:
+            return
+        token_address = normalize_address(payload.get("tokenAddress"))
+        token_name = token_label(contract_map.get(token_address, payload.get("tokenAddress")))
+        summaries[account]["votes"].append(
+            {
+                "contract_address": contract_address,
+                "token": token_name,
+                "token_address": token_address,
+                "round": int(payload.get("round") or 0),
+                "action_id": int(payload.get("actionId") or 0),
+                "votes": int(payload.get("votes") or 0),
+            }
+        )
+        return
+
+    if contract_name == "verify" and event_name == "Verify":
+        account = normalize_address(payload.get("verifier"))
+        if not account:
+            return
+        summaries[account]["verifications"].append(
+            {
+                "contract_address": contract_address,
+                "token_address": normalize_address(payload.get("tokenAddress")),
+                "round": int(payload.get("round") or 0),
+                "action_id": int(payload.get("actionId") or 0),
+                "abstention_score": int(payload.get("abstentionScore") or 0),
+                "scores_count": json_list_length(payload.get("scores")),
+            }
+        )
+        return
+
+    if contract_name == "submit" and event_name == "ActionSubmit":
+        account = normalize_address(payload.get("submitter"))
+        if not account:
+            return
+        summaries[account]["action_submissions"].append(
+            {
+                "contract_address": contract_address,
+                "token_address": normalize_address(payload.get("tokenAddress")),
+                "round": int(payload.get("round") or 0),
+                "action_id": int(payload.get("actionId") or 0),
+            }
+        )
+        return
+
+    if contract_name == "submit" and event_name == "ActionCreate":
+        account = normalize_address(payload.get("author"))
+        if not account:
+            return
+        action_body = payload.get("actionBody") or {}
+        title = ""
+        if isinstance(action_body, dict):
+            title = str(action_body.get("title") or "").strip()
+        if not title:
+            title = str(payload.get("actionBody.title") or "").strip()
+        summaries[account]["action_creations"].append(
+            {
+                "contract_address": contract_address,
+                "token_address": normalize_address(payload.get("tokenAddress")),
+                "round": int(payload.get("round") or 0),
+                "action_id": int(payload.get("actionId") or 0),
+                "title": title,
+            }
+        )
+        return
+
+    if contract_name == "stake" and event_name == "StakeToken":
+        account = normalize_address(payload.get("account"))
+        if not account:
+            return
+        summaries[account]["stakes"].append(
+            {
+                "contract_address": contract_address,
+                "token_address": normalize_address(payload.get("tokenAddress")),
+                "round": int(payload.get("round") or 0),
+                "token_amount": int(payload.get("tokenAmount") or 0),
+                "st_amount": int(payload.get("stAmount") or 0),
+                "promised_waiting_phases": int(payload.get("promisedWaitingPhases") or 0),
+            }
+        )
+        return
+
+    if contract_name == "launch" and event_name == "LaunchToken":
+        account = normalize_address(payload.get("account"))
+        if not account:
+            return
+        summaries[account]["launches"].append(
+            {
+                "contract_address": contract_address,
+                "token_address": normalize_address(payload.get("tokenAddress")),
+                "token_symbol": str(payload.get("tokenSymbol") or "").strip(),
+                "parent_token_address": normalize_address(payload.get("parentTokenAddress")),
+            }
+        )
+        return
+
+    if contract_name == "group" and event_name == "Mint":
+        account = normalize_address(payload.get("owner"))
+        if not account:
+            return
+        summaries[account]["group_mints"].append(
+            {
+                "contract_address": contract_address,
+                "token_id": int(payload.get("tokenId") or 0),
+                "group_name": str(payload.get("groupName") or "").strip(),
+                "cost": int(payload.get("cost") or 0),
+            }
+        )
+        return
+
     if event_name == "Approval":
         owner = normalize_address(payload.get("owner") or payload.get("_owner") or payload.get("src"))
         spender = normalize_address(payload.get("spender") or payload.get("_spender") or payload.get("guy"))
@@ -1230,7 +1641,7 @@ def process_event_stream(source: sqlite3.Connection, dest: sqlite3.Connection, c
         f"""
         SELECT COUNT(*)
         FROM events
-        WHERE event_name IN ({RELEVANT_EVENT_NAMES_SQL})
+        WHERE {summary_event_where('events')}
         """
     ).fetchone()[0]
     print(f"Relevant events: {relevant_count}")
@@ -1254,7 +1665,7 @@ def process_event_stream(source: sqlite3.Connection, dest: sqlite3.Connection, c
         FROM events e
         JOIN blocks b ON b.block_number = e.block_number
         LEFT JOIN transactions t ON t.tx_hash = e.tx_hash
-        WHERE e.event_name IN ({RELEVANT_EVENT_NAMES_SQL})
+        WHERE {summary_event_where('e')}
         ORDER BY e.block_number, COALESCE(e.tx_index, t.tx_index, 0), e.log_index, e.id
     """
 
@@ -1448,98 +1859,361 @@ def rows_for_unclassified_transaction(
     else:
         action_group = "other"
 
-    if tx_meta.get("status") == 0 and is_router_address(receiver, contract_map):
-        sender_action, sender_description = failed_router_action(selector, for_router=False)
-        router_action, router_description = failed_router_action(selector, for_router=True)
-        if should_include(sender):
-            rows.append(
-                {
-                    "account": sender,
-                    "block_number": tx_meta["block_number"],
-                    "block_timestamp": tx_meta["block_timestamp"],
-                    "tx_hash": tx_meta["tx_hash"],
-                    "tx_index": tx_meta["tx_index"],
-                    "status": tx_meta["status"],
-                    "action": sender_action,
-                    "action_group": action_group,
-                    "action_id_text": "",
-                    "group_id_text": "",
-                    "communities_json": "[]",
-                    "amounts_json": "[]",
-                    "counterparties_json": json.dumps(unique_counterparties([{"address": receiver, "label": contract_map.get(receiver, "")}]), ensure_ascii=False),
-                    "description": sender_description,
-                    "tx_from": sender,
-                    "tx_to": receiver,
-                    "input_selector": input_selector,
-                }
-            )
-        if receiver != sender and should_include(receiver):
-            rows.append(
-                {
-                    "account": receiver,
-                    "block_number": tx_meta["block_number"],
-                    "block_timestamp": tx_meta["block_timestamp"],
-                    "tx_hash": tx_meta["tx_hash"],
-                    "tx_index": tx_meta["tx_index"],
-                    "status": tx_meta["status"],
-                    "action": router_action,
-                    "action_group": action_group,
-                    "action_id_text": "",
-                    "group_id_text": "",
-                    "communities_json": "[]",
-                    "amounts_json": "[]",
-                    "counterparties_json": json.dumps(unique_counterparties([{"address": sender, "label": contract_map.get(sender, "")}]), ensure_ascii=False),
-                    "description": router_description,
-                    "tx_from": sender,
-                    "tx_to": receiver,
-                    "input_selector": input_selector,
-                }
-            )
-        return rows
-
-    if should_include(sender):
+    def append_row(
+        account: str,
+        *,
+        action: str,
+        description: str,
+        action_group_override: str | None = None,
+        action_id_text: str = "",
+        group_id_text: str = "",
+        counterparties: list[dict] | None = None,
+        communities: list[dict] | None = None,
+        amounts: list[dict] | None = None,
+    ) -> None:
         rows.append(
             {
-                "account": sender,
+                "account": account,
                 "block_number": tx_meta["block_number"],
                 "block_timestamp": tx_meta["block_timestamp"],
                 "tx_hash": tx_meta["tx_hash"],
                 "tx_index": tx_meta["tx_index"],
                 "status": tx_meta["status"],
-                "action": "未归类调用",
-                "action_group": action_group,
-                "action_id_text": "",
-                "group_id_text": "",
-                "communities_json": "[]",
-                "amounts_json": "[]",
-                "counterparties_json": json.dumps(unique_counterparties([{"address": receiver, "label": contract_map.get(receiver, "")}]), ensure_ascii=False),
-                "description": f"向 {describe_counterparty(receiver, contract_map)} 发起调用，未命中已解析事件模式",
+                "action": action,
+                "action_group": action_group_override or action_group,
+                "action_id_text": action_id_text,
+                "group_id_text": group_id_text,
+                "communities_json": json.dumps(unique_counterparties(communities or []), ensure_ascii=False),
+                "amounts_json": json.dumps(amounts or [], ensure_ascii=False),
+                "counterparties_json": json.dumps(unique_counterparties(counterparties or []), ensure_ascii=False),
+                "description": description,
                 "tx_from": sender,
                 "tx_to": receiver,
                 "input_selector": input_selector,
             }
         )
+
+    if tx_meta.get("status") == 0 and is_router_address(receiver, contract_map):
+        sender_action, sender_description = failed_router_action(selector, for_router=False)
+        router_action, router_description = failed_router_action(selector, for_router=True)
+        if should_include(sender):
+            append_row(
+                sender,
+                action=sender_action,
+                description=sender_description,
+                counterparties=[{"address": receiver, "label": contract_map.get(receiver, "")}],
+            )
+        if receiver != sender and should_include(receiver):
+            append_row(
+                receiver,
+                action=router_action,
+                description=router_description,
+                counterparties=[{"address": sender, "label": contract_map.get(sender, "")}],
+            )
+        return rows
+
+    decoded_call = decode_known_call(tx_meta.get("input") or "")
+    if selector and selector not in ROUTER_SELECTORS:
+        success = tx_meta.get("status") != 0
+        token_address = normalize_address(decoded_call.get("token_address"))
+        token_name = token_label(contract_map.get(token_address, token_address or "Token"))
+        sender_counterparties = [{"address": receiver, "label": contract_map.get(receiver, "")}] if receiver else []
+        receiver_counterparties = [{"address": sender, "label": contract_map.get(sender, "")}] if sender else []
+        communities = [{"address": token_address, "label": contract_map.get(token_address, short_address(token_address))}] if token_address else []
+
+        if selector == "approve":
+            spender = normalize_address(decoded_call.get("spender"))
+            token_contract = receiver
+            token_label_text = token_label(contract_map.get(token_contract, token_contract or "Token"))
+            sender_description = f"授权 {token_label_text} 给 {describe_counterparty(spender, contract_map)}"
+            if not success:
+                sender_description += "，但调用失败"
+            if should_include(sender):
+                append_row(
+                    sender,
+                    action=f"授权 {token_label_text}" if success else f"授权 {token_label_text} 失败",
+                    description=sender_description,
+                    action_group_override="approval",
+                    counterparties=[{"address": spender, "label": contract_map.get(spender, "")}] if spender else sender_counterparties,
+                    communities=[{"address": token_contract, "label": contract_map.get(token_contract, short_address(token_contract))}] if token_contract else [],
+                    amounts=[{"token": token_label_text, "raw": str(decoded_call.get("value") or 0), "decimals": 18}],
+                )
+            if receiver != sender and should_include(receiver):
+                append_row(
+                    receiver,
+                    action="收到授权调用" if success else "收到失败授权调用",
+                    description=f"收到 {describe_counterparty(sender, contract_map)} 发起的授权调用",
+                    action_group_override="approval",
+                    counterparties=receiver_counterparties,
+                )
+            return rows
+
+        if selector == "join":
+            action_id = int(decoded_call.get("action_id") or 0)
+            amount = int(decoded_call.get("amount") or 0)
+            action_id_text = str(action_id) if action_id else ""
+            sender_description = f"参与行动，actionId={action_id_text}" if action_id_text else "参与行动"
+            if not success:
+                sender_description += "，但调用失败"
+            if should_include(sender):
+                append_row(
+                    sender,
+                    action="参与行动" if success else "参与行动失败",
+                    description=sender_description,
+                    action_group_override="actionJoin",
+                    action_id_text=action_id_text,
+                    counterparties=sender_counterparties,
+                    communities=communities,
+                    amounts=[{"token": token_name, "raw": str(amount), "decimals": 18}] if amount > 0 and token_address else [],
+                )
+            if receiver != sender and should_include(receiver):
+                append_row(
+                    receiver,
+                    action="收到参与行动调用" if success else "收到失败参与行动调用",
+                    description=f"收到 {describe_counterparty(sender, contract_map)} 发起的参与行动调用",
+                    action_group_override="actionJoin",
+                    action_id_text=action_id_text,
+                    counterparties=receiver_counterparties,
+                    communities=communities,
+                )
+            return rows
+
+        if selector == "mintActionReward":
+            action_id = int(decoded_call.get("action_id") or 0)
+            round_value = int(decoded_call.get("round") or 0)
+            action_id_text = str(action_id) if action_id else ""
+            sender_description = "铸造行动激励"
+            if round_value > 0 and action_id > 0:
+                sender_description = f"铸造行动激励，round={round_value}，actionId={action_id}"
+            elif round_value > 0:
+                sender_description = f"铸造行动激励，round={round_value}"
+            if not success:
+                sender_description += "，但调用失败"
+            if should_include(sender):
+                append_row(
+                    sender,
+                    action="铸造行动激励" if success else "铸造行动激励失败",
+                    description=sender_description,
+                    action_group_override="incentive",
+                    action_id_text=action_id_text,
+                    counterparties=sender_counterparties,
+                    communities=communities,
+                )
+            if receiver != sender and should_include(receiver):
+                append_row(
+                    receiver,
+                    action="收到行动激励铸造调用" if success else "收到失败行动激励铸造调用",
+                    description=f"收到 {describe_counterparty(sender, contract_map)} 发起的行动激励铸造调用",
+                    action_group_override="incentive",
+                    action_id_text=action_id_text,
+                    counterparties=receiver_counterparties,
+                    communities=communities,
+                )
+            return rows
+
+        if selector == "claimReward":
+            round_value = int(decoded_call.get("round") or 0)
+            sender_description = f"领取第 {round_value} 轮行动激励" if round_value > 0 else "领取行动激励"
+            if not success:
+                sender_description += "，但调用失败"
+            if should_include(sender):
+                append_row(
+                    sender,
+                    action="领取行动激励" if success else "领取行动激励失败",
+                    description=sender_description,
+                    action_group_override="incentive",
+                    counterparties=sender_counterparties,
+                )
+            if receiver != sender and should_include(receiver):
+                append_row(
+                    receiver,
+                    action="收到行动激励领取调用" if success else "收到失败行动激励领取调用",
+                    description=f"收到 {describe_counterparty(sender, contract_map)} 发起的行动激励领取调用",
+                    action_group_override="incentive",
+                    counterparties=receiver_counterparties,
+                )
+            return rows
+
+        if selector == "vote":
+            if should_include(sender):
+                append_row(
+                    sender,
+                    action="投票" if success else "投票失败",
+                    description="提交投票" if success else "提交投票，但调用失败",
+                    action_group_override="governance",
+                    counterparties=sender_counterparties,
+                    communities=communities,
+                )
+            if receiver != sender and should_include(receiver):
+                append_row(
+                    receiver,
+                    action="收到投票调用" if success else "收到失败投票调用",
+                    description=f"收到 {describe_counterparty(sender, contract_map)} 发起的投票调用",
+                    action_group_override="governance",
+                    counterparties=receiver_counterparties,
+                    communities=communities,
+                )
+            return rows
+
+        if selector == "verify":
+            action_id = int(decoded_call.get("action_id") or 0)
+            action_id_text = str(action_id) if action_id else ""
+            sender_description = f"提交验证，actionId={action_id_text}" if action_id_text else "提交验证"
+            if not success:
+                sender_description += "，但调用失败"
+            if should_include(sender):
+                append_row(
+                    sender,
+                    action="提交验证" if success else "提交验证失败",
+                    description=sender_description,
+                    action_group_override="governance",
+                    action_id_text=action_id_text,
+                    counterparties=sender_counterparties,
+                    communities=communities,
+                )
+            if receiver != sender and should_include(receiver):
+                append_row(
+                    receiver,
+                    action="收到验证调用" if success else "收到失败验证调用",
+                    description=f"收到 {describe_counterparty(sender, contract_map)} 发起的验证调用",
+                    action_group_override="governance",
+                    action_id_text=action_id_text,
+                    counterparties=receiver_counterparties,
+                    communities=communities,
+                )
+            return rows
+
+        if selector == "submit":
+            action_id = int(decoded_call.get("action_id") or 0)
+            action_id_text = str(action_id) if action_id else ""
+            sender_description = f"提交行动，actionId={action_id_text}" if action_id_text else "提交行动"
+            if not success:
+                sender_description += "，但调用失败"
+            if should_include(sender):
+                append_row(
+                    sender,
+                    action="提交行动" if success else "提交行动失败",
+                    description=sender_description,
+                    action_group_override="submit",
+                    action_id_text=action_id_text,
+                    counterparties=sender_counterparties,
+                    communities=communities,
+                )
+            if receiver != sender and should_include(receiver):
+                append_row(
+                    receiver,
+                    action="收到提交行动调用" if success else "收到失败提交行动调用",
+                    description=f"收到 {describe_counterparty(sender, contract_map)} 发起的提交行动调用",
+                    action_group_override="submit",
+                    action_id_text=action_id_text,
+                    counterparties=receiver_counterparties,
+                    communities=communities,
+                )
+            return rows
+
+        if selector == "submitNewAction":
+            if should_include(sender):
+                append_row(
+                    sender,
+                    action="创建行动" if success else "创建行动失败",
+                    description="创建行动" if success else "创建行动，但调用失败",
+                    action_group_override="submit",
+                    counterparties=sender_counterparties,
+                    communities=communities,
+                )
+            if receiver != sender and should_include(receiver):
+                append_row(
+                    receiver,
+                    action="收到创建行动调用" if success else "收到失败创建行动调用",
+                    description=f"收到 {describe_counterparty(sender, contract_map)} 发起的创建行动调用",
+                    action_group_override="submit",
+                    counterparties=receiver_counterparties,
+                    communities=communities,
+                )
+            return rows
+
+        if selector == "stakeToken":
+            amount = int(decoded_call.get("token_amount") or 0)
+            waiting = int(decoded_call.get("promised_waiting_phases") or 0)
+            sender_description = f"质押代币，承诺等待 {waiting} phases" if waiting > 0 else "质押代币"
+            if not success:
+                sender_description += "，但调用失败"
+            if should_include(sender):
+                append_row(
+                    sender,
+                    action="质押代币" if success else "质押代币失败",
+                    description=sender_description,
+                    action_group_override="stake",
+                    counterparties=sender_counterparties,
+                    communities=communities,
+                    amounts=[{"token": token_name, "raw": str(amount), "decimals": 18}] if amount > 0 and token_address else [],
+                )
+            if receiver != sender and should_include(receiver):
+                append_row(
+                    receiver,
+                    action="收到质押调用" if success else "收到失败质押调用",
+                    description=f"收到 {describe_counterparty(sender, contract_map)} 发起的质押调用",
+                    action_group_override="stake",
+                    counterparties=receiver_counterparties,
+                    communities=communities,
+                )
+            return rows
+
+        if selector == "launchToken":
+            parent_token = normalize_address(decoded_call.get("parent_token_address"))
+            launch_communities = [{"address": parent_token, "label": contract_map.get(parent_token, short_address(parent_token))}] if parent_token else []
+            if should_include(sender):
+                append_row(
+                    sender,
+                    action="发起代币" if success else "发起代币失败",
+                    description="发起代币" if success else "发起代币，但调用失败",
+                    action_group_override="launch",
+                    counterparties=sender_counterparties,
+                    communities=launch_communities,
+                )
+            if receiver != sender and should_include(receiver):
+                append_row(
+                    receiver,
+                    action="收到发币调用" if success else "收到失败发币调用",
+                    description=f"收到 {describe_counterparty(sender, contract_map)} 发起的发币调用",
+                    action_group_override="launch",
+                    counterparties=receiver_counterparties,
+                    communities=launch_communities,
+                )
+            return rows
+
+        if selector == "mintGroup":
+            if should_include(sender):
+                append_row(
+                    sender,
+                    action="创建群组" if success else "创建群组失败",
+                    description="创建群组" if success else "创建群组，但调用失败",
+                    action_group_override="group",
+                    counterparties=sender_counterparties,
+                )
+            if receiver != sender and should_include(receiver):
+                append_row(
+                    receiver,
+                    action="收到创建群组调用" if success else "收到失败创建群组调用",
+                    description=f"收到 {describe_counterparty(sender, contract_map)} 发起的创建群组调用",
+                    action_group_override="group",
+                    counterparties=receiver_counterparties,
+                )
+            return rows
+
+    if should_include(sender):
+        append_row(
+            sender,
+            action="未归类调用",
+            description=f"向 {describe_counterparty(receiver, contract_map)} 发起调用，未命中已解析事件模式",
+            counterparties=[{"address": receiver, "label": contract_map.get(receiver, "")}] if receiver else [],
+        )
     if receiver != sender and should_include(receiver):
-        rows.append(
-            {
-                "account": receiver,
-                "block_number": tx_meta["block_number"],
-                "block_timestamp": tx_meta["block_timestamp"],
-                "tx_hash": tx_meta["tx_hash"],
-                "tx_index": tx_meta["tx_index"],
-                "status": tx_meta["status"],
-                "action": "收到未归类调用",
-                "action_group": action_group,
-                "action_id_text": "",
-                "group_id_text": "",
-                "communities_json": "[]",
-                "amounts_json": "[]",
-                "counterparties_json": json.dumps(unique_counterparties([{"address": sender, "label": contract_map.get(sender, "")}]), ensure_ascii=False),
-                "description": f"收到 {describe_counterparty(sender, contract_map)} 发起的调用，未命中已解析事件模式",
-                "tx_from": sender,
-                "tx_to": receiver,
-                "input_selector": input_selector,
-            }
+        append_row(
+            receiver,
+            action="收到未归类调用",
+            description=f"收到 {describe_counterparty(sender, contract_map)} 发起的调用，未命中已解析事件模式",
+            counterparties=[{"address": sender, "label": contract_map.get(sender, "")}] if sender else [],
         )
     return rows
 
@@ -1787,7 +2461,7 @@ def load_event_rows_by_tx(
         FROM events e
         JOIN temp_page_txs p ON p.tx_hash = e.tx_hash
         LEFT JOIN transactions t ON t.tx_hash = e.tx_hash
-        WHERE e.event_name IN ({RELEVANT_EVENT_NAMES_SQL})
+        WHERE {summary_event_where('e')}
         ORDER BY e.block_number, COALESCE(e.tx_index, t.tx_index, 0), e.log_index, e.id
         """
     ):

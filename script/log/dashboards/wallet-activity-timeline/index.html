@@ -258,21 +258,10 @@
         flex-wrap: wrap;
       }
 
-      .toggle-chip {
-        display: inline-flex;
-        align-items: center;
+      .status-filters {
+        display: flex;
+        flex-wrap: wrap;
         gap: 8px;
-        padding: 8px 12px;
-        border-radius: 999px;
-        border: 1px solid rgba(29, 36, 48, 0.1);
-        background: rgba(255, 255, 255, 0.72);
-        color: var(--muted);
-        font-size: 13px;
-        user-select: none;
-      }
-
-      .toggle-chip input {
-        margin: 0;
       }
 
       .filter-btn {
@@ -290,6 +279,18 @@
         border-color: rgba(33, 91, 143, 0.18);
         color: var(--accent);
         font-weight: 600;
+      }
+
+      .filter-btn.status-success.active {
+        background: rgba(31, 122, 98, 0.14);
+        border-color: rgba(31, 122, 98, 0.18);
+        color: var(--accent-3);
+      }
+
+      .filter-btn.status-failed.active {
+        background: rgba(143, 47, 45, 0.14);
+        border-color: rgba(143, 47, 45, 0.18);
+        color: var(--danger);
       }
 
       .status-banner {
@@ -424,27 +425,27 @@
 
       th:nth-child(1),
       td:nth-child(1) {
-        width: 92px;
+        width: 208px;
       }
 
       th:nth-child(2),
       td:nth-child(2) {
-        width: 148px;
+        width: 36%;
       }
 
       th:nth-child(3),
       td:nth-child(3) {
-        width: 22%;
+        width: 19%;
       }
 
       th:nth-child(4),
       td:nth-child(4) {
-        width: 18%;
+        width: 16%;
       }
 
       th:nth-child(5),
       td:nth-child(5) {
-        width: 22%;
+        width: 168px;
       }
 
       tbody tr:hover {
@@ -492,7 +493,7 @@
         color: var(--muted);
       }
 
-      .badge.reward {
+      .badge.incentive {
         background: rgba(33, 91, 143, 0.12);
         color: var(--accent);
       }
@@ -508,13 +509,17 @@
         background: rgba(154, 82, 33, 0.12);
         color: var(--accent-2);
       }
-      .badge.verify {
+      .badge.governance {
         background: rgba(21, 101, 90, 0.12);
         color: #15655a;
       }
       .badge.liquidity {
         background: rgba(82, 69, 153, 0.12);
         color: #524599;
+      }
+      .badge.stake {
+        background: rgba(129, 92, 40, 0.12);
+        color: #6f4f1a;
       }
       .badge.swap {
         background: rgba(33, 91, 143, 0.12);
@@ -551,8 +556,15 @@
         min-width: 0;
       }
 
-      .action-top {
+      .action-head {
         display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .action-top {
+        display: inline-flex;
         align-items: center;
         flex-wrap: wrap;
         gap: 8px;
@@ -585,6 +597,11 @@
         align-items: center;
       }
 
+      .action-summary {
+        color: var(--text);
+        line-height: 1.7;
+      }
+
       .action-id-chip {
         display: inline-flex;
         align-items: center;
@@ -597,15 +614,77 @@
         white-space: nowrap;
       }
 
-      .row-toggle-btn {
-        border: 0;
-        border-radius: 999px;
-        padding: 4px 10px;
-        background: rgba(33, 91, 143, 0.12);
-        color: var(--accent);
-        font-size: 12px;
+      .tx-meta-cell {
+        display: grid;
+        gap: 6px;
+        min-width: 0;
+      }
+
+      .tx-meta-icon {
+        width: 14px;
+        height: 14px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        opacity: 0.82;
+      }
+
+      .tx-meta-icon svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.7;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .tx-meta-block {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 13px;
         font-weight: 700;
-        cursor: pointer;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .tx-meta-time {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        width: fit-content;
+        padding: 5px 10px;
+        border-radius: 999px;
+        font-size: 13px;
+        line-height: 1.5;
+        font-weight: 700;
+        color: var(--muted);
+        background: rgba(29, 36, 48, 0.06);
+      }
+
+      .tx-meta-time.status-success {
+        color: var(--accent-3);
+        background: rgba(31, 122, 98, 0.14);
+      }
+
+      .tx-meta-time.status-failed {
+        color: var(--danger);
+        background: rgba(143, 47, 45, 0.14);
+      }
+
+      .tx-meta-time.status-unknown {
+        color: var(--muted);
+        background: rgba(29, 36, 48, 0.06);
+      }
+
+      .tx-meta-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
       }
 
       .summary-row {
@@ -691,7 +770,8 @@
       }
 
       .community-stack {
-        display: grid;
+        display: inline-flex;
+        flex-wrap: wrap;
         gap: 8px;
       }
 
@@ -742,13 +822,15 @@
       }
 
       .amount-stack,
-      .counterparty-stack {
+      .counterparty-stack,
+      .gas-stack {
         display: grid;
         gap: 8px;
       }
 
       .amount-chip,
-      .counterparty-chip {
+      .counterparty-chip,
+      .gas-chip {
         display: flex;
         flex-wrap: wrap;
         gap: 6px;
@@ -764,6 +846,27 @@
         color: var(--text);
       }
 
+      .amount-value {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0;
+        min-width: 0;
+      }
+
+      .amount-int {
+        font-size: 15px;
+        font-weight: 800;
+        color: var(--text);
+        line-height: 1.2;
+      }
+
+      .amount-frac {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        line-height: 1.2;
+      }
+
       .counterparty-label {
         font-weight: 700;
         color: var(--text);
@@ -774,6 +877,11 @@
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
         font-size: 12px;
         overflow-wrap: anywhere;
+      }
+
+      .gas-label {
+        font-weight: 700;
+        color: var(--text);
       }
 
       .empty {
@@ -834,7 +942,7 @@
             <h1>钱包地址时间线看板</h1>
             <p>
               输入任意钱包地址后，页面会直接查询活 <code>events.db</code>，按区块和交易顺序拉出该地址的时间线，并把
-              奖励、行动参与 / 追加 / 退出、授权、groupVerify 提交、转账、加池 / LP 铸造这类交易归类成接近人工整理的表格。
+              激励、行动参与 / 追加 / 退出、授权、groupVerify 提交、转账、加池 / LP 铸造这类交易归类成接近人工整理的表格。
             </p>
           </div>
           <aside class="meta" id="meta"></aside>
@@ -869,10 +977,7 @@
           </div>
           <div class="filter-tools">
             <div class="filters" id="filters"></div>
-            <label class="toggle-chip">
-              <input id="show-failed-toggle" type="checkbox" />
-              <span>显示失败交易</span>
-            </label>
+            <div class="status-filters" id="status-filters"></div>
           </div>
         </div>
 
@@ -895,17 +1000,16 @@
           <table>
             <thead>
               <tr>
-                <th>区块</th>
-                <th>东八区时间</th>
-                <th>行动 / 社区</th>
-                <th>数量</th>
+                <th>交易</th>
+                <th>类型 / 摘要</th>
                 <th>对手方 / 目标地址</th>
-                <th>发生了什么</th>
+                <th>数量</th>
+                <th>Gas</th>
               </tr>
             </thead>
             <tbody id="table-body">
               <tr>
-                <td colspan="6" class="empty">等待输入地址。</td>
+                <td colspan="5" class="empty">等待输入地址。</td>
               </tr>
             </tbody>
           </table>
@@ -921,10 +1025,11 @@
       const pageParams = new URLSearchParams(window.location.search);
       const DEFAULT_NETWORK = pageParams.get("network") || "thinkium70001_public";
       const API_URL = "/api/dashboards/wallet-activity-timeline";
-      const PAGE_SIZE = 100;
+      const PAGE_SIZE = 300;
       const MAX_PAGE_SIZE = 500;
       const TIMEZONE = "Asia/Shanghai";
       const RECENT_ADDRESS_KEY = "wallet-activity-timeline:recent-address";
+      const RECENT_QUERY_SETTINGS_KEY = "wallet-activity-timeline:recent-settings";
 
       const timeFormatter = new Intl.DateTimeFormat("zh-CN", {
         timeZone: TIMEZONE,
@@ -939,16 +1044,24 @@
 
       const FILTER_OPTIONS = [
         { key: "all", label: "全部" },
-        { key: "reward", label: "奖励" },
+        { key: "incentive", label: "激励" },
         { key: "actionJoin", label: "行动" },
-        { key: "verify", label: "评分" },
+        { key: "governance", label: "治理" },
         { key: "approval", label: "授权" },
         { key: "liquidity", label: "流动性" },
+        { key: "stake", label: "质押" },
         { key: "swap", label: "兑换" },
         { key: "transfer", label: "转账" },
         { key: "native", label: "原生币" },
         { key: "complex", label: "复杂交互" },
       ];
+      const CATEGORY_FILTER_KEYS = FILTER_OPTIONS.filter((item) => item.key !== "all").map((item) => item.key);
+      const DEFAULT_ACTIVE_FILTER_KEYS = CATEGORY_FILTER_KEYS.filter((key) => key !== "approval");
+      const STATUS_FILTER_OPTIONS = [
+        { key: "success", label: "成功" },
+        { key: "failed", label: "失败" },
+      ];
+      const DEFAULT_STATUS_FILTER_KEYS = STATUS_FILTER_OPTIONS.map((item) => item.key);
 
       const state = {
         sourceLabel: `script/log/db/${DEFAULT_NETWORK}/events.db`,
@@ -960,8 +1073,8 @@
         hasMore: false,
         nextCursor: null,
         pageSize: PAGE_SIZE,
-        activeFilter: "all",
-        showFailed: false,
+        activeFilters: new Set(DEFAULT_ACTIVE_FILTER_KEYS),
+        selectedStatuses: new Set(DEFAULT_STATUS_FILTER_KEYS),
         isFetching: false,
         abortController: null,
         requestSeq: 0,
@@ -989,6 +1102,29 @@
         return String(value || "").trim().toLowerCase();
       }
 
+      function renderTxMetaIcon(kind) {
+        if (kind === "time") {
+          return `
+        <span class="tx-meta-icon" aria-hidden="true">
+          <svg viewBox="0 0 16 16">
+            <circle cx="8" cy="8" r="5.5"></circle>
+            <path d="M8 4.8v3.4l2.2 1.4"></path>
+          </svg>
+        </span>`;
+        }
+        if (kind === "block") {
+          return `
+        <span class="tx-meta-icon" aria-hidden="true">
+          <svg viewBox="0 0 16 16">
+            <path d="M8 2.5 13 5 8 7.5 3 5 8 2.5Z"></path>
+            <path d="M3 8l5 2.5L13 8"></path>
+            <path d="M3 10.8l5 2.7 5-2.7"></path>
+          </svg>
+        </span>`;
+        }
+        return "";
+      }
+
       function parsePageSizeInput(value) {
         const parsed = Number.parseInt(String(value || "").trim(), 10);
         if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -1009,6 +1145,61 @@
       function saveRecentAddress(address) {
         try {
           window.localStorage.setItem(RECENT_ADDRESS_KEY, normalizeAddress(address));
+        } catch (error) {
+          // Ignore storage errors and keep query flow working.
+        }
+      }
+
+      function loadRecentQuerySettings() {
+        try {
+          const raw = window.localStorage.getItem(RECENT_QUERY_SETTINGS_KEY);
+          if (!raw) {
+            return null;
+          }
+          const parsed = JSON.parse(raw);
+          return parsed && typeof parsed === "object" ? parsed : null;
+        } catch (error) {
+          return null;
+        }
+      }
+
+      function sanitizeStoredKeys(values, allowedKeys, fallbackKeys) {
+        if (!Array.isArray(values)) {
+          return new Set(fallbackKeys);
+        }
+        const normalized = values
+          .map((value) => {
+            if (value === "reward" || value === "actionIncentive" || value === "governanceIncentive") {
+              return "incentive";
+            }
+            return value;
+          })
+          .filter((value) => allowedKeys.includes(value));
+        return new Set(normalized);
+      }
+
+      function applyRecentQuerySettings(settings) {
+        if (!settings || typeof settings !== "object") {
+          return;
+        }
+        const parsedPageSize = parsePageSizeInput(settings.pageSize);
+        if (parsedPageSize) {
+          state.pageSize = parsedPageSize;
+        }
+        state.activeFilters = sanitizeStoredKeys(settings.activeFilters, CATEGORY_FILTER_KEYS, DEFAULT_ACTIVE_FILTER_KEYS);
+        state.selectedStatuses = sanitizeStoredKeys(settings.selectedStatuses, DEFAULT_STATUS_FILTER_KEYS, DEFAULT_STATUS_FILTER_KEYS);
+      }
+
+      function saveRecentQuerySettings() {
+        try {
+          window.localStorage.setItem(
+            RECENT_QUERY_SETTINGS_KEY,
+            JSON.stringify({
+              pageSize: state.pageSize || PAGE_SIZE,
+              activeFilters: Array.from(state.activeFilters),
+              selectedStatuses: Array.from(state.selectedStatuses),
+            })
+          );
         } catch (error) {
           // Ignore storage errors and keep query flow working.
         }
@@ -1069,17 +1260,48 @@
           }
           return { flowLabel: "投入", flowClass: "flow-position", categoryLabel: "行动", categoryClass: "actionJoin" };
         }
-        if (row.action_group === "reward") {
-          return { flowLabel: "奖励", flowClass: "flow-reward", categoryLabel: "奖励", categoryClass: "reward" };
+        if (row.action_group === "incentive") {
+          let flowLabel = "激励";
+          if (action.includes("领取")) {
+            flowLabel = "领取";
+          } else if (action.includes("铸造")) {
+            flowLabel = "铸造";
+          } else if (action.includes("收到")) {
+            flowLabel = "收到";
+          }
+          const categoryLabel = action.includes("治理激励") ? "治理激励" : action.includes("行动激励") ? "行动激励" : "激励";
+          return { flowLabel, flowClass: "flow-reward", categoryLabel, categoryClass: "incentive" };
         }
-        if (row.action_group === "verify") {
-          return { flowLabel: "提交", flowClass: "flow-position", categoryLabel: "评分", categoryClass: "verify" };
+        if (row.action_group === "governance") {
+          let flowLabel = "治理";
+          if (action.includes("投票")) {
+            flowLabel = "投票";
+          } else if (action.includes("评分")) {
+            flowLabel = "评分";
+          } else if (action.includes("验证")) {
+            flowLabel = "验证";
+          }
+          return { flowLabel, flowClass: "flow-position", categoryLabel: "治理", categoryClass: "governance" };
         }
         if (row.action_group === "approval") {
           return { flowLabel: "授权", flowClass: "flow-complex", categoryLabel: "授权", categoryClass: "approval" };
         }
         if (row.action_group === "liquidity") {
-          return { flowLabel: "投入", flowClass: "flow-position", categoryLabel: "流动性", categoryClass: "liquidity" };
+          if (action.startsWith("撤池")) {
+            return { flowLabel: "移除", flowClass: "flow-return", categoryLabel: "流动性", categoryClass: "liquidity" };
+          }
+          return { flowLabel: "添加", flowClass: "flow-position", categoryLabel: "流动性", categoryClass: "liquidity" };
+        }
+        if (row.action_group === "stake") {
+          const hasSlToken = (row.amounts || []).some((item) => /sltoken$/i.test(String(item.token || "")));
+          const hasStToken = (row.amounts || []).some((item) => /sttoken$/i.test(String(item.token || "")));
+          let flowLabel = "质押";
+          if (action.includes("流动性") || hasSlToken) {
+            flowLabel = "质押流动性";
+          } else if (action.includes("代币") || hasStToken) {
+            flowLabel = "质押代币";
+          }
+          return { flowLabel, flowClass: "flow-position", categoryLabel: "质押", categoryClass: "stake" };
         }
         if (row.action_group === "swap") {
           return { flowLabel: "兑换", flowClass: "flow-position", categoryLabel: "兑换", categoryClass: "swap" };
@@ -1120,7 +1342,7 @@
         return timeFormatter.format(new Date(Number(seconds) * 1000)).replace(/\//g, "-");
       }
 
-      function formatBigInt(raw, decimals = 18) {
+      function formatBigInt(raw, decimals = 18, fractionDigits = 2) {
         if (raw === null || raw === undefined || raw === "") {
           return "-";
         }
@@ -1130,37 +1352,118 @@
         if (!/^\d+$/.test(digits)) {
           return value;
         }
-        const scale = Number(decimals || 18);
+        const parsedScale = Number(decimals);
+        const scale = Number.isFinite(parsedScale) && parsedScale >= 0 ? Math.trunc(parsedScale) : 18;
+        const parsedFractionDigits = Number(fractionDigits);
+        const precision = Number.isFinite(parsedFractionDigits) && parsedFractionDigits >= 0 ? Math.trunc(parsedFractionDigits) : 2;
         if (digits.length <= scale) {
           digits = digits.padStart(scale + 1, "0");
         }
         const whole = digits.slice(0, digits.length - scale) || "0";
         const fraction = digits
           .slice(digits.length - scale)
-          .slice(0, 2)
+          .slice(0, Math.min(scale, precision))
           .replace(/0+$/, "");
         const wholeText = BigInt(whole).toLocaleString("zh-CN");
         const sign = negative ? "-" : "";
         return fraction ? `${sign}${wholeText}.${fraction}` : `${sign}${wholeText}`;
       }
 
-      function getFailedRows() {
-        return state.rows.filter((row) => row.status === 0);
+      function parseBigIntValue(raw) {
+        if (raw === null || raw === undefined || raw === "") {
+          return null;
+        }
+        const value = String(raw).trim();
+        if (!/^-?\d+$/.test(value)) {
+          return null;
+        }
+        try {
+          return BigInt(value);
+        } catch (error) {
+          return null;
+        }
+      }
+
+      function rowStatusKey(row) {
+        return row.status === 0 ? "failed" : "success";
+      }
+
+      function getStatusCounts(rows = state.rows) {
+        return rows.reduce(
+          (acc, row) => {
+            const key = rowStatusKey(row);
+            acc[key] += 1;
+            return acc;
+          },
+          { success: 0, failed: 0 }
+        );
       }
 
       function getVisibleRows() {
-        if (state.showFailed) {
-          return state.rows;
+        if (!state.selectedStatuses.size) {
+          return [];
         }
-        return state.rows.filter((row) => row.status !== 0);
+        return state.rows.filter((row) => state.selectedStatuses.has(rowStatusKey(row)));
       }
 
       function getFilteredRows() {
         const rows = getVisibleRows();
-        if (state.activeFilter === "all") {
+        if (state.activeFilters.size === 0) {
+          return [];
+        }
+        if (state.activeFilters.size === CATEGORY_FILTER_KEYS.length) {
           return rows;
         }
-        return rows.filter((row) => row.action_group === state.activeFilter);
+        return rows.filter((row) => state.activeFilters.has(row.action_group));
+      }
+
+      function areAllFiltersSelected() {
+        return CATEGORY_FILTER_KEYS.every((key) => state.activeFilters.has(key));
+      }
+
+      function toggleFilter(key) {
+        if (key === "all") {
+          state.activeFilters = areAllFiltersSelected() ? new Set() : new Set(CATEGORY_FILTER_KEYS);
+          return;
+        }
+        const next = new Set(state.activeFilters);
+        if (next.has(key)) {
+          next.delete(key);
+        } else {
+          next.add(key);
+        }
+        state.activeFilters = next;
+      }
+
+      function renderStatusFilters() {
+        const counts = getStatusCounts();
+        document.getElementById("status-filters").innerHTML = STATUS_FILTER_OPTIONS.map((item) => {
+          const active = state.selectedStatuses.has(item.key);
+          return `
+          <button
+            class="filter-btn status-filter-btn status-${escapeHtml(item.key)} ${active ? "active" : ""}"
+            data-status-key="${escapeHtml(item.key)}"
+            type="button"
+          >
+            ${escapeHtml(item.label)} (${counts[item.key] || 0})
+          </button>
+        `;
+        }).join("");
+
+        document.querySelectorAll("[data-status-key]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const key = button.dataset.statusKey;
+            const next = new Set(state.selectedStatuses);
+            if (next.has(key)) {
+              next.delete(key);
+            } else {
+              next.add(key);
+            }
+            state.selectedStatuses = next;
+            saveRecentQuerySettings();
+            renderAll();
+          });
+        });
       }
 
       function renderQueryResultBanner() {
@@ -1169,19 +1472,38 @@
           return;
         }
         const visibleRows = getVisibleRows();
-        const failedRows = getFailedRows();
+        const filteredRows = getFilteredRows();
+        const statusCounts = getStatusCounts();
         if (state.rows.length) {
-          if (!state.showFailed && failedRows.length && !visibleRows.length) {
+          if (!visibleRows.length && (statusCounts.success || statusCounts.failed)) {
+            const hiddenByStatus = [];
+            if (!state.selectedStatuses.has("success") && statusCounts.success) {
+              hiddenByStatus.push(`成功 <strong>${statusCounts.success}</strong> 条`);
+            }
+            if (!state.selectedStatuses.has("failed") && statusCounts.failed) {
+              hiddenByStatus.push(`失败 <strong>${statusCounts.failed}</strong> 条`);
+            }
             setBanner(
               "query-banner",
               "warning",
-              `当前已加载 <strong>${state.rows.length}</strong> 条记录；筛选后可见 <strong>0</strong> 条，已隐藏 <strong>${failedRows.length}</strong> 条失败交易。`
+              `当前已加载 <strong>${state.rows.length}</strong> 条记录；状态筛选后可见 <strong>0</strong> 条。${hiddenByStatus.length ? ` 已隐藏 ${hiddenByStatus.join("，")}。` : ""}`
             );
             return;
           }
-          let message = `当前已加载 <strong>${state.rows.length}</strong> 条记录，可见 <strong>${visibleRows.length}</strong> 条。`;
-          if (!state.showFailed && failedRows.length) {
-            message += ` 已隐藏 <strong>${failedRows.length}</strong> 条失败交易。`;
+          const hiddenByCategory = Math.max(visibleRows.length - filteredRows.length, 0);
+          const hiddenByStatus = [];
+          if (!state.selectedStatuses.has("success") && statusCounts.success) {
+            hiddenByStatus.push(`成功 <strong>${statusCounts.success}</strong> 条`);
+          }
+          if (!state.selectedStatuses.has("failed") && statusCounts.failed) {
+            hiddenByStatus.push(`失败 <strong>${statusCounts.failed}</strong> 条`);
+          }
+          let message = `当前已加载 <strong>${state.rows.length}</strong> 条记录，当前筛选可见 <strong>${filteredRows.length}</strong> 条。`;
+          if (hiddenByStatus.length) {
+            message += ` 已按状态隐藏 ${hiddenByStatus.join("，")}。`;
+          }
+          if (hiddenByCategory) {
+            message += ` 已按类别隐藏 <strong>${hiddenByCategory}</strong> 条。`;
           }
           if (state.hasMore) {
             message += " 可继续加载更早交易。";
@@ -1223,11 +1545,13 @@
           acc[row.action_group] = (acc[row.action_group] || 0) + 1;
           return acc;
         }, {});
+        const allSelected = areAllFiltersSelected();
         document.getElementById("filters").innerHTML = FILTER_OPTIONS.map((item) => {
           const count = item.key === "all" ? rows.length : counts[item.key] || 0;
+          const active = item.key === "all" ? allSelected : state.activeFilters.has(item.key);
           return `
           <button
-            class="filter-btn ${state.activeFilter === item.key ? "active" : ""}"
+            class="filter-btn ${active ? "active" : ""}"
             data-filter-key="${escapeHtml(item.key)}"
             type="button"
           >
@@ -1238,9 +1562,9 @@
 
         document.querySelectorAll(".filter-btn").forEach((button) => {
           button.addEventListener("click", () => {
-            state.activeFilter = button.dataset.filterKey;
-            renderTable(getFilteredRows());
-            renderFilters();
+            toggleFilter(button.dataset.filterKey);
+            saveRecentQuerySettings();
+            renderAll();
           });
         });
       }
@@ -1249,21 +1573,22 @@
         const cards = [];
         if (!rows.length) {
           if (state.queriedAddress && state.rows.length) {
+            const visibleRows = getVisibleRows();
             cards.push(
               {
                 label: "当前状态",
                 value: "筛选后为空",
-                note: !state.showFailed && getFailedRows().length ? "当前隐藏失败交易。" : "当前分类下没有可见记录。",
+                note: !visibleRows.length ? "当前状态筛选下没有可见记录。" : "当前筛选下没有可见记录。",
               },
               {
                 label: "钱包地址",
                 value: shortAddress(state.queriedAddress),
-                note: "切换分类或失败交易开关后会重新计算。",
+                note: "切换类别标签或成功 / 失败标签后会重新计算。",
               },
               {
                 label: "归类口径",
                 value: "交易级摘要",
-                note: "默认每条对应 1 笔 tx；奖励、行动、授权、groupVerify、Transfer、原生币转账都会归并成单行，未识别调用也会保留。",
+                note: "默认每条对应 1 笔 tx；激励、行动、授权、groupVerify、Transfer、原生币转账都会归并成单行，未识别调用也会保留。",
               },
             );
           } else {
@@ -1281,7 +1606,7 @@
               {
                 label: "归类口径",
                 value: "交易级摘要",
-                note: "默认每条对应 1 笔 tx；奖励、行动、授权、groupVerify、Transfer、原生币转账都会归并成单行，未识别调用也会保留。",
+                note: "默认每条对应 1 笔 tx；激励、行动、授权、groupVerify、Transfer、原生币转账都会归并成单行，未识别调用也会保留。",
               },
             );
           }
@@ -1294,9 +1619,9 @@
           ).size;
           cards.push(
             {
-              label: "已加载记录",
+              label: "当前可见记录",
               value: rows.length.toLocaleString("zh-CN"),
-              note: `地址 ${shortAddress(state.queriedAddress)} 当前已加载的交易条目数`,
+              note: `共加载 ${state.rows.length.toLocaleString("zh-CN")} 条；当前筛选后可见 ${rows.length.toLocaleString("zh-CN")} 条`,
             },
             {
               label: "当前窗口最新一条",
@@ -1338,11 +1663,67 @@
             (item) => `
         <span class="amount-chip">
           ${renderTokenInline(item.token)}
-          <span>${escapeHtml(formatBigInt(item.raw, item.decimals || 18))}</span>
+          ${renderAmountValue(item.raw, item.decimals || 18)}
         </span>
       `
           )
           .join("")}</div>`;
+      }
+
+      function renderAmountValue(raw, decimals = 18) {
+        const formatted = formatBigInt(raw, decimals);
+        const dotIndex = formatted.indexOf(".");
+        if (dotIndex < 0) {
+          return `<span class="amount-value"><span class="amount-int">${escapeHtml(formatted)}</span></span>`;
+        }
+        const integerPart = formatted.slice(0, dotIndex);
+        const fractionPart = formatted.slice(dotIndex);
+        return `
+        <span class="amount-value">
+          <span class="amount-int">${escapeHtml(integerPart)}</span><span class="amount-frac">${escapeHtml(fractionPart)}</span>
+        </span>`;
+      }
+
+      function renderGasCell(row) {
+        const tx = row.transaction || {};
+        const gasUsed = parseBigIntValue(tx.gas_used);
+        const gasLimit = parseBigIntValue(tx.gas);
+        const gasPrice = parseBigIntValue(
+          tx.effective_gas_price ?? tx.gas_price ?? tx.max_fee_per_gas ?? tx.max_priority_fee_per_gas
+        );
+        const feeWei = gasUsed !== null && gasPrice !== null ? gasUsed * gasPrice : null;
+        const items = [];
+
+        if (gasUsed !== null || gasLimit !== null) {
+          const usedText = gasUsed !== null ? gasUsed.toLocaleString("zh-CN") : "-";
+          const limitText = gasLimit !== null ? ` / ${gasLimit.toLocaleString("zh-CN")}` : "";
+          items.push(`
+        <span class="gas-chip">
+          <span class="gas-label">已用</span>
+          <span>${escapeHtml(`${usedText}${limitText}`)}</span>
+        </span>
+      `);
+        }
+        if (gasPrice !== null) {
+          items.push(`
+        <span class="gas-chip">
+          <span class="gas-label">单价</span>
+          <span>${escapeHtml(formatBigInt(gasPrice.toString(), 9, 4))} Gwei</span>
+        </span>
+      `);
+        }
+        if (feeWei !== null) {
+          items.push(`
+        <span class="gas-chip">
+          <span class="gas-label">费用</span>
+          <span>${escapeHtml(formatBigInt(feeWei.toString(), 18, 6))}</span>
+        </span>
+      `);
+        }
+        if (!items.length) {
+          return '<span class="muted">-</span>';
+        }
+        return `<div class="gas-stack">${items.join("")}</div>`;
       }
 
       function renderCommunityStack(items) {
@@ -1364,8 +1745,6 @@
         const actionParts = splitActionLabel(row.action);
         const visual = actionVisual(row);
         const communityHtml = renderCommunityStack(row.communities);
-        const txKey = normalizeTxHash(row.tx_hash);
-        const expanded = state.expandedTxs.has(txKey);
         const actionExtra = actionParts.secondary
           ? `<span class="action-extra">${renderTokenInline(actionParts.secondary)}</span>`
           : "";
@@ -1375,30 +1754,48 @@
         const groupIdHtml = row.group_id_text
           ? `<span class="action-id-chip">GroupId ${escapeHtml(row.group_id_text)}</span>`
           : "";
-        const txHashHtml = row.tx_hash
-          ? `<span class="action-id-chip" title="${escapeHtml(row.tx_hash)}">Tx ${escapeHtml(shortAddress(row.tx_hash))}</span>`
-          : "";
-        const toggleHtml = row.tx_hash
-          ? `<button class="row-toggle-btn" data-toggle-tx-hash="${escapeHtml(txKey)}" type="button">${expanded ? "收起明细" : "查看原始数据"}</button>`
-          : "";
-        const communityBlock = row.communities.length ? `<div>${communityHtml}</div>` : "";
+        const communityBlock = row.communities.length ? communityHtml : "";
         return `
         <div class="action-cell">
-          <div class="action-top">
-            <span class="badge ${escapeHtml(visual.flowClass)}">${escapeHtml(visual.flowLabel)}</span>
-            <span class="badge ${escapeHtml(visual.categoryClass)}">${escapeHtml(visual.categoryLabel)}</span>
+          <div class="action-head">
+            ${communityBlock}
+            <div class="action-top">
+              <span class="badge ${escapeHtml(visual.flowClass)}">${escapeHtml(visual.flowLabel)}</span>
+              <span class="badge ${escapeHtml(visual.categoryClass)}">${escapeHtml(visual.categoryLabel)}</span>
+            </div>
           </div>
           <div class="action-title">
             <span>${escapeHtml(actionParts.primary)}</span>
             ${actionExtra}
           </div>
+          <div class="action-summary">${escapeHtml(row.description || "-")}</div>
           <div class="action-meta">
             ${actionIdHtml}
             ${groupIdHtml}
-            ${txHashHtml}
-            ${toggleHtml}
           </div>
-          ${communityBlock}
+        </div>
+      `;
+      }
+
+      function renderTxMetaCell(row) {
+        const timeStatusClass =
+          row.status === 0 ? "status-failed" : row.status === 1 ? "status-success" : "status-unknown";
+        const txHashHtml = row.tx_hash
+          ? `<span class="action-id-chip" title="${escapeHtml(row.tx_hash)}">Tx ${escapeHtml(shortAddress(row.tx_hash))}</span>`
+          : "";
+        return `
+        <div class="tx-meta-cell">
+          <div class="tx-meta-time ${escapeHtml(timeStatusClass)}">
+            ${renderTxMetaIcon("time")}
+            <span>${escapeHtml(formatUnixTimestamp(row.block_timestamp))}</span>
+          </div>
+          <div class="tx-meta-block">
+            ${renderTxMetaIcon("block")}
+            <span>${escapeHtml(row.block_number.toLocaleString("zh-CN"))}</span>
+          </div>
+          <div class="tx-meta-actions">
+            ${txHashHtml}
+          </div>
         </div>
       `;
       }
@@ -1481,7 +1878,7 @@
           : "输入钱包地址后直接查询活库。";
 
         if (!rows.length) {
-          tbody.innerHTML = `<tr><td colspan="6" class="empty">${escapeHtml(state.queriedAddress ? "没有查到匹配记录。" : "等待输入地址。")}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="5" class="empty">${escapeHtml(state.queriedAddress ? "没有查到匹配记录。" : "等待输入地址。")}</td></tr>`;
           return;
         }
 
@@ -1492,16 +1889,15 @@
               const expanded = state.expandedTxs.has(txKey);
               return `
         <tr class="summary-row ${expanded ? "is-expanded" : ""}" data-row-tx-hash="${escapeHtml(txKey)}">
-          <td>${row.block_number.toLocaleString("zh-CN")}</td>
-          <td>${escapeHtml(formatUnixTimestamp(row.block_timestamp))}</td>
+          <td>${renderTxMetaCell(row)}</td>
           <td>${renderActionCell(row)}</td>
-          <td>${renderAmountCell(row.amounts)}</td>
           <td>${renderCounterpartyCell(row.counterparties)}</td>
-          <td>${escapeHtml(row.description)}</td>
+          <td>${renderAmountCell(row.amounts)}</td>
+          <td>${renderGasCell(row)}</td>
         </tr>
         ${
           expanded
-            ? `<tr class="detail-row"><td colspan="6"><div class="raw-detail-wrap">${renderRawDetails(row)}</div></td></tr>`
+            ? `<tr class="detail-row"><td colspan="5"><div class="raw-detail-wrap">${renderRawDetails(row)}</div></td></tr>`
             : ""
         }
       `;
@@ -1512,13 +1908,6 @@
         tbody.querySelectorAll(".summary-row").forEach((node) => {
           node.addEventListener("click", () => {
             toggleExpandedTx(node.dataset.rowTxHash);
-          });
-        });
-        tbody.querySelectorAll("[data-toggle-tx-hash]").forEach((node) => {
-          node.addEventListener("click", (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            toggleExpandedTx(node.dataset.toggleTxHash);
           });
         });
       }
@@ -1618,15 +2007,16 @@
           state.nextCursor = payload.data?.next_cursor || null;
           state.pageSize = Number(payload.data?.page_size || PAGE_SIZE);
           if (!append) {
-            state.activeFilter = "all";
             state.expandedTxs = new Set();
           }
           syncPageSizeInput();
           saveRecentAddress(normalizedAddress);
+          saveRecentQuerySettings();
 
           renderMeta();
           renderFilters();
-          renderSummary(getVisibleRows());
+          renderStatusFilters();
+          renderSummary(getFilteredRows());
           renderTable(getFilteredRows());
           renderLoadMore();
           renderQueryResultBanner();
@@ -1647,7 +2037,8 @@
           }
           renderMeta();
           renderFilters();
-          renderSummary(getVisibleRows());
+          renderStatusFilters();
+          renderSummary(getFilteredRows());
           renderTable(getFilteredRows());
           renderLoadMore();
           renderQueryResultBanner();
@@ -1675,6 +2066,7 @@
           }
           state.pageSize = parsedPageSize;
           syncPageSizeInput();
+          saveRecentQuerySettings();
         }
         await requestTimeline(address, { silent, metadataOnly: false, append });
       }
@@ -1682,7 +2074,8 @@
       function renderAll() {
         renderMeta();
         renderFilters();
-        renderSummary(getVisibleRows());
+        renderStatusFilters();
+        renderSummary(getFilteredRows());
         renderTable(getFilteredRows());
         renderLoadMore();
         renderQueryResultBanner();
@@ -1732,25 +2125,19 @@
         }
       });
 
-      document.getElementById("show-failed-toggle").addEventListener("change", (event) => {
-        state.showFailed = event.target.checked;
-        renderAll();
-      });
-
       async function boot() {
-        renderAll();
-        if (window.location.protocol === "file:") {
-          setBanner("load-banner", "warning", "当前页面通过 <code>file://</code> 打开，动态 API 不可用。请先启动 <code>dashboard_server.py</code>。");
-          return;
-        }
-
+        applyRecentQuerySettings(loadRecentQuerySettings());
         const address = normalizeAddress(pageParams.get("address")) || loadRecentAddress();
         if (isAddress(address)) {
           document.getElementById("address-input").value = address;
         }
 
         syncPageSizeInput();
-        renderFilters();
+        renderAll();
+        if (window.location.protocol === "file:") {
+          setBanner("load-banner", "warning", "当前页面通过 <code>file://</code> 打开，动态 API 不可用。请先启动 <code>dashboard_server.py</code>。");
+          return;
+        }
       }
 
       boot();
