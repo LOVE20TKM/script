@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-import argparse
 import json
 import sqlite3
 from collections import OrderedDict, defaultdict
 from datetime import datetime, timezone
-from pathlib import Path
 
 
 ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
@@ -28,14 +26,47 @@ ROUTER_SELECTORS = {
     "0xe8e33700": "addLiquidity",
     "0xbaa2abde": "removeLiquidity",
 }
+RELEVANT_EVENT_NAMES = (
+    "Transfer",
+    "ClaimReward",
+    "MintActionReward",
+    "MintGovReward",
+    "Join",
+    "Exit",
+    "Withdraw",
+    "Withdrawal",
+)
+TIMELINE_INDEX_DEFINITIONS = (
+    (
+        "idx_events_event_account_expr",
+        "CREATE INDEX IF NOT EXISTS idx_events_event_account_expr "
+        "ON events(event_name, lower(json_extract(decoded_data, '$.account')))",
+    ),
+    (
+        "idx_events_event_from_expr",
+        "CREATE INDEX IF NOT EXISTS idx_events_event_from_expr "
+        "ON events(event_name, lower(json_extract(decoded_data, '$.from')))",
+    ),
+    (
+        "idx_events_event_to_expr",
+        "CREATE INDEX IF NOT EXISTS idx_events_event_to_expr "
+        "ON events(event_name, lower(json_extract(decoded_data, '$.to')))",
+    ),
+    (
+        "idx_events_event_src_expr",
+        "CREATE INDEX IF NOT EXISTS idx_events_event_src_expr "
+        "ON events(event_name, lower(json_extract(decoded_data, '$.src')))",
+    ),
+    (
+        "idx_events_event_dst_expr",
+        "CREATE INDEX IF NOT EXISTS idx_events_event_dst_expr "
+        "ON events(event_name, lower(json_extract(decoded_data, '$.dst')))",
+    ),
+)
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build wallet activity timeline dashboard DB.")
-    parser.add_argument("--source-db", required=True, help="Path to source events.db")
-    parser.add_argument("--output-db", required=True, help="Path to output dashboard DB")
-    parser.add_argument("--network", required=True, help="Network label")
-    return parser.parse_args()
+def now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
 def normalize_address(value: str | None) -> str:
@@ -64,10 +95,6 @@ def short_address(value: str | None) -> str:
     return f"{address[:10]}...{address[-6:]}"
 
 
-def now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-
-
 def load_contract_map(conn: sqlite3.Connection) -> dict[str, str]:
     rows = conn.execute("SELECT lower(address) AS address, contract_name FROM v_contract").fetchall()
     return {row["address"]: row["contract_name"] for row in rows}
@@ -91,12 +118,7 @@ def add_counterparty(
     label = contract_map.get(normalized, "")
     if known_only and not label:
         return
-    items.append(
-        {
-            "address": normalized,
-            "label": label,
-        }
-    )
+    items.append({"address": normalized, "label": label})
 
 
 def add_community(items: list[dict], token_address: str | None, contract_map: dict[str, str]) -> None:
@@ -134,21 +156,14 @@ def collapse_amounts(items: list[dict]) -> list[dict]:
 
     collapsed: list[dict] = []
     for (token, decimals), raw in totals.items():
-        collapsed.append(
-            {
-                "token": token,
-                "raw": str(raw),
-                "decimals": decimals,
-            }
-        )
+        collapsed.append({"token": token, "raw": str(raw), "decimals": decimals})
     return collapsed
 
 
 def collapse_approvals(items: list[dict]) -> list[dict]:
     latest: OrderedDict[tuple[str, str], dict] = OrderedDict()
     for item in items:
-        key = (item["token"], item["spender"])
-        latest[key] = item
+        latest[(item["token"], item["spender"])] = item
     return [
         {
             "token": item["token"],
@@ -185,9 +200,7 @@ def describe_counterparty(counterparty: str | None, contract_map: dict[str, str]
     if not normalized:
         return "-"
     label = contract_map.get(normalized)
-    if label:
-        return label
-    return short_address(normalized)
+    return label or short_address(normalized)
 
 
 def is_sl_token_label(label: str | None) -> bool:
@@ -208,11 +221,7 @@ def transfer_amounts(items: list[dict]) -> list[dict]:
 
 
 def amount_item(token: str, raw: int | str, decimals: int = 18) -> dict:
-    return {
-        "token": token,
-        "raw": str(raw),
-        "decimals": decimals,
-    }
+    return {"token": token, "raw": str(raw), "decimals": decimals}
 
 
 def selector_name(input_selector: str | None) -> str:
@@ -229,6 +238,10 @@ def first_token_name(items: list[dict], fallback: str = "Token") -> str:
         if token:
             return token
     return fallback
+
+
+def is_lp_token(token: str | None) -> bool:
+    return bool(token) and str(token).endswith("LP")
 
 
 def pair_counterparties(items: list[dict], contract_map: dict[str, str]) -> list[str]:
@@ -356,10 +369,6 @@ def has_non_lp(items: list[dict]) -> bool:
     return any(not is_lp_token(item["token"]) for item in items)
 
 
-def is_lp_token(token: str | None) -> bool:
-    return bool(token) and str(token).endswith("LP")
-
-
 def has_token_activity(summary: dict) -> bool:
     return any(
         summary[key]
@@ -428,15 +437,10 @@ def parse_transfer_payload(payload: dict, contract_name: str, contract_map: dict
     }
 
 
-def build_row(
-    account: str,
-    summary: dict,
-    tx_meta: dict,
-    contract_map: dict[str, str],
-) -> dict:
+def build_row(account: str, summary: dict, tx_meta: dict, contract_map: dict[str, str]) -> dict:
     account_address = normalize_address(account)
-    tx_to = normalize_address(tx_meta["tx_to"])
-    tx_from = normalize_address(tx_meta["tx_from"])
+    tx_to = normalize_address(tx_meta.get("tx_to"))
+    tx_from = normalize_address(tx_meta.get("tx_from"))
     input_selector = (tx_meta.get("input") or "")[:10]
     selector = selector_name(input_selector)
     tx_to_is_router = is_router_address(tx_to, contract_map)
@@ -552,14 +556,8 @@ def build_row(
             add_counterparty(counterparties, pair_address, contract_map, skip_address=account_address)
     elif summary["claims"] or summary["reward_mints"]:
         action_group = "reward"
-        action_ids = [
-            item["action_id"]
-            for item in summary["claims"]
-            if item.get("action_id")
-        ] + [
-            item["action_id"]
-            for item in summary["reward_mints"]
-            if item.get("action_id")
+        action_ids = [item["action_id"] for item in summary["claims"] if item.get("action_id")] + [
+            item["action_id"] for item in summary["reward_mints"] if item.get("action_id")
         ]
         action_id_text = stringify_numbers(action_ids) if action_ids else ""
 
@@ -582,38 +580,22 @@ def build_row(
             description = f"批量领取奖励，actionId={action_id_text}"
         amounts = collapse_amounts(
             [
-                {
-                    "token": item["token"],
-                    "raw": str(item["mint_amount"]),
-                    "decimals": 18,
-                }
+                {"token": item["token"], "raw": str(item["mint_amount"]), "decimals": 18}
                 for item in summary["claims"]
                 if item["mint_amount"] > 0
             ]
             + [
-                {
-                    "token": item["token"],
-                    "raw": str(item["burn_amount"]),
-                    "decimals": 18,
-                }
+                {"token": item["token"], "raw": str(item["burn_amount"]), "decimals": 18}
                 for item in summary["claims"]
                 if item["burn_amount"] > 0
             ]
             + [
-                {
-                    "token": item["token"],
-                    "raw": str(item["reward_amount"]),
-                    "decimals": 18,
-                }
+                {"token": item["token"], "raw": str(item["reward_amount"]), "decimals": 18}
                 for item in summary["reward_mints"]
                 if item["reward_amount"] > 0
             ]
         )
-        first_contract = (
-            summary["claims"][0]["contract_address"]
-            if summary["claims"]
-            else summary["reward_mints"][0]["contract_address"]
-        )
+        first_contract = summary["claims"][0]["contract_address"] if summary["claims"] else summary["reward_mints"][0]["contract_address"]
         add_counterparty(counterparties, tx_to or first_contract, contract_map, skip_address=account_address)
         for item in summary["claims"]:
             add_community(communities, item.get("token_address"), contract_map)
@@ -674,10 +656,7 @@ def build_row(
         action = "质押流动性"
         action_group = "liquidity"
         first_sl_token = sl_mints[0]["token"]
-        if contract_map.get(tx_to) == "hub":
-            description = f"通过 hub 质押流动性，收到 {first_sl_token}"
-        else:
-            description = f"质押流动性，收到 {first_sl_token}"
+        description = f"通过 hub 质押流动性，收到 {first_sl_token}" if contract_map.get(tx_to) == "hub" else f"质押流动性，收到 {first_sl_token}"
         amounts = collapse_amounts(
             [
                 *[
@@ -697,10 +676,7 @@ def build_row(
     elif summary["mints_in"] and has_non_lp(summary["transfers_out"]) and any(is_lp_token(item["token"]) for item in summary["mints_in"]):
         action = "加池 / LP 铸造"
         action_group = "liquidity"
-        if tx_to_is_router and selector == "addLiquidity":
-            description = f"通过 {ROUTER_LABEL} 把代币放入池子，收到 LP"
-        else:
-            description = "把代币放入池子，收到 LP"
+        description = f"通过 {ROUTER_LABEL} 把代币放入池子，收到 LP" if tx_to_is_router and selector == "addLiquidity" else "把代币放入池子，收到 LP"
         amounts = collapse_amounts(
             [
                 *[
@@ -779,11 +755,7 @@ def build_row(
         add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address, known_only=True)
         amounts = collapse_amounts(
             [
-                {
-                    "token": item["token"],
-                    "raw": str(item["raw"]),
-                    "decimals": int(item.get("decimals", 18)),
-                }
+                {"token": item["token"], "raw": str(item["raw"]), "decimals": int(item.get("decimals", 18))}
                 for item in summary["transfers_in"]
             ]
         )
@@ -798,11 +770,7 @@ def build_row(
         add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address, known_only=True)
         amounts = collapse_amounts(
             [
-                {
-                    "token": item["token"],
-                    "raw": str(item["raw"]),
-                    "decimals": int(item.get("decimals", 18)),
-                }
+                {"token": item["token"], "raw": str(item["raw"]), "decimals": int(item.get("decimals", 18))}
                 for item in summary["transfers_out"]
             ]
         )
@@ -850,7 +818,7 @@ def build_row(
     return {
         "account": account_address,
         "block_number": int(tx_meta["block_number"]),
-        "block_timestamp": int(tx_meta["block_timestamp"]),
+        "block_timestamp": int(tx_meta["block_timestamp"] or 0),
         "tx_hash": tx_meta["tx_hash"],
         "tx_index": int(tx_meta.get("tx_index") or 0),
         "status": tx_meta.get("status"),
@@ -985,11 +953,240 @@ def flush_rows(dest: sqlite3.Connection, rows: list[dict]) -> int:
     return count
 
 
-def process_event_stream(
-    source: sqlite3.Connection,
-    dest: sqlite3.Connection,
+def write_metadata(dest: sqlite3.Connection, network: str, source_db: str) -> None:
+    record_count = dest.execute("SELECT COUNT(*) FROM tx_activity").fetchone()[0]
+    dest.execute(
+        """
+        INSERT INTO metadata (network, source_db, generated_at, record_count)
+        VALUES (?, ?, ?, ?)
+        """,
+        (network, source_db, now_iso(), record_count),
+    )
+
+
+def summary_rows_for_accounts(
+    summaries: dict[str, dict],
+    tx_meta: dict,
     contract_map: dict[str, str],
-) -> int:
+    *,
+    account_filter: str | None = None,
+) -> list[dict]:
+    rows: list[dict] = []
+    normalized_filter = normalize_address(account_filter)
+    for account, summary in summaries.items():
+        if normalized_filter and normalize_address(account) != normalized_filter:
+            continue
+        if not account or is_zero_address(account) or not has_token_activity(summary):
+            continue
+        rows.append(build_row(account, summary, tx_meta, contract_map))
+    return rows
+
+
+def apply_event_to_summaries(
+    row: sqlite3.Row | dict,
+    summaries: defaultdict[str, dict],
+    action_memberships: set[tuple[str, str, str, int]],
+    group_memberships: set[tuple[str, str, str, int, int]],
+    contract_map: dict[str, str],
+    *,
+    tx_meta: dict | None = None,
+) -> None:
+    payload = json.loads(row["decoded_data"])
+    contract_name = row["contract_name"]
+    event_name = row["event_name"]
+    contract_address = normalize_address(row["address"])
+    current_meta = tx_meta or {
+        "tx_from": row["tx_from"],
+        "tx_to": row["tx_to"],
+        "input": row["input"] or "",
+    }
+
+    if event_name == "ClaimReward":
+        account = normalize_address(payload.get("account"))
+        if not account:
+            return
+        token_address = normalize_address(payload.get("tokenAddress"))
+        token_name = token_label(contract_map.get(token_address, payload.get("tokenAddress")))
+        summaries[account]["claims"].append(
+            {
+                "contract_name": contract_name,
+                "contract_address": contract_address,
+                "action_id": int(payload.get("actionId") or 0),
+                "token": token_name,
+                "token_address": token_address,
+                "mint_amount": int(payload.get("mintAmount") or 0),
+                "burn_amount": int(payload.get("burnAmount") or 0),
+            }
+        )
+        return
+
+    if event_name == "MintActionReward":
+        account = normalize_address(payload.get("account"))
+        if not account:
+            return
+        token_address = normalize_address(payload.get("tokenAddress"))
+        token_name = token_label(contract_map.get(token_address, payload.get("tokenAddress")))
+        summaries[account]["reward_mints"].append(
+            {
+                "kind": event_name,
+                "contract_address": contract_address,
+                "action_id": int(payload.get("actionId") or 0),
+                "round": int(payload.get("round") or 0),
+                "token": token_name,
+                "token_address": token_address,
+                "reward_amount": int(payload.get("reward") or 0),
+            }
+        )
+        return
+
+    if event_name == "MintGovReward":
+        account = normalize_address(payload.get("account"))
+        if not account:
+            return
+        token_address = normalize_address(payload.get("tokenAddress"))
+        token_name = token_label(contract_map.get(token_address, payload.get("tokenAddress")))
+        reward_total = int(payload.get("verifyReward") or 0) + int(payload.get("boostReward") or 0) + int(payload.get("burnReward") or 0)
+        summaries[account]["reward_mints"].append(
+            {
+                "kind": event_name,
+                "contract_address": contract_address,
+                "action_id": 0,
+                "round": int(payload.get("round") or 0),
+                "token": token_name,
+                "token_address": token_address,
+                "reward_amount": reward_total,
+            }
+        )
+        return
+
+    if event_name == "Transfer":
+        transfer = parse_transfer_payload(payload, contract_name, contract_map)
+        if not transfer:
+            return
+        from_address = transfer["from_address"]
+        to_address = transfer["to_address"]
+        value = int(transfer["raw"])
+        token = transfer["token"]
+        decimals = int(transfer["decimals"])
+        if is_zero_address(from_address):
+            if to_address:
+                summaries[to_address]["mints_in"].append(
+                    {
+                        "token": token,
+                        "raw": value,
+                        "decimals": decimals,
+                        "counterparty": from_address,
+                        "contract_address": contract_address,
+                    }
+                )
+        elif is_zero_address(to_address):
+            if from_address:
+                summaries[from_address]["burns_out"].append(
+                    {
+                        "token": token,
+                        "raw": value,
+                        "decimals": decimals,
+                        "counterparty": to_address,
+                        "contract_address": contract_address,
+                    }
+                )
+        else:
+            summaries[from_address]["transfers_out"].append(
+                {
+                    "token": token,
+                    "raw": value,
+                    "decimals": decimals,
+                    "counterparty": to_address,
+                    "contract_address": contract_address,
+                }
+            )
+            summaries[to_address]["transfers_in"].append(
+                {
+                    "token": token,
+                    "raw": value,
+                    "decimals": decimals,
+                    "counterparty": from_address,
+                    "contract_address": contract_address,
+                }
+            )
+        return
+
+    if event_name == "Withdrawal":
+        amount = int(payload.get("wad") or payload.get("value") or 0)
+        source_address = normalize_address(payload.get("src") or payload.get("from") or payload.get("account"))
+        tx_sender = normalize_address(current_meta.get("tx_from"))
+        tx_receiver = normalize_address(current_meta.get("tx_to"))
+        selector = selector_name((current_meta.get("input") or "")[:10])
+        if amount <= 0:
+            return
+        if source_address:
+            summaries[source_address]["native_out"] += amount
+        if tx_sender and is_router_address(tx_receiver, contract_map) and selector == "swapExactTokensForETH":
+            summaries[tx_sender]["native_in"] += amount
+        return
+
+    if event_name in {"Join", "Exit"} and contract_name == "groupJoin":
+        account = normalize_address(payload.get("account"))
+        if not account:
+            return
+        entry = {
+            "contract_address": contract_address,
+            "token_address": normalize_address(payload.get("tokenAddress")),
+            "action_id": int(payload.get("actionId") or 0),
+            "group_id": int(payload.get("groupId") or 0),
+            "amount": int(payload.get("amount") or 0),
+        }
+        membership_key = group_membership_key(account, entry)
+        if event_name == "Join":
+            entry["is_additional"] = membership_key in group_memberships
+            summaries[account]["group_joins"].append(entry)
+            group_memberships.add(membership_key)
+        else:
+            summaries[account]["group_exits"].append(entry)
+            group_memberships.discard(membership_key)
+        return
+
+    if contract_name == "join" and event_name in {"Join", "Withdraw"}:
+        account = normalize_address(payload.get("account"))
+        if not account:
+            return
+        entry = {
+            "contract_address": contract_address,
+            "token_address": normalize_address(payload.get("tokenAddress")),
+            "action_id": int(payload.get("actionId") or 0),
+            "amount": int(payload.get("additionalStakeAmount") or payload.get("amount") or 0),
+        }
+        membership_key = action_membership_key(account, entry)
+        if event_name == "Join":
+            entry["is_additional"] = membership_key in action_memberships
+            summaries[account]["action_joins"].append(entry)
+            action_memberships.add(membership_key)
+        else:
+            summaries[account]["action_exits"].append(entry)
+            action_memberships.discard(membership_key)
+        return
+
+    if event_name in {"Join", "Exit"} and payload.get("actionId") is not None and payload.get("amount") is not None and payload.get("account"):
+        account = normalize_address(payload.get("account"))
+        if not account:
+            return
+        entry = {
+            "contract_address": contract_address,
+            "token_address": normalize_address(payload.get("tokenAddress")),
+            "action_id": int(payload.get("actionId") or 0),
+            "amount": int(payload.get("amount") or 0),
+        }
+        membership_key = action_membership_key(account, entry)
+        if event_name == "Join":
+            entry["is_additional"] = membership_key in action_memberships
+            summaries[account]["action_joins"].append(entry)
+            action_memberships.add(membership_key)
+        else:
+            summaries[account]["action_exits"].append(entry)
+            action_memberships.discard(membership_key)
+
+
+def process_event_stream(source: sqlite3.Connection, dest: sqlite3.Connection, contract_map: dict[str, str]) -> int:
     relevant_count = source.execute(
         """
         SELECT COUNT(*)
@@ -1033,17 +1230,12 @@ def process_event_stream(
     processed = 0
 
     def flush_tx() -> None:
-        nonlocal inserted, summaries, current_meta
+        nonlocal inserted, summaries
         if not current_meta:
             return
-
-        for account, summary in summaries.items():
-            if not account or is_zero_address(account) or not has_token_activity(summary):
-                continue
-            buffer.append(build_row(account, summary, current_meta, contract_map))
-            if len(buffer) >= 1000:
-                inserted += flush_rows(dest, buffer)
-
+        buffer.extend(summary_rows_for_accounts(summaries, current_meta, contract_map))
+        if len(buffer) >= 1000:
+            inserted += flush_rows(dest, buffer)
         summaries = defaultdict(default_summary)
 
     for row in cursor:
@@ -1055,7 +1247,7 @@ def process_event_stream(
             current_key = key
             current_meta = {
                 "block_number": int(row["block_number"]),
-                "block_timestamp": int(row["block_timestamp"]),
+                "block_timestamp": int(row["block_timestamp"] or 0),
                 "tx_hash": row["tx_hash"],
                 "tx_index": int(row["tx_index"] or 0),
                 "tx_from": row["tx_from"],
@@ -1064,184 +1256,7 @@ def process_event_stream(
                 "value_wei": row["value_wei"],
                 "input": row["input"] or "",
             }
-
-        payload = json.loads(row["decoded_data"])
-        contract_name = row["contract_name"]
-        event_name = row["event_name"]
-        contract_address = normalize_address(row["address"])
-
-        if event_name == "ClaimReward":
-            account = normalize_address(payload.get("account"))
-            if not account:
-                continue
-            token_address = normalize_address(payload.get("tokenAddress"))
-            token_name = token_label(contract_map.get(token_address, payload.get("tokenAddress")))
-            summaries[account]["claims"].append(
-                {
-                    "contract_name": contract_name,
-                    "contract_address": contract_address,
-                    "action_id": int(payload.get("actionId") or 0),
-                    "token": token_name,
-                    "token_address": token_address,
-                    "mint_amount": int(payload.get("mintAmount") or 0),
-                    "burn_amount": int(payload.get("burnAmount") or 0),
-                }
-            )
-        elif event_name == "MintActionReward":
-            account = normalize_address(payload.get("account"))
-            if not account:
-                continue
-            token_address = normalize_address(payload.get("tokenAddress"))
-            token_name = token_label(contract_map.get(token_address, payload.get("tokenAddress")))
-            summaries[account]["reward_mints"].append(
-                {
-                    "kind": event_name,
-                    "contract_address": contract_address,
-                    "action_id": int(payload.get("actionId") or 0),
-                    "round": int(payload.get("round") or 0),
-                    "token": token_name,
-                    "token_address": token_address,
-                    "reward_amount": int(payload.get("reward") or 0),
-                }
-            )
-        elif event_name == "MintGovReward":
-            account = normalize_address(payload.get("account"))
-            if not account:
-                continue
-            token_address = normalize_address(payload.get("tokenAddress"))
-            token_name = token_label(contract_map.get(token_address, payload.get("tokenAddress")))
-            reward_total = int(payload.get("verifyReward") or 0) + int(payload.get("boostReward") or 0) + int(payload.get("burnReward") or 0)
-            summaries[account]["reward_mints"].append(
-                {
-                    "kind": event_name,
-                    "contract_address": contract_address,
-                    "action_id": 0,
-                    "round": int(payload.get("round") or 0),
-                    "token": token_name,
-                    "token_address": token_address,
-                    "reward_amount": reward_total,
-                }
-            )
-        elif event_name == "Transfer":
-            transfer = parse_transfer_payload(payload, contract_name, contract_map)
-            if not transfer:
-                continue
-            from_address = transfer["from_address"]
-            to_address = transfer["to_address"]
-            value = int(transfer["raw"])
-            token = transfer["token"]
-            decimals = int(transfer["decimals"])
-            if is_zero_address(from_address):
-                if to_address:
-                    summaries[to_address]["mints_in"].append(
-                        {
-                            "token": token,
-                            "raw": value,
-                            "decimals": decimals,
-                            "counterparty": from_address,
-                            "contract_address": contract_address,
-                        }
-                    )
-            elif is_zero_address(to_address):
-                if from_address:
-                    summaries[from_address]["burns_out"].append(
-                        {
-                            "token": token,
-                            "raw": value,
-                            "decimals": decimals,
-                            "counterparty": to_address,
-                            "contract_address": contract_address,
-                        }
-                    )
-            else:
-                summaries[from_address]["transfers_out"].append(
-                    {
-                        "token": token,
-                        "raw": value,
-                        "decimals": decimals,
-                        "counterparty": to_address,
-                        "contract_address": contract_address,
-                    }
-                )
-                summaries[to_address]["transfers_in"].append(
-                    {
-                        "token": token,
-                        "raw": value,
-                        "decimals": decimals,
-                        "counterparty": from_address,
-                        "contract_address": contract_address,
-                    }
-                )
-        elif event_name == "Withdrawal":
-            amount = int(payload.get("wad") or payload.get("value") or 0)
-            source_address = normalize_address(payload.get("src") or payload.get("from") or payload.get("account"))
-            tx_sender = normalize_address(current_meta.get("tx_from")) if current_meta else ""
-            tx_receiver = normalize_address(current_meta.get("tx_to")) if current_meta else ""
-            selector = selector_name((current_meta.get("input") or "")[:10]) if current_meta else ""
-
-            if amount <= 0:
-                continue
-
-            if source_address:
-                summaries[source_address]["native_out"] += amount
-
-            if tx_sender and is_router_address(tx_receiver, contract_map) and selector == "swapExactTokensForETH":
-                summaries[tx_sender]["native_in"] += amount
-        elif event_name in {"Join", "Exit"} and contract_name == "groupJoin":
-            account = normalize_address(payload.get("account"))
-            if not account:
-                continue
-            entry = {
-                "contract_address": contract_address,
-                "token_address": normalize_address(payload.get("tokenAddress")),
-                "action_id": int(payload.get("actionId") or 0),
-                "group_id": int(payload.get("groupId") or 0),
-                "amount": int(payload.get("amount") or 0),
-            }
-            key = group_membership_key(account, entry)
-            if event_name == "Join":
-                entry["is_additional"] = key in group_memberships
-                summaries[account]["group_joins"].append(entry)
-                group_memberships.add(key)
-            else:
-                summaries[account]["group_exits"].append(entry)
-                group_memberships.discard(key)
-        elif contract_name == "join" and event_name in {"Join", "Withdraw"}:
-            account = normalize_address(payload.get("account"))
-            if not account:
-                continue
-            entry = {
-                "contract_address": contract_address,
-                "token_address": normalize_address(payload.get("tokenAddress")),
-                "action_id": int(payload.get("actionId") or 0),
-                "amount": int(payload.get("additionalStakeAmount") or payload.get("amount") or 0),
-            }
-            key = action_membership_key(account, entry)
-            if event_name == "Join":
-                entry["is_additional"] = key in action_memberships
-                summaries[account]["action_joins"].append(entry)
-                action_memberships.add(key)
-            else:
-                summaries[account]["action_exits"].append(entry)
-                action_memberships.discard(key)
-        elif event_name in {"Join", "Exit"} and payload.get("actionId") is not None and payload.get("amount") is not None and payload.get("account"):
-            account = normalize_address(payload.get("account"))
-            if not account:
-                continue
-            entry = {
-                "contract_address": contract_address,
-                "token_address": normalize_address(payload.get("tokenAddress")),
-                "action_id": int(payload.get("actionId") or 0),
-                "amount": int(payload.get("amount") or 0),
-            }
-            key = action_membership_key(account, entry)
-            if event_name == "Join":
-                entry["is_additional"] = key in action_memberships
-                summaries[account]["action_joins"].append(entry)
-                action_memberships.add(key)
-            else:
-                summaries[account]["action_exits"].append(entry)
-                action_memberships.discard(key)
+        apply_event_to_summaries(row, summaries, action_memberships, group_memberships, contract_map, tx_meta=current_meta)
         if processed % 100000 == 0:
             print(f"Processed events: {processed}/{relevant_count}")
 
@@ -1251,98 +1266,30 @@ def process_event_stream(
     return inserted
 
 
-def process_native_only_transactions(
-    source: sqlite3.Connection,
-    dest: sqlite3.Connection,
+def rows_for_native_only_transaction(
+    tx_meta: dict,
     contract_map: dict[str, str],
-) -> int:
-    query = """
-        SELECT
-            block_number,
-            block_timestamp,
-            tx_hash,
-            COALESCE(tx_index, 0) AS tx_index,
-            "from" AS tx_from,
-            "to" AS tx_to,
-            status,
-            value_wei,
-            input
-        FROM transactions
-        WHERE CAST(value_wei AS TEXT) != '0'
-        ORDER BY block_number, COALESCE(tx_index, 0)
-    """
-
-    inserted = 0
+    *,
+    account_filter: str | None = None,
+) -> list[dict]:
     rows: list[dict] = []
-    for row in source.execute(query):
-        tx_meta = {
-            "block_number": int(row["block_number"]),
-            "block_timestamp": int(row["block_timestamp"] or 0),
-            "tx_hash": row["tx_hash"],
-            "tx_index": int(row["tx_index"] or 0),
-            "tx_from": row["tx_from"],
-            "tx_to": row["tx_to"],
-            "status": row["status"],
-            "input": row["input"] or "",
-        }
-        value_raw = int(row["value_wei"] or 0)
+    value_raw = int(tx_meta.get("value_wei") or 0)
+    sender = normalize_address(tx_meta.get("tx_from"))
+    receiver = normalize_address(tx_meta.get("tx_to"))
+    selector = selector_name((tx_meta.get("input") or "")[:10])
+    normalized_filter = normalize_address(account_filter)
 
-        sender = normalize_address(row["tx_from"])
-        receiver = normalize_address(row["tx_to"])
-        selector = selector_name((tx_meta["input"] or "")[:10])
+    def should_include(account: str) -> bool:
+        if not account:
+            return False
+        if not normalized_filter:
+            return True
+        return normalize_address(account) == normalized_filter
 
-        if tx_meta["status"] == 0 and is_router_address(receiver, contract_map):
-            sender_action, sender_description = failed_router_action(selector, for_router=False)
-            router_action, router_description = failed_router_action(selector, for_router=True)
-            if sender:
-                rows.append(
-                    {
-                        "account": sender,
-                        "block_number": tx_meta["block_number"],
-                        "block_timestamp": tx_meta["block_timestamp"],
-                        "tx_hash": tx_meta["tx_hash"],
-                        "tx_index": tx_meta["tx_index"],
-                        "status": tx_meta["status"],
-                        "action": sender_action,
-                        "action_group": "swap" if selector.startswith("swap") else "other",
-                        "action_id_text": "",
-                        "group_id_text": "",
-                        "communities_json": "[]",
-                        "amounts_json": json.dumps([{"token": "原生币", "raw": str(value_raw), "decimals": 18}], ensure_ascii=False),
-                        "counterparties_json": json.dumps(unique_counterparties([{"address": receiver, "label": contract_map.get(receiver, "")}]), ensure_ascii=False),
-                        "description": sender_description,
-                        "tx_from": sender,
-                        "tx_to": receiver,
-                        "input_selector": (tx_meta["input"] or "")[:10],
-                    }
-                )
-            if receiver:
-                rows.append(
-                    {
-                        "account": receiver,
-                        "block_number": tx_meta["block_number"],
-                        "block_timestamp": tx_meta["block_timestamp"],
-                        "tx_hash": tx_meta["tx_hash"],
-                        "tx_index": tx_meta["tx_index"],
-                        "status": tx_meta["status"],
-                        "action": router_action,
-                        "action_group": "swap" if selector.startswith("swap") else "other",
-                        "action_id_text": "",
-                        "group_id_text": "",
-                        "communities_json": "[]",
-                        "amounts_json": json.dumps([{"token": "原生币", "raw": str(value_raw), "decimals": 18}], ensure_ascii=False),
-                        "counterparties_json": json.dumps(unique_counterparties([{"address": sender, "label": contract_map.get(sender, "")}]), ensure_ascii=False),
-                        "description": router_description,
-                        "tx_from": sender,
-                        "tx_to": receiver,
-                        "input_selector": (tx_meta["input"] or "")[:10],
-                    }
-                )
-            if len(rows) >= 1000:
-                inserted += flush_rows(dest, rows)
-            continue
-
-        if sender:
+    if tx_meta.get("status") == 0 and is_router_address(receiver, contract_map):
+        sender_action, sender_description = failed_router_action(selector, for_router=False)
+        router_action, router_description = failed_router_action(selector, for_router=True)
+        if should_include(sender):
             rows.append(
                 {
                     "account": sender,
@@ -1351,20 +1298,20 @@ def process_native_only_transactions(
                     "tx_hash": tx_meta["tx_hash"],
                     "tx_index": tx_meta["tx_index"],
                     "status": tx_meta["status"],
-                    "action": "原生币转账",
-                    "action_group": "native",
+                    "action": sender_action,
+                    "action_group": "swap" if selector.startswith("swap") else "other",
                     "action_id_text": "",
                     "group_id_text": "",
                     "communities_json": "[]",
                     "amounts_json": json.dumps([{"token": "原生币", "raw": str(value_raw), "decimals": 18}], ensure_ascii=False),
                     "counterparties_json": json.dumps(unique_counterparties([{"address": receiver, "label": contract_map.get(receiver, "")}]), ensure_ascii=False),
-                    "description": f"向 {describe_counterparty(receiver, contract_map)} 转出原生币",
+                    "description": sender_description,
                     "tx_from": sender,
                     "tx_to": receiver,
-                    "input_selector": (tx_meta["input"] or "")[:10],
+                    "input_selector": (tx_meta.get("input") or "")[:10],
                 }
             )
-        if receiver:
+        if should_include(receiver):
             rows.append(
                 {
                     "account": receiver,
@@ -1373,20 +1320,101 @@ def process_native_only_transactions(
                     "tx_hash": tx_meta["tx_hash"],
                     "tx_index": tx_meta["tx_index"],
                     "status": tx_meta["status"],
-                    "action": "原生币转入",
-                    "action_group": "native",
+                    "action": router_action,
+                    "action_group": "swap" if selector.startswith("swap") else "other",
                     "action_id_text": "",
                     "group_id_text": "",
                     "communities_json": "[]",
                     "amounts_json": json.dumps([{"token": "原生币", "raw": str(value_raw), "decimals": 18}], ensure_ascii=False),
                     "counterparties_json": json.dumps(unique_counterparties([{"address": sender, "label": contract_map.get(sender, "")}]), ensure_ascii=False),
-                    "description": f"从 {describe_counterparty(sender, contract_map)} 收到原生币",
+                    "description": router_description,
                     "tx_from": sender,
                     "tx_to": receiver,
-                    "input_selector": (tx_meta["input"] or "")[:10],
+                    "input_selector": (tx_meta.get("input") or "")[:10],
                 }
             )
+        return rows
 
+    if should_include(sender):
+        rows.append(
+            {
+                "account": sender,
+                "block_number": tx_meta["block_number"],
+                "block_timestamp": tx_meta["block_timestamp"],
+                "tx_hash": tx_meta["tx_hash"],
+                "tx_index": tx_meta["tx_index"],
+                "status": tx_meta["status"],
+                "action": "原生币转账",
+                "action_group": "native",
+                "action_id_text": "",
+                "group_id_text": "",
+                "communities_json": "[]",
+                "amounts_json": json.dumps([{"token": "原生币", "raw": str(value_raw), "decimals": 18}], ensure_ascii=False),
+                "counterparties_json": json.dumps(unique_counterparties([{"address": receiver, "label": contract_map.get(receiver, "")}]), ensure_ascii=False),
+                "description": f"向 {describe_counterparty(receiver, contract_map)} 转出原生币",
+                "tx_from": sender,
+                "tx_to": receiver,
+                "input_selector": (tx_meta.get("input") or "")[:10],
+            }
+        )
+    if should_include(receiver):
+        rows.append(
+            {
+                "account": receiver,
+                "block_number": tx_meta["block_number"],
+                "block_timestamp": tx_meta["block_timestamp"],
+                "tx_hash": tx_meta["tx_hash"],
+                "tx_index": tx_meta["tx_index"],
+                "status": tx_meta["status"],
+                "action": "原生币转入",
+                "action_group": "native",
+                "action_id_text": "",
+                "group_id_text": "",
+                "communities_json": "[]",
+                "amounts_json": json.dumps([{"token": "原生币", "raw": str(value_raw), "decimals": 18}], ensure_ascii=False),
+                "counterparties_json": json.dumps(unique_counterparties([{"address": sender, "label": contract_map.get(sender, "")}]), ensure_ascii=False),
+                "description": f"从 {describe_counterparty(sender, contract_map)} 收到原生币",
+                "tx_from": sender,
+                "tx_to": receiver,
+                "input_selector": (tx_meta.get("input") or "")[:10],
+            }
+        )
+    return rows
+
+
+def process_native_only_transactions(source: sqlite3.Connection, dest: sqlite3.Connection, contract_map: dict[str, str]) -> int:
+    query = """
+        SELECT
+            COALESCE(t.block_number, 0) AS block_number,
+            COALESCE(b.timestamp, t.block_timestamp, 0) AS block_timestamp,
+            t.tx_hash,
+            COALESCE(t.tx_index, 0) AS tx_index,
+            t."from" AS tx_from,
+            t."to" AS tx_to,
+            t.status,
+            t.value_wei,
+            t.input
+        FROM transactions t
+        LEFT JOIN blocks b ON b.block_number = t.block_number
+        WHERE CAST(t.value_wei AS TEXT) != '0'
+        ORDER BY t.block_number, COALESCE(t.tx_index, 0)
+    """
+
+    inserted = 0
+    rows: list[dict] = []
+    for row in source.execute(query):
+        tx_meta = {
+            "block_number": int(row["block_number"] or 0),
+            "block_timestamp": int(row["block_timestamp"] or 0),
+            "tx_hash": row["tx_hash"],
+            "tx_index": int(row["tx_index"] or 0),
+            "tx_from": row["tx_from"],
+            "tx_to": row["tx_to"],
+            "status": row["status"],
+            "value_wei": row["value_wei"],
+            "input": row["input"] or "",
+        }
+        rows.extend(rows_for_native_only_transaction(tx_meta, contract_map))
         if len(rows) >= 1000:
             inserted += flush_rows(dest, rows)
 
@@ -1395,41 +1423,150 @@ def process_native_only_transactions(
     return inserted
 
 
-def write_metadata(dest: sqlite3.Connection, network: str, source_db: str) -> None:
-    record_count = dest.execute("SELECT COUNT(*) FROM tx_activity").fetchone()[0]
-    dest.execute(
+CANDIDATE_TXS_CTE = """
+WITH candidate_txs AS (
+    SELECT tx_hash
+    FROM transactions
+    WHERE "from" = :address OR "to" = :address
+
+    UNION
+
+    SELECT tx_hash
+    FROM events
+    WHERE event_name IN ('ClaimReward', 'MintActionReward', 'MintGovReward', 'Join', 'Exit', 'Withdraw', 'Withdrawal')
+      AND lower(json_extract(decoded_data, '$.account')) = :address
+
+    UNION
+
+    SELECT tx_hash
+    FROM events
+    WHERE event_name = 'Transfer'
+      AND (
+        lower(json_extract(decoded_data, '$.from')) = :address
+        OR lower(json_extract(decoded_data, '$.to')) = :address
+        OR lower(json_extract(decoded_data, '$.src')) = :address
+        OR lower(json_extract(decoded_data, '$.dst')) = :address
+      )
+),
+candidate_event_meta AS (
+    SELECT
+        e.tx_hash,
+        MIN(e.block_number) AS block_number,
+        MIN(COALESCE(e.tx_index, 0)) AS tx_index
+    FROM events e
+    JOIN candidate_txs c ON c.tx_hash = e.tx_hash
+    GROUP BY e.tx_hash
+)
+"""
+
+
+def query_activity_rows_by_account(source: sqlite3.Connection, contract_map: dict[str, str], account: str) -> list[dict]:
+    account = normalize_address(account)
+    if not account:
+        return []
+
+    meta_query = (
+        CANDIDATE_TXS_CTE
+        + """
+        SELECT
+            COALESCE(t.block_number, m.block_number, 0) AS block_number,
+            COALESCE(b.timestamp, t.block_timestamp, 0) AS block_timestamp,
+            c.tx_hash,
+            COALESCE(t.tx_index, m.tx_index, 0) AS tx_index,
+            t."from" AS tx_from,
+            t."to" AS tx_to,
+            t.status,
+            t.value_wei,
+            t.input
+        FROM candidate_txs c
+        LEFT JOIN transactions t ON t.tx_hash = c.tx_hash
+        LEFT JOIN candidate_event_meta m ON m.tx_hash = c.tx_hash
+        LEFT JOIN blocks b ON b.block_number = COALESCE(t.block_number, m.block_number)
+        ORDER BY COALESCE(t.block_number, m.block_number, 0), COALESCE(t.tx_index, m.tx_index, 0), c.tx_hash
         """
-        INSERT INTO metadata (network, source_db, generated_at, record_count)
-        VALUES (?, ?, ?, ?)
-        """,
-        (network, source_db, now_iso(), record_count),
+    )
+    event_query = (
+        CANDIDATE_TXS_CTE
+        + """
+        SELECT
+            e.block_number,
+            b.timestamp AS block_timestamp,
+            e.tx_hash,
+            COALESCE(e.tx_index, t.tx_index, 0) AS tx_index,
+            e.log_index,
+            e.contract_name,
+            e.event_name,
+            e.address,
+            e.decoded_data,
+            t."from" AS tx_from,
+            t."to" AS tx_to,
+            t.status,
+            t.value_wei,
+            t.input
+        FROM events e
+        JOIN candidate_txs c ON c.tx_hash = e.tx_hash
+        JOIN blocks b ON b.block_number = e.block_number
+        LEFT JOIN transactions t ON t.tx_hash = e.tx_hash
+        WHERE e.event_name IN ('Transfer', 'ClaimReward', 'MintActionReward', 'MintGovReward', 'Join', 'Exit', 'Withdraw', 'Withdrawal')
+        ORDER BY e.block_number, COALESCE(e.tx_index, t.tx_index, 0), e.log_index, e.id
+        """
     )
 
+    tx_meta_rows = source.execute(meta_query, {"address": account}).fetchall()
+    if not tx_meta_rows:
+        return []
 
-def main() -> None:
-    args = parse_args()
-    source_path = Path(args.source_db).expanduser().resolve()
-    output_path = Path(args.output_db).expanduser().resolve()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    event_rows_by_tx: defaultdict[str, list[sqlite3.Row]] = defaultdict(list)
+    for row in source.execute(event_query, {"address": account}):
+        event_rows_by_tx[row["tx_hash"]].append(row)
 
-    source = sqlite3.connect(source_path)
-    source.row_factory = sqlite3.Row
-    dest = sqlite3.connect(output_path)
-    dest.row_factory = sqlite3.Row
+    action_memberships: set[tuple[str, str, str, int]] = set()
+    group_memberships: set[tuple[str, str, str, int, int]] = set()
+    raw_rows: list[dict] = []
 
-    try:
-        create_schema(dest)
-        contract_map = load_contract_map(source)
-        process_event_stream(source, dest, contract_map)
-        process_native_only_transactions(source, dest, contract_map)
-        create_indexes(dest)
-        write_metadata(dest, args.network, str(source_path))
-        dest.commit()
-        print(f"Wrote dashboard db: {output_path}")
-    finally:
-        source.close()
-        dest.close()
+    for tx_meta_row in tx_meta_rows:
+        tx_meta = {
+            "block_number": int(tx_meta_row["block_number"] or 0),
+            "block_timestamp": int(tx_meta_row["block_timestamp"] or 0),
+            "tx_hash": tx_meta_row["tx_hash"],
+            "tx_index": int(tx_meta_row["tx_index"] or 0),
+            "tx_from": tx_meta_row["tx_from"],
+            "tx_to": tx_meta_row["tx_to"],
+            "status": tx_meta_row["status"],
+            "value_wei": tx_meta_row["value_wei"],
+            "input": tx_meta_row["input"] or "",
+        }
+        event_rows = event_rows_by_tx.get(tx_meta["tx_hash"], [])
+        if event_rows:
+            summaries: defaultdict[str, dict] = defaultdict(default_summary)
+            for event_row in event_rows:
+                apply_event_to_summaries(event_row, summaries, action_memberships, group_memberships, contract_map, tx_meta=tx_meta)
+            summary_rows = summary_rows_for_accounts(summaries, tx_meta, contract_map, account_filter=account)
+            if summary_rows:
+                raw_rows.extend(summary_rows)
+            elif int(tx_meta.get("value_wei") or 0) > 0:
+                raw_rows.extend(rows_for_native_only_transaction(tx_meta, contract_map, account_filter=account))
+        elif int(tx_meta.get("value_wei") or 0) > 0:
+            raw_rows.extend(rows_for_native_only_transaction(tx_meta, contract_map, account_filter=account))
+
+    rows = [materialize_activity_row(row) for row in raw_rows]
+    rows.sort(key=lambda item: (item["block_number"], item["tx_index"], item["tx_hash"]), reverse=True)
+    return rows
 
 
-if __name__ == "__main__":
-    main()
+def materialize_activity_row(row: dict) -> dict:
+    return {
+        "block_number": int(row["block_number"]),
+        "block_timestamp": int(row["block_timestamp"]),
+        "tx_hash": row["tx_hash"],
+        "tx_index": int(row.get("tx_index") or 0),
+        "status": None if row.get("status") is None else int(row["status"]),
+        "action": row["action"],
+        "action_group": row["action_group"],
+        "action_id_text": row.get("action_id_text") or "",
+        "group_id_text": row.get("group_id_text") or "",
+        "communities": json.loads(row.get("communities_json") or "[]"),
+        "amounts": json.loads(row.get("amounts_json") or "[]"),
+        "counterparties": json.loads(row.get("counterparties_json") or "[]"),
+        "description": row["description"],
+    }

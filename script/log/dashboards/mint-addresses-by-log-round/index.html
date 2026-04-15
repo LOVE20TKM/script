@@ -513,20 +513,15 @@
           <p class="eyebrow">LOVE20 Event DB Dashboard</p>
           <h1>每一轮有多少地址铸币</h1>
           <p>
-            页面直接在浏览器里读取 SQLite 数据库并执行 SQL。默认加载看板专用的
-            <code>./data/thinkium70001_public.db</code>，按 <code>log_round</code>
-            统计治理铸币地址、行动铸币地址，以及两者去重后的总铸币地址数。
+            页面直接通过本地看板服务查询活 <code>events.db</code>。服务端按 <code>log_round</code>
+            统计治理铸币地址、行动铸币地址，以及两者去重后的总铸币地址数，页面会自动轮询更新。
           </p>
         </div>
         <aside class="meta" id="meta"></aside>
       </div>
 
       <div class="toolbar">
-        <button class="action-btn" id="reload-default" type="button">加载默认看板 DB</button>
-        <label class="action-btn file-btn">
-          选择本地看板 DB
-          <input id="db-file" type="file" accept=".db,.sqlite,.sqlite3,application/octet-stream" />
-        </label>
+        <button class="action-btn" id="refresh-now" type="button">立即刷新</button>
         <div class="toolbar-note" id="source-note"></div>
       </div>
 
@@ -594,61 +589,28 @@
     </section>
 
     <section class="footer">
-      <div>页面直接查询看板专用 SQLite，源数据来自原始 <code>events.db</code> 聚合结果。</div>
+      <div>页面直接查询活 <code>events.db</code>，源数据不再依赖预生成看板 SQLite。</div>
       <div>适配层：<code>v_mint_gov_reward</code>、<code>v_mint_action_reward</code>、<code>v_claim_reward</code>。</div>
       <div>注意：<code>log_round</code> 是按区块推导出的协议轮次，不等于事件 payload 里的 <code>round</code>。</div>
-      <div>默认数据库：<code>./data/thinkium70001_public.db</code>。</div>
+      <div>默认数据源：<code>script/log/db/thinkium70001_public/events.db</code>。</div>
     </section>
   </main>
 
-  <template id="query-sql-fallback">
-SELECT
-    log_round,
-    total_mint_address_count,
-    new_gov_mint_address_count,
-    new_action_mint_address_count,
-    gov_mint_address_count,
-    action_mint_address_count,
-    avg_action_count_per_address,
-    overlap_mint_address_count
-FROM round_stats
-ORDER BY log_round ASC;
-  </template>
-
-  <template id="summary-sql-fallback">
-SELECT
-    history_gov_unique_address_count,
-    history_action_unique_address_count,
-    history_total_unique_address_count
-FROM history_summary
-LIMIT 1;
-  </template>
-
-  <script src="../vendor/sql.js/sql-wasm.js"></script>
   <script>
-    const DEFAULT_NETWORK = "thinkium70001_public";
-    const DEFAULT_DB_URL = `./data/${DEFAULT_NETWORK}.db`;
-    const MAIN_QUERY_URL = "./query.sql";
-    const SUMMARY_QUERY_URL = "./summary.sql";
-    const SQL_WASM_DIR = "../vendor/sql.js";
+    const pageParams = new URLSearchParams(window.location.search);
+    const DEFAULT_NETWORK = pageParams.get("network") || "thinkium70001_public";
+    const API_URL = "/api/dashboards/mint-addresses-by-log-round";
+    const STALE_TIME_MS = 30_000;
 
     const numberFormatter = new Intl.NumberFormat("zh-CN");
-    const timeFormatter = new Intl.DateTimeFormat("zh-CN", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false
-    });
 
     const state = {
       allRows: [],
       historySummary: null,
-      sourceLabel: DEFAULT_DB_URL,
+      sourceLabel: "-",
       networkLabel: DEFAULT_NETWORK,
       loadedAt: null,
+      dbMtime: null,
       showInProgressRound: false,
       activeWindow: 48,
       seriesVisibility: {
@@ -659,10 +621,10 @@ LIMIT 1;
         action: true,
         avg: true
       },
-      isBusy: false
+      isFetching: false,
+      lastFetchedAt: 0,
+      inFlight: null
     };
-
-    let sqlModulePromise = null;
 
     function fmt(value) {
       if (typeof value === "number" && Number.isFinite(value)) {
@@ -674,13 +636,21 @@ LIMIT 1;
       return String(value);
     }
 
-    function setBusy(isBusy) {
-      state.isBusy = isBusy;
-      document.querySelectorAll("button").forEach((button) => {
-        button.disabled = isBusy;
-      });
-      const fileInput = document.getElementById("db-file");
-      fileInput.disabled = isBusy;
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function setFetching(isFetching) {
+      state.isFetching = isFetching;
+      const refreshButton = document.getElementById("refresh-now");
+      if (refreshButton) {
+        refreshButton.disabled = isFetching;
+      }
     }
 
     function setBanner(id, tone, message) {
@@ -694,68 +664,6 @@ LIMIT 1;
       node.style.display = "block";
       node.setAttribute("data-tone", tone);
       node.innerHTML = message;
-    }
-
-    function rowsFromExec(execResult) {
-      const table = execResult[0];
-      if (!table) {
-        return [];
-      }
-      return table.values.map((values) => {
-        const row = {};
-        table.columns.forEach((column, index) => {
-          row[column] = values[index];
-        });
-        return row;
-      });
-    }
-
-    async function ensureSqlJs() {
-      if (!window.initSqlJs) {
-        throw new Error("sql.js 未成功加载");
-      }
-      if (!sqlModulePromise) {
-        sqlModulePromise = window.initSqlJs({
-          locateFile: (file) => `${SQL_WASM_DIR}/${file}`
-        });
-      }
-      return sqlModulePromise;
-    }
-
-    async function fetchText(url) {
-      const response = await fetch(url, { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error(`加载 ${url} 失败: HTTP ${response.status}`);
-      }
-      return response.text();
-    }
-
-    async function fetchBuffer(url) {
-      const response = await fetch(url, { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error(`加载 ${url} 失败: HTTP ${response.status}`);
-      }
-      return response.arrayBuffer();
-    }
-
-    async function loadSqlWithFallback(url, templateId) {
-      try {
-        return await fetchText(url);
-      } catch (error) {
-        const fallback = document.getElementById(templateId);
-        if (fallback) {
-          return fallback.textContent.trim();
-        }
-        throw error;
-      }
-    }
-
-    async function loadQueries() {
-      const [mainSql, summarySql] = await Promise.all([
-        loadSqlWithFallback(MAIN_QUERY_URL, "query-sql-fallback"),
-        loadSqlWithFallback(SUMMARY_QUERY_URL, "summary-sql-fallback")
-      ]);
-      return { mainSql, summarySql };
     }
 
     function normalizeRows(rows) {
@@ -773,26 +681,12 @@ LIMIT 1;
         .sort((left, right) => left.log_round - right.log_round);
     }
 
-    function normalizeHistorySummary(rows) {
-      const row = rows[0] || {};
+    function normalizeHistorySummary(row) {
       return {
         history_gov_unique_address_count: Number(row.history_gov_unique_address_count || 0),
         history_action_unique_address_count: Number(row.history_action_unique_address_count || 0),
         history_total_unique_address_count: Number(row.history_total_unique_address_count || 0)
       };
-    }
-
-    async function queryDatabase(arrayBuffer) {
-      const SQL = await ensureSqlJs();
-      const db = new SQL.Database(new Uint8Array(arrayBuffer));
-      try {
-        const { mainSql, summarySql } = await loadQueries();
-        const mainRows = normalizeRows(rowsFromExec(db.exec(mainSql)));
-        const historySummary = normalizeHistorySummary(rowsFromExec(db.exec(summarySql)));
-        return { mainRows, historySummary };
-      } finally {
-        db.close();
-      }
     }
 
     function getHiddenInProgressRound() {
@@ -846,23 +740,23 @@ LIMIT 1;
       document.getElementById("meta").innerHTML = `
         <div>
           <div class="meta-label">Network</div>
-          <div class="meta-value">${fmt(state.networkLabel)}</div>
+          <div class="meta-value">${escapeHtml(state.networkLabel)}</div>
         </div>
         <div>
           <div class="meta-label">DB Source</div>
-          <div class="meta-value">${fmt(state.sourceLabel)}</div>
+          <div class="meta-value">${escapeHtml(state.sourceLabel)}</div>
         </div>
         <div>
-          <div class="meta-label">Query Files</div>
-          <div class="meta-value">query.sql + summary.sql</div>
+          <div class="meta-label">DB MTime</div>
+          <div class="meta-value">${escapeHtml(state.dbMtime || "-")}</div>
         </div>
         <div>
-          <div class="meta-label">Loaded At</div>
-          <div class="meta-value">${fmt(state.loadedAt)}</div>
+          <div class="meta-label">Updated At</div>
+          <div class="meta-value">${escapeHtml(state.loadedAt || "-")}</div>
         </div>
         <div>
-          <div class="meta-label">Default View</div>
-          <div class="meta-value">隐藏最新进行中轮次</div>
+          <div class="meta-label">Refresh</div>
+          <div class="meta-value">手动刷新</div>
         </div>
       `;
     }
@@ -870,8 +764,8 @@ LIMIT 1;
     function renderSourceNote() {
       const hidden = getHiddenInProgressRound();
       const note = hidden
-        ? `默认源：${DEFAULT_DB_URL}。当前隐藏第 ${fmt(hidden.log_round)} 轮，除非右上角手动显示。`
-        : `默认源：${DEFAULT_DB_URL}。也可以手动选择其他同结构的看板 SQLite 文件。`;
+        ? `当前直接查询活库。默认隐藏第 ${fmt(hidden.log_round)} 轮，避免把进行中轮次误读成异常下跌。`
+        : "当前直接查询活库。页面首次进入自动加载，后续只在点击“立即刷新”时重拉。";
       document.getElementById("source-note").textContent = note;
     }
 
@@ -894,7 +788,6 @@ LIMIT 1;
           class="legend-item ${state.seriesVisibility[item.key] ? "" : "inactive"}"
           type="button"
           data-series-key="${item.key}"
-          ${state.isBusy ? "disabled" : ""}
           title="点击切换 ${item.label}"
         >
           <span class="legend-dot ${item.dotClass}" style="${item.dotClass ? "" : `background: ${item.color}`}"></span>
@@ -1232,30 +1125,30 @@ LIMIT 1;
         <article class="card">
           <div class="card-label">等待数据</div>
           <div class="card-value">-</div>
-          <div class="card-note">点击“加载默认 DB”或“选择本地 DB”后开始查询。</div>
+          <div class="card-note">页面启动后会直接查询活库数据。</div>
         </article>
       `;
       document.getElementById("notes").innerHTML = `
         <article class="note">
           <div class="note-title">当前状态</div>
           <strong>未加载</strong>
-          <div>页面会在浏览器内直接执行 <code>query.sql</code> 和 <code>summary.sql</code>。</div>
+          <div>页面会向本地看板服务请求活 <code>events.db</code> 汇总结果。</div>
         </article>
         <article class="note">
           <div class="note-title">默认源</div>
           <strong>${DEFAULT_NETWORK}</strong>
-          <div>默认读取 <code>${DEFAULT_DB_URL}</code>。如果浏览器拦截相对文件访问，请起本地静态服务。</div>
+          <div>默认读取 <code>script/log/db/${DEFAULT_NETWORK}/events.db</code>。</div>
         </article>
       `;
       document.getElementById("table-body").innerHTML = `
         <tr>
-          <td colspan="6" class="empty-cell">暂无数据</td>
+          <td colspan="8" class="empty-cell">暂无数据</td>
         </tr>
       `;
       document.getElementById("chart-subtitle").textContent = "加载数据后显示最近 48 轮趋势。";
       document.getElementById("table-subtitle").textContent = "表格按最新轮次在前展示。";
       setBanner("round-banner", "", "");
-      renderPlaceholderChart("等待加载 SQLite 数据库");
+      renderPlaceholderChart("等待加载活库数据");
       renderControls([]);
     }
 
@@ -1280,75 +1173,81 @@ LIMIT 1;
       renderChart(getChartRows(viewRows));
     }
 
-    async function loadDashboard({ label, networkLabel, arrayBufferPromise }) {
-      setBusy(true);
-      setBanner("load-banner", "info", "正在加载看板 SQLite 数据库并执行 SQL，请稍等。");
-
-      try {
-        const arrayBuffer = await arrayBufferPromise;
-        const { mainRows, historySummary } = await queryDatabase(arrayBuffer);
-        if (!mainRows.length) {
-          throw new Error("query.sql 没有返回任何轮次数据");
-        }
-
-        state.allRows = mainRows;
-        state.historySummary = historySummary;
-        state.sourceLabel = label;
-        state.networkLabel = networkLabel;
-        state.loadedAt = timeFormatter.format(new Date());
-        state.showInProgressRound = false;
-
-        render();
-        setBanner(
-          "load-banner",
-          "success",
-          `已加载 <strong>${fmt(label)}</strong>，共查询到 <strong>${fmt(mainRows.length)}</strong> 个 log_round。`
-        );
-      } catch (error) {
-        console.error(error);
-        const extra = location.protocol === "file:"
-          ? " 当前页面通过 file:// 打开时，浏览器通常不允许直接读取相对 .db 文件。建议改用本地静态服务，或点击“选择本地看板 DB”。"
-          : "";
-        setBanner("load-banner", "error", `${error.message}${extra}`);
-        render();
-      } finally {
-        setBusy(false);
+    function parseErrorPayload(payload, fallbackMessage) {
+      if (payload && typeof payload === "object" && payload.error) {
+        return String(payload.error);
       }
+      return fallbackMessage;
     }
 
-    async function loadDefaultDb() {
-      await loadDashboard({
-        label: DEFAULT_DB_URL,
-        networkLabel: DEFAULT_NETWORK,
-        arrayBufferPromise: fetchBuffer(DEFAULT_DB_URL)
-      });
-    }
+    async function fetchDashboard({ force = false, silent = false } = {}) {
+      if (state.inFlight) {
+        return state.inFlight;
+      }
+      if (!force && state.lastFetchedAt && Date.now() - state.lastFetchedAt < STALE_TIME_MS && state.allRows.length) {
+        return state.allRows;
+      }
 
-    async function loadLocalFile(file) {
-      await loadDashboard({
-        label: file.name,
-        networkLabel: "manual file",
-        arrayBufferPromise: file.arrayBuffer()
-      });
+      const task = (async () => {
+        if (!silent) {
+          setBanner("load-banner", "info", "正在查询活库汇总，请稍等。");
+        }
+        setFetching(true);
+        try {
+          const response = await fetch(`${API_URL}?network=${encodeURIComponent(DEFAULT_NETWORK)}`, { cache: "no-store" });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(parseErrorPayload(payload, `请求失败: HTTP ${response.status}`));
+          }
+          const rows = normalizeRows(payload.data?.rows || []);
+          const historySummary = normalizeHistorySummary(payload.data?.history_summary || {});
+          if (!rows.length) {
+            throw new Error("活库查询没有返回任何轮次数据");
+          }
+
+          state.allRows = rows;
+          state.historySummary = historySummary;
+          state.sourceLabel = payload.source_db || "-";
+          state.networkLabel = payload.network || DEFAULT_NETWORK;
+          state.loadedAt = payload.updated_at || "-";
+          state.dbMtime = payload.db_mtime || "-";
+          state.lastFetchedAt = Date.now();
+          state.showInProgressRound = false;
+
+          render();
+          if (!silent) {
+            setBanner(
+              "load-banner",
+              "success",
+              `已刷新活库数据，共 <strong>${fmt(rows.length)}</strong> 个 log_round。`
+            );
+          }
+          return rows;
+        } catch (error) {
+          console.error(error);
+          if (!state.allRows.length) {
+            render();
+          }
+          setBanner("load-banner", "error", escapeHtml(error.message || String(error)));
+          throw error;
+        } finally {
+          state.inFlight = null;
+          setFetching(false);
+        }
+      })();
+
+      state.inFlight = task;
+      return task;
     }
 
     function bindEvents() {
-      document.getElementById("reload-default").addEventListener("click", () => {
-        loadDefaultDb();
+      document.getElementById("refresh-now").addEventListener("click", () => {
+        fetchDashboard({ force: true }).catch(() => {});
       });
 
       document.getElementById("toggle-in-progress").addEventListener("click", () => {
         state.showInProgressRound = !state.showInProgressRound;
         render();
-      });
-
-      document.getElementById("db-file").addEventListener("change", async (event) => {
-        const file = event.target.files && event.target.files[0];
-        if (!file) {
-          return;
-        }
-        await loadLocalFile(file);
-        event.target.value = "";
       });
     }
 
@@ -1356,24 +1255,16 @@ LIMIT 1;
       renderEmpty();
       bindEvents();
 
-      try {
-        await ensureSqlJs();
-      } catch (error) {
-        console.error(error);
-        setBanner("load-banner", "error", `${error.message}。请确认 vendor/sql.js 文件存在。`);
-        return;
-      }
-
       if (location.protocol === "file:") {
         setBanner(
           "load-banner",
           "warning",
-          `当前页面通过 <code>file://</code> 打开，浏览器通常不会直接读取默认的 <code>${DEFAULT_DB_URL}</code>。请点击“选择本地看板 DB”，或按 README 在 <code>script/script/log</code> 目录启动静态服务后访问 <code>http://127.0.0.1:8000/dashboards/mint-addresses-by-log-round/</code>。`
+          "当前页面通过 <code>file://</code> 打开，动态 API 不可用。请先启动 <code>dashboard_server.py</code>。"
         );
         return;
       }
 
-      await loadDefaultDb();
+      await fetchDashboard({ force: true }).catch(() => {});
     }
 
     bootstrap();

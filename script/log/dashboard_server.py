@@ -1,0 +1,238 @@
+#!/usr/bin/env python3
+import argparse
+import json
+import sqlite3
+import threading
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+from timeline_runtime import TIMELINE_INDEX_DEFINITIONS, load_contract_map, now_iso, query_activity_rows_by_account
+
+
+LOG_DIR = Path(__file__).resolve().parent
+DASHBOARDS_DIR = LOG_DIR / "dashboards"
+MINT_DIR = DASHBOARDS_DIR / "mint-addresses-by-log-round"
+DEFAULT_NETWORK = "thinkium70001_public"
+CACHE_TTL_SECONDS = 30
+MINT_SOURCE_QUERY_SQL = (MINT_DIR / "source_query.sql").read_text(encoding="utf-8")
+MINT_SOURCE_SUMMARY_SQL = (MINT_DIR / "source_summary.sql").read_text(encoding="utf-8")
+
+
+@dataclass
+class CacheEntry:
+    expires_at: float
+    value: dict
+
+
+_CACHE: dict[tuple, CacheEntry] = {}
+_CACHE_LOCK = threading.Lock()
+_ENSURED_DB_MTIMES: dict[str, float] = {}
+_ENSURE_LOCK = threading.Lock()
+
+
+def iso_from_timestamp(value: float) -> str:
+    return datetime.fromtimestamp(value, timezone.utc).replace(microsecond=0).isoformat()
+
+
+def get_cache(key: tuple) -> dict | None:
+    now_ts = datetime.now(timezone.utc).timestamp()
+    with _CACHE_LOCK:
+        entry = _CACHE.get(key)
+        if not entry:
+            return None
+        if entry.expires_at < now_ts:
+            _CACHE.pop(key, None)
+            return None
+        return entry.value
+
+
+def set_cache(key: tuple, value: dict) -> None:
+    expires_at = datetime.now(timezone.utc).timestamp() + CACHE_TTL_SECONDS
+    with _CACHE_LOCK:
+        _CACHE[key] = CacheEntry(expires_at=expires_at, value=value)
+
+
+def resolve_db_path(network: str | None = None, *, db_path: str | None = None) -> Path:
+    if db_path:
+        path = Path(db_path).expanduser().resolve()
+    else:
+        chosen_network = network or DEFAULT_NETWORK
+        path = (LOG_DIR / "db" / chosen_network / "events.db").resolve()
+    if not path.exists():
+        raise FileNotFoundError(f"events.db not found: {path}")
+    return path
+
+
+def ensure_events_db_indexes(db_path: Path) -> None:
+    resolved = db_path.expanduser().resolve()
+    db_mtime = resolved.stat().st_mtime
+
+    with _ENSURE_LOCK:
+        if _ENSURED_DB_MTIMES.get(str(resolved)) == db_mtime:
+            return
+
+        conn = sqlite3.connect(resolved, timeout=60.0)
+        try:
+            for _, sql in TIMELINE_INDEX_DEFINITIONS:
+                conn.execute(sql)
+            conn.commit()
+        finally:
+            conn.close()
+
+        _ENSURED_DB_MTIMES[str(resolved)] = db_mtime
+
+
+def mint_payload(network: str, db_path: Path) -> dict:
+    db_mtime = db_path.stat().st_mtime
+    cache_key = ("mint", network, str(db_path), db_mtime)
+    cached = get_cache(cache_key)
+    if cached:
+        return cached
+
+    conn = sqlite3.connect(db_path, timeout=60.0)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = [dict(row) for row in conn.execute(MINT_SOURCE_QUERY_SQL).fetchall()]
+        summary_row = conn.execute(MINT_SOURCE_SUMMARY_SQL).fetchone()
+        history_summary = dict(summary_row) if summary_row else {
+            "history_gov_unique_address_count": 0,
+            "history_action_unique_address_count": 0,
+            "history_total_unique_address_count": 0,
+        }
+    finally:
+        conn.close()
+
+    payload = {
+        "network": network,
+        "source_db": str(db_path),
+        "db_mtime": iso_from_timestamp(db_mtime),
+        "updated_at": now_iso(),
+        "data": {
+            "rows": rows,
+            "history_summary": history_summary,
+        },
+    }
+    set_cache(cache_key, payload)
+    return payload
+
+
+def timeline_payload(network: str, db_path: Path, address: str | None) -> dict:
+    normalized_address = (address or "").strip().lower()
+    db_mtime = db_path.stat().st_mtime
+    cache_key = ("timeline", network, normalized_address, str(db_path), db_mtime)
+    cached = get_cache(cache_key)
+    if cached:
+        return cached
+
+    conn = sqlite3.connect(db_path, timeout=60.0)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows: list[dict] = []
+        if normalized_address:
+            contract_map = load_contract_map(conn)
+            rows = query_activity_rows_by_account(conn, contract_map, normalized_address)
+    finally:
+        conn.close()
+
+    payload = {
+        "network": network,
+        "source_db": str(db_path),
+        "db_mtime": iso_from_timestamp(db_mtime),
+        "updated_at": now_iso(),
+        "data": {
+            "address": normalized_address,
+            "total": len(rows),
+            "rows": rows,
+        },
+    }
+    set_cache(cache_key, payload)
+    return payload
+
+
+class DashboardRequestHandler(SimpleHTTPRequestHandler):
+    def __init__(self, *args, directory: str | None = None, **kwargs):
+        super().__init__(*args, directory=directory or str(LOG_DIR), **kwargs)
+
+    def do_GET(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/"):
+            self.handle_api(parsed)
+            return
+        super().do_GET()
+
+    def handle_api(self, parsed) -> None:
+        try:
+            params = parse_qs(parsed.query)
+            network = params.get("network", [self.server.default_network])[0]  # type: ignore[attr-defined]
+            db_path = resolve_db_path(network)
+            ensure_events_db_indexes(db_path)
+
+            if parsed.path == "/api/dashboards/mint-addresses-by-log-round":
+                payload = mint_payload(network, db_path)
+                self.respond_json(200, payload)
+                return
+
+            if parsed.path == "/api/dashboards/wallet-activity-timeline":
+                address = params.get("address", [""])[0].strip().lower()
+                if address and not is_address(address):
+                    self.respond_json(400, {"error": "invalid address"})
+                    return
+                payload = timeline_payload(network, db_path, address)
+                self.respond_json(200, payload)
+                return
+
+            self.respond_json(404, {"error": "not found"})
+        except FileNotFoundError as error:
+            self.respond_json(404, {"error": str(error)})
+        except Exception as error:  # noqa: BLE001
+            self.respond_json(500, {"error": str(error)})
+
+    def respond_json(self, status_code: int, payload: dict) -> None:
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status_code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+
+def is_address(value: str) -> bool:
+    return len(value) == 42 and value.startswith("0x") and all(ch in "0123456789abcdef" for ch in value[2:])
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Serve LOVE20 dashboards and dynamic dashboard APIs.")
+    parser.add_argument("--host", default="127.0.0.1", help="Host to bind")
+    parser.add_argument("--port", type=int, default=8000, help="Port to bind")
+    parser.add_argument("--network", default=DEFAULT_NETWORK, help="Default network label")
+    parser.add_argument("--db-path", help="Explicit events.db path for ensure-indexes mode")
+    parser.add_argument(
+        "--ensure-indexes-only",
+        action="store_true",
+        help="Only ensure dashboard indexes, then exit",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    if args.ensure_indexes_only:
+        db_path = resolve_db_path(args.network, db_path=args.db_path)
+        ensure_events_db_indexes(db_path)
+        print(f"Dashboard indexes ready: {db_path}")
+        return
+
+    ensure_events_db_indexes(resolve_db_path(args.network))
+
+    httpd = ThreadingHTTPServer((args.host, args.port), lambda *handler_args, **handler_kwargs: DashboardRequestHandler(*handler_args, directory=str(LOG_DIR), **handler_kwargs))
+    httpd.default_network = args.network  # type: ignore[attr-defined]
+    print(f"Serving dashboards at http://{args.host}:{args.port}/dashboards/")
+    httpd.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

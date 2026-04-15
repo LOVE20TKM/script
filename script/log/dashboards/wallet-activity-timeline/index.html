@@ -703,7 +703,7 @@
             <p class="eyebrow">Wallet Activity Timeline</p>
             <h1>钱包地址时间线看板</h1>
             <p>
-              输入任意钱包地址后，页面会从专用看板 SQLite 里按区块和交易顺序拉出该地址的时间线，并把
+              输入任意钱包地址后，页面会直接查询活 <code>events.db</code>，按区块和交易顺序拉出该地址的时间线，并把
               奖励、行动参与 / 追加 / 退出、转账、加池 / LP 铸造这类资产流动归类成接近人工整理的表格。
             </p>
           </div>
@@ -711,10 +711,8 @@
         </div>
 
         <div class="hero-note">
-          时间线主真相源是
-          <code>events</code
-          >、<code>transactions</code>、<code>blocks</code>。页面显示的是基于这些记录归纳后的交易级摘要，不直接查询 6G
-          源库，因此需要先运行当前目录下的 <code>refresh.sh</code> 生成专用看板 DB。
+          时间线主真相源是 <code>events</code>、<code>transactions</code>、<code>blocks</code>。页面显示的是基于这些记录归纳后的交易级摘要，
+          由本地看板服务按地址实时聚合，不再依赖预生成专用 DB。
         </div>
 
         <div class="query-bar">
@@ -732,11 +730,7 @@
             </div>
             <div class="button-row">
               <button class="btn btn-primary" id="query-btn" type="button">查询时间线</button>
-              <button class="btn" id="reload-btn" type="button">重新加载默认 DB</button>
-              <label class="btn btn-file">
-                选择本地 DB
-                <input id="db-file" type="file" accept=".db,.sqlite,.sqlite3,application/octet-stream" />
-              </label>
+              <button class="btn" id="refresh-btn" type="button">刷新当前地址</button>
             </div>
           </div>
           <div class="filter-tools">
@@ -785,13 +779,13 @@
       </section>
     </div>
 
-    <script src="../vendor/sql.js/sql-wasm.js"></script>
     <script>
-      const DEFAULT_NETWORK = "thinkium70001_public";
-      const DEFAULT_DB_URL = `./data/${DEFAULT_NETWORK}.db`;
-      const SQL_WASM_DIR = "../vendor/sql.js";
+      const pageParams = new URLSearchParams(window.location.search);
+      const DEFAULT_NETWORK = pageParams.get("network") || "thinkium70001_public";
+      const API_URL = "/api/dashboards/wallet-activity-timeline";
       const TIMEZONE = "Asia/Shanghai";
       const RECENT_ADDRESS_KEY = "wallet-activity-timeline:recent-address";
+      const STALE_TIME_MS = 30_000;
 
       const timeFormatter = new Intl.DateTimeFormat("zh-CN", {
         timeZone: TIMEZONE,
@@ -816,15 +810,19 @@
       ];
 
       const state = {
-        db: null,
-        sqlModulePromise: null,
-        sourceLabel: DEFAULT_DB_URL,
-        metadata: null,
+        sourceLabel: `script/log/db/${DEFAULT_NETWORK}/events.db`,
+        dbMtime: null,
+        loadedAt: null,
         queriedAddress: "",
+        pendingAddress: "",
         rows: [],
         activeFilter: "all",
         showFailed: false,
-        isBusy: false,
+        isFetching: false,
+        lastMetaFetchedAt: 0,
+        lastQueryFetchedAt: 0,
+        abortController: null,
+        requestSeq: 0,
       };
 
       function escapeHtml(value) {
@@ -837,9 +835,7 @@
       }
 
       function normalizeAddress(value) {
-        return String(value || "")
-          .trim()
-          .toLowerCase();
+        return String(value || "").trim().toLowerCase();
       }
 
       function isAddress(value) {
@@ -896,15 +892,9 @@
         const text = String(label || "").trim();
         const match = /^(授权|转出|接收)\s+(.+)$/.exec(text);
         if (!match) {
-          return {
-            primary: text || "-",
-            secondary: "",
-          };
+          return { primary: text || "-", secondary: "" };
         }
-        return {
-          primary: match[1],
-          secondary: match[2],
-        };
+        return { primary: match[1], secondary: match[2] };
       }
 
       function actionVisual(row) {
@@ -942,15 +932,10 @@
         return { flowLabel: "复杂", flowClass: "flow-complex", categoryLabel: action || "其他", categoryClass: row.action_group || "other" };
       }
 
-      function setBusy(isBusy) {
-        state.isBusy = isBusy;
-        document.getElementById("query-btn").disabled = isBusy;
-        document.getElementById("reload-btn").disabled = isBusy;
-        document.getElementById("db-file").disabled = isBusy;
-        document.getElementById("show-failed-toggle").disabled = isBusy;
-        document.querySelectorAll(".filter-btn").forEach((button) => {
-          button.disabled = isBusy;
-        });
+      function setFetching(isFetching) {
+        state.isFetching = isFetching;
+        document.getElementById("query-btn").disabled = isFetching;
+        document.getElementById("refresh-btn").disabled = isFetching;
       }
 
       function setBanner(id, tone, message) {
@@ -988,138 +973,13 @@
           digits = digits.padStart(scale + 1, "0");
         }
         const whole = digits.slice(0, digits.length - scale) || "0";
-        const fraction = digits.slice(digits.length - scale).replace(/0+$/, "");
+        const fraction = digits
+          .slice(digits.length - scale)
+          .slice(0, 2)
+          .replace(/0+$/, "");
         const wholeText = BigInt(whole).toLocaleString("zh-CN");
         const sign = negative ? "-" : "";
         return fraction ? `${sign}${wholeText}.${fraction}` : `${sign}${wholeText}`;
-      }
-
-      function parseJson(value, fallback = []) {
-        try {
-          return JSON.parse(value || "[]");
-        } catch (error) {
-          return fallback;
-        }
-      }
-
-      function rowsFromStatement(statement) {
-        const rows = [];
-        while (statement.step()) {
-          rows.push(statement.getAsObject());
-        }
-        return rows;
-      }
-
-      async function ensureSqlJs() {
-        if (!window.initSqlJs) {
-          throw new Error("sql.js 未成功加载");
-        }
-        if (!state.sqlModulePromise) {
-          state.sqlModulePromise = window.initSqlJs({
-            locateFile: (file) => `${SQL_WASM_DIR}/${file}`,
-          });
-        }
-        return state.sqlModulePromise;
-      }
-
-      async function fetchBuffer(url) {
-        const response = await fetch(url, { cache: "no-store" });
-        if (!response.ok) {
-          throw new Error(`加载 ${url} 失败: HTTP ${response.status}`);
-        }
-        return response.arrayBuffer();
-      }
-
-      function closeDatabase() {
-        if (state.db) {
-          state.db.close();
-          state.db = null;
-        }
-      }
-
-      function loadMetadata() {
-        if (!state.db) {
-          state.metadata = null;
-          return;
-        }
-        const result = state.db.exec("SELECT network, source_db, generated_at, record_count FROM metadata LIMIT 1");
-        const row =
-          result[0] && result[0].values[0]
-            ? {
-                network: result[0].values[0][0],
-                source_db: result[0].values[0][1],
-                generated_at: result[0].values[0][2],
-                record_count: result[0].values[0][3],
-              }
-            : null;
-        state.metadata = row;
-      }
-
-      async function loadDatabase({ label, arrayBufferPromise }) {
-        setBusy(true);
-        setBanner("load-banner", "info", "正在加载看板 SQLite，请稍等。");
-        setBanner("query-banner", "", "");
-        try {
-          const SQL = await ensureSqlJs();
-          const arrayBuffer = await arrayBufferPromise;
-          closeDatabase();
-          state.db = new SQL.Database(new Uint8Array(arrayBuffer));
-          state.sourceLabel = label;
-          loadMetadata();
-          renderMeta();
-          renderSummary([]);
-          renderTable([]);
-          setBanner("load-banner", "success", `已加载看板 DB：<code>${escapeHtml(label)}</code>`);
-        } catch (error) {
-          closeDatabase();
-          renderMeta();
-          renderSummary([]);
-          renderTable([]);
-          setBanner("load-banner", "error", escapeHtml(error.message || String(error)));
-        } finally {
-          setBusy(false);
-        }
-      }
-
-      function queryActivityRows(address) {
-        if (!state.db) {
-          throw new Error("看板 DB 尚未加载。");
-        }
-        const statement = state.db.prepare(`
-        SELECT
-          id,
-          block_number,
-          block_timestamp,
-          tx_hash,
-          tx_index,
-          status,
-          action,
-          action_group,
-          action_id_text,
-          group_id_text,
-          communities_json,
-          amounts_json,
-          counterparties_json,
-          description
-        FROM tx_activity
-        WHERE account = ?
-        ORDER BY block_number DESC, tx_index DESC, id DESC
-      `);
-        try {
-          statement.bind([address]);
-          return rowsFromStatement(statement).map((row) => ({
-            ...row,
-            block_number: Number(row.block_number),
-            block_timestamp: Number(row.block_timestamp),
-            tx_index: Number(row.tx_index || 0),
-            status: row.status === null ? null : Number(row.status),
-            communities: parseJson(row.communities_json),
-            amounts: parseJson(row.amounts_json),
-            counterparties: parseJson(row.counterparties_json),
-          }));
-        } finally {
-          statement.free();
-        }
       }
 
       function getFailedRows() {
@@ -1143,6 +1003,7 @@
 
       function renderQueryResultBanner() {
         if (!state.queriedAddress) {
+          setBanner("query-banner", "", "");
           return;
         }
         const visibleRows = getVisibleRows();
@@ -1152,7 +1013,7 @@
             setBanner(
               "query-banner",
               "warning",
-              `当前可见 <strong>0</strong> 条记录，已隐藏 <strong>${failedRows.length}</strong> 条失败交易。`,
+              `当前可见 <strong>0</strong> 条记录，已隐藏 <strong>${failedRows.length}</strong> 条失败交易。`
             );
             return;
           }
@@ -1166,28 +1027,27 @@
         setBanner(
           "query-banner",
           "warning",
-          `地址 <code>${escapeHtml(state.queriedAddress)}</code> 在当前看板 DB 中没有命中记录。`,
+          `地址 <code>${escapeHtml(state.queriedAddress)}</code> 在当前活库中没有命中记录。`
         );
       }
 
       function renderMeta() {
-        const metadata = state.metadata;
         document.getElementById("meta").innerHTML = `
         <div class="meta-row">
           <div class="meta-label">Network</div>
-          <div class="meta-value">${escapeHtml(metadata?.network || DEFAULT_NETWORK)}</div>
+          <div class="meta-value">${escapeHtml(DEFAULT_NETWORK)}</div>
         </div>
         <div class="meta-row">
           <div class="meta-label">DB Source</div>
           <div class="meta-value">${escapeHtml(state.sourceLabel)}</div>
         </div>
         <div class="meta-row">
-          <div class="meta-label">Generated</div>
-          <div class="meta-value">${escapeHtml(metadata?.generated_at || "-")}</div>
+          <div class="meta-label">DB MTime</div>
+          <div class="meta-value">${escapeHtml(state.dbMtime || "-")}</div>
         </div>
         <div class="meta-row">
-          <div class="meta-label">Rows</div>
-          <div class="meta-value">${metadata?.record_count ? BigInt(metadata.record_count).toLocaleString("zh-CN") : "-"}</div>
+          <div class="meta-label">Updated</div>
+          <div class="meta-value">${escapeHtml(state.loadedAt || "-")}</div>
         </div>
       `;
       }
@@ -1205,7 +1065,6 @@
             class="filter-btn ${state.activeFilter === item.key ? "active" : ""}"
             data-filter-key="${escapeHtml(item.key)}"
             type="button"
-            ${state.isBusy ? "disabled" : ""}
           >
             ${escapeHtml(item.label)} (${count})
           </button>
@@ -1247,12 +1106,12 @@
               {
                 label: "当前状态",
                 value: "等待查询",
-                note: "加载看板 DB 后，输入钱包地址开始查询。",
+                note: "输入钱包地址后直接查询活库，不再需要刷新专用 DB。",
               },
               {
-                label: "默认 DB",
+                label: "默认网络",
                 value: DEFAULT_NETWORK,
-                note: "也可以手动选择本地同结构的看板 SQLite 文件。",
+                note: "页面首次进入不自动加载，只有手动查询或点击刷新时才会更新。",
               },
               {
                 label: "归类口径",
@@ -1266,7 +1125,7 @@
           const earliest = rows[rows.length - 1];
           const uniqueActions = new Set(rows.map((row) => row.action)).size;
           const uniqueActionIds = new Set(
-            rows.flatMap((row) => (row.action_id_text ? row.action_id_text.split(",").filter(Boolean) : [])),
+            rows.flatMap((row) => (row.action_id_text ? row.action_id_text.split(",").filter(Boolean) : []))
           ).size;
           cards.push(
             {
@@ -1300,7 +1159,7 @@
           <div class="card-value">${escapeHtml(card.value)}</div>
           <div class="card-note">${escapeHtml(card.note)}</div>
         </article>
-      `,
+      `
           )
           .join("");
       }
@@ -1316,7 +1175,7 @@
           ${renderTokenInline(item.token)}
           <span>${escapeHtml(formatBigInt(item.raw, item.decimals || 18))}</span>
         </span>
-      `,
+      `
           )
           .join("")}</div>`;
       }
@@ -1331,7 +1190,7 @@
         <span class="community-card" title="${escapeHtml(item.address || "")}">
           <span class="community-label">${renderTokenInline(item.label || shortAddress(item.address || ""))}</span>
         </span>
-      `,
+      `
           )
           .join("")}</div>`;
       }
@@ -1376,7 +1235,7 @@
           ${item.label ? `<span class="counterparty-label">${escapeHtml(item.label)}</span>` : ""}
           <span class="counterparty-address">${escapeHtml(shortAddress(item.address || ""))}</span>
         </span>
-      `,
+      `
           )
           .join("")}</div>`;
       }
@@ -1386,7 +1245,7 @@
         const subtitle = document.getElementById("table-subtitle");
         subtitle.textContent = state.queriedAddress
           ? `${shortAddress(state.queriedAddress)} 共命中 ${rows.length} 条记录，按区块和交易顺序倒序显示。`
-          : "先加载看板 DB，再输入钱包地址。";
+          : "输入钱包地址后直接查询活库。";
 
         if (!rows.length) {
           tbody.innerHTML = `<tr><td colspan="6" class="empty">${escapeHtml(state.queriedAddress ? "没有查到匹配记录。" : "等待输入地址。")}</td></tr>`;
@@ -1404,107 +1263,189 @@
           <td>${renderCounterpartyCell(row.counterparties)}</td>
           <td>${escapeHtml(row.description)}</td>
         </tr>
-      `,
+      `
           )
           .join("");
       }
 
-      async function runQuery() {
+      function parseErrorPayload(payload, fallbackMessage) {
+        if (payload && typeof payload === "object" && payload.error) {
+          return String(payload.error);
+        }
+        return fallbackMessage;
+      }
+
+      async function requestTimeline(address, { force = false, silent = false, metadataOnly = false } = {}) {
+        const normalizedAddress = normalizeAddress(address);
+        const now = Date.now();
+        if (!force) {
+          const lastFetchedAt = normalizedAddress ? state.lastQueryFetchedAt : state.lastMetaFetchedAt;
+          if (lastFetchedAt && now - lastFetchedAt < STALE_TIME_MS) {
+            return;
+          }
+        }
+
+        if (state.abortController) {
+          state.abortController.abort();
+        }
+        const controller = new AbortController();
+        state.abortController = controller;
+        const requestSeq = ++state.requestSeq;
+        if (!metadataOnly) {
+          state.pendingAddress = normalizedAddress;
+        }
+
+        if (!silent) {
+          if (metadataOnly) {
+            setBanner("load-banner", "info", "正在连接活库，请稍等。");
+          } else {
+            setBanner("query-banner", "info", `正在查询地址 <code>${escapeHtml(normalizedAddress)}</code> 的时间线。`);
+          }
+        }
+        setFetching(true);
+
+        try {
+          const url = new URL(API_URL, window.location.origin);
+          url.searchParams.set("network", DEFAULT_NETWORK);
+          if (normalizedAddress) {
+            url.searchParams.set("address", normalizedAddress);
+          }
+
+          const response = await fetch(url, { cache: "no-store", signal: controller.signal });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(parseErrorPayload(payload, `请求失败: HTTP ${response.status}`));
+          }
+          if (requestSeq !== state.requestSeq) {
+            return;
+          }
+
+          state.sourceLabel = payload.source_db || state.sourceLabel;
+          state.dbMtime = payload.db_mtime || state.dbMtime;
+          state.loadedAt = payload.updated_at || state.loadedAt;
+
+          if (metadataOnly) {
+            state.lastMetaFetchedAt = now;
+            renderMeta();
+            if (!silent) {
+              setBanner("load-banner", "success", "已连接活库，可直接查询任意钱包地址。");
+            }
+            return;
+          }
+
+          state.queriedAddress = normalizedAddress;
+          state.pendingAddress = "";
+          state.rows = Array.isArray(payload.data?.rows) ? payload.data.rows : [];
+          state.activeFilter = "all";
+          state.lastQueryFetchedAt = now;
+          saveRecentAddress(normalizedAddress);
+
+          renderMeta();
+          renderFilters();
+          renderSummary(getVisibleRows());
+          renderTable(getFilteredRows());
+          renderQueryResultBanner();
+          setBanner("load-banner", "", "");
+          return payload;
+        } catch (error) {
+          if (error.name === "AbortError") {
+            return;
+          }
+          if (!metadataOnly && requestSeq === state.requestSeq) {
+            state.pendingAddress = "";
+          }
+          console.error(error);
+          if (metadataOnly) {
+            setBanner("load-banner", "error", escapeHtml(error.message || String(error)));
+          } else {
+            setBanner("query-banner", "error", escapeHtml(error.message || String(error)));
+          }
+          renderMeta();
+          renderFilters();
+          renderSummary(getVisibleRows());
+          renderTable(getFilteredRows());
+          renderQueryResultBanner();
+        } finally {
+          if (requestSeq === state.requestSeq) {
+            state.abortController = null;
+          }
+          setFetching(false);
+        }
+      }
+
+      async function runQuery({ force = true, silent = false } = {}) {
         const addressInput = document.getElementById("address-input");
         const address = normalizeAddress(addressInput.value);
         if (!isAddress(address)) {
           setBanner("query-banner", "warning", "请输入完整的钱包地址，格式需要是 42 位的 <code>0x...</code>。");
           return;
         }
-        if (!state.db) {
-          setBanner("query-banner", "warning", "请先加载看板 DB。");
-          return;
-        }
-
-        setBusy(true);
-        setBanner("query-banner", "info", `正在查询地址 <code>${escapeHtml(address)}</code> 的时间线。`);
-        try {
-          state.queriedAddress = address;
-          saveRecentAddress(address);
-          state.rows = queryActivityRows(address);
-          state.activeFilter = "all";
-          renderFilters();
-          renderSummary(getVisibleRows());
-          renderTable(getFilteredRows());
-          renderQueryResultBanner();
-        } catch (error) {
-          setBanner("query-banner", "error", escapeHtml(error.message || String(error)));
-        } finally {
-          setBusy(false);
-        }
+        await requestTimeline(address, { force, silent, metadataOnly: false });
       }
 
-      async function boot() {
+      function renderAll() {
         renderMeta();
-        renderFilters();
-        renderSummary([]);
-        await loadDatabase({
-          label: DEFAULT_DB_URL,
-          arrayBufferPromise: fetchBuffer(DEFAULT_DB_URL),
-        });
-
-        const params = new URLSearchParams(window.location.search);
-        const address = normalizeAddress(params.get("address")) || loadRecentAddress();
-        if (isAddress(address)) {
-          document.getElementById("address-input").value = address;
-          await runQuery();
-        }
-      }
-
-      document.getElementById("query-btn").addEventListener("click", runQuery);
-      document.getElementById("reload-btn").addEventListener("click", async () => {
-        await loadDatabase({
-          label: DEFAULT_DB_URL,
-          arrayBufferPromise: fetchBuffer(DEFAULT_DB_URL),
-        });
-      });
-
-      document.getElementById("address-input").addEventListener("keydown", async (event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          await runQuery();
-        }
-      });
-
-      document.getElementById("db-file").addEventListener("change", async (event) => {
-        const [file] = event.target.files || [];
-        if (!file) {
-          return;
-        }
-        await loadDatabase({
-          label: file.name,
-          arrayBufferPromise: file.arrayBuffer(),
-        });
-        event.target.value = "";
-      });
-
-      document.getElementById("show-failed-toggle").addEventListener("change", (event) => {
-        state.showFailed = event.target.checked;
         renderFilters();
         renderSummary(getVisibleRows());
         renderTable(getFilteredRows());
         renderQueryResultBanner();
+      }
+
+      document.getElementById("query-btn").addEventListener("click", () => {
+        runQuery({ force: true }).catch(() => {});
       });
 
-      if (!window.initSqlJs) {
-        setBanner("load-banner", "error", "sql.js 未成功加载，请确认 <code>../vendor/sql.js</code> 文件存在。");
-      } else if (window.location.protocol === "file:") {
-        setBanner(
-          "load-banner",
-          "warning",
-          `当前页面是通过 <code>file://</code> 打开的，浏览器通常不会直接读取默认的 <code>${DEFAULT_DB_URL}</code>。请在 <code>script/script/log</code> 目录启动静态服务后访问当前页面，或者直接点击“选择本地 DB”。`,
-        );
-        renderMeta();
+      document.getElementById("refresh-btn").addEventListener("click", () => {
+        const addressInput = document.getElementById("address-input");
+        const inputAddress = normalizeAddress(addressInput.value);
+        if (inputAddress) {
+          if (!isAddress(inputAddress)) {
+            setBanner("query-banner", "warning", "请输入完整的钱包地址，格式需要是 42 位的 <code>0x...</code>。");
+            return;
+          }
+          runQuery({ force: true }).catch(() => {});
+          return;
+        }
+        if (state.queriedAddress) {
+          addressInput.value = state.queriedAddress;
+          runQuery({ force: true }).catch(() => {});
+          return;
+        }
+        requestTimeline("", { force: true, metadataOnly: true }).catch(() => {});
+      });
+
+      document.getElementById("address-input").addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          runQuery({ force: true }).catch(() => {});
+        }
+      });
+
+      document.getElementById("show-failed-toggle").addEventListener("change", (event) => {
+        state.showFailed = event.target.checked;
+        renderAll();
+      });
+
+      function setupFilterRendering() {
         renderFilters();
-        renderSummary([]);
-      } else {
-        boot();
       }
+
+      async function boot() {
+        renderAll();
+        if (window.location.protocol === "file:") {
+          setBanner("load-banner", "warning", "当前页面通过 <code>file://</code> 打开，动态 API 不可用。请先启动 <code>dashboard_server.py</code>。");
+          return;
+        }
+
+        const address = normalizeAddress(pageParams.get("address")) || loadRecentAddress();
+        if (isAddress(address)) {
+          document.getElementById("address-input").value = address;
+        }
+
+        setupFilterRendering();
+      }
+
+      boot();
     </script>
   </body>
 </html>
