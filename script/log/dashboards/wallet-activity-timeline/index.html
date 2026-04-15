@@ -225,6 +225,31 @@
         gap: 8px;
       }
 
+      .filter-tools {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+      }
+
+      .toggle-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(29, 36, 48, 0.1);
+        background: rgba(255, 255, 255, 0.72);
+        color: var(--muted);
+        font-size: 13px;
+        user-select: none;
+      }
+
+      .toggle-chip input {
+        margin: 0;
+      }
+
       .filter-btn {
         border: 1px solid rgba(29, 36, 48, 0.1);
         background: rgba(255, 255, 255, 0.7);
@@ -714,7 +739,13 @@
               </label>
             </div>
           </div>
-          <div class="filters" id="filters"></div>
+          <div class="filter-tools">
+            <div class="filters" id="filters"></div>
+            <label class="toggle-chip">
+              <input id="show-failed-toggle" type="checkbox" />
+              <span>显示失败交易</span>
+            </label>
+          </div>
         </div>
 
         <div class="status-banner" id="load-banner"></div>
@@ -778,6 +809,7 @@
         { key: "reward", label: "奖励" },
         { key: "actionJoin", label: "行动" },
         { key: "liquidity", label: "流动性" },
+        { key: "swap", label: "兑换" },
         { key: "transfer", label: "转账" },
         { key: "native", label: "原生币" },
         { key: "complex", label: "复杂交互" },
@@ -791,6 +823,7 @@
         queriedAddress: "",
         rows: [],
         activeFilter: "all",
+        showFailed: false,
         isBusy: false,
       };
 
@@ -897,6 +930,9 @@
         if (row.action_group === "liquidity") {
           return { flowLabel: "投入", flowClass: "flow-position", categoryLabel: "流动性", categoryClass: "liquidity" };
         }
+        if (row.action_group === "swap") {
+          return { flowLabel: "兑换", flowClass: "flow-position", categoryLabel: "兑换", categoryClass: "swap" };
+        }
         if (row.action_group === "native") {
           if (action.includes("转账")) {
             return { flowLabel: "流出", flowClass: "flow-out", categoryLabel: "原生币", categoryClass: "native" };
@@ -911,6 +947,10 @@
         document.getElementById("query-btn").disabled = isBusy;
         document.getElementById("reload-btn").disabled = isBusy;
         document.getElementById("db-file").disabled = isBusy;
+        document.getElementById("show-failed-toggle").disabled = isBusy;
+        document.querySelectorAll(".filter-btn").forEach((button) => {
+          button.disabled = isBusy;
+        });
       }
 
       function setBanner(id, tone, message) {
@@ -1082,11 +1122,52 @@
         }
       }
 
-      function getFilteredRows() {
-        if (state.activeFilter === "all") {
+      function getFailedRows() {
+        return state.rows.filter((row) => row.status === 0);
+      }
+
+      function getVisibleRows() {
+        if (state.showFailed) {
           return state.rows;
         }
-        return state.rows.filter((row) => row.action_group === state.activeFilter);
+        return state.rows.filter((row) => row.status !== 0);
+      }
+
+      function getFilteredRows() {
+        const rows = getVisibleRows();
+        if (state.activeFilter === "all") {
+          return rows;
+        }
+        return rows.filter((row) => row.action_group === state.activeFilter);
+      }
+
+      function renderQueryResultBanner() {
+        if (!state.queriedAddress) {
+          return;
+        }
+        const visibleRows = getVisibleRows();
+        const failedRows = getFailedRows();
+        if (state.rows.length) {
+          if (!state.showFailed && failedRows.length && !visibleRows.length) {
+            setBanner(
+              "query-banner",
+              "warning",
+              `当前可见 <strong>0</strong> 条记录，已隐藏 <strong>${failedRows.length}</strong> 条失败交易。`,
+            );
+            return;
+          }
+          let message = `已查询到 <strong>${visibleRows.length}</strong> 条记录。`;
+          if (!state.showFailed && failedRows.length) {
+            message += ` 已隐藏 <strong>${failedRows.length}</strong> 条失败交易。`;
+          }
+          setBanner("query-banner", "success", message);
+          return;
+        }
+        setBanner(
+          "query-banner",
+          "warning",
+          `地址 <code>${escapeHtml(state.queriedAddress)}</code> 在当前看板 DB 中没有命中记录。`,
+        );
       }
 
       function renderMeta() {
@@ -1112,7 +1193,7 @@
       }
 
       function renderFilters() {
-        const rows = state.rows;
+        const rows = getVisibleRows();
         const counts = rows.reduce((acc, row) => {
           acc[row.action_group] = (acc[row.action_group] || 0) + 1;
           return acc;
@@ -1143,23 +1224,43 @@
       function renderSummary(rows) {
         const cards = [];
         if (!rows.length) {
-          cards.push(
-            {
-              label: "当前状态",
-              value: "等待查询",
-              note: "加载看板 DB 后，输入钱包地址开始查询。",
-            },
-            {
-              label: "默认 DB",
-              value: DEFAULT_NETWORK,
-              note: "也可以手动选择本地同结构的看板 SQLite 文件。",
-            },
-            {
-              label: "归类口径",
-              value: "交易级摘要",
-              note: "奖励、行动参与 / 追加 / 退出、Transfer、原生币转账都会归并成单行。",
-            },
-          );
+          if (state.queriedAddress && state.rows.length) {
+            cards.push(
+              {
+                label: "当前状态",
+                value: "筛选后为空",
+                note: !state.showFailed && getFailedRows().length ? "当前隐藏失败交易。" : "当前分类下没有可见记录。",
+              },
+              {
+                label: "钱包地址",
+                value: shortAddress(state.queriedAddress),
+                note: "切换分类或失败交易开关后会重新计算。",
+              },
+              {
+                label: "归类口径",
+                value: "交易级摘要",
+                note: "奖励、行动参与 / 追加 / 退出、Transfer、原生币转账都会归并成单行。",
+              },
+            );
+          } else {
+            cards.push(
+              {
+                label: "当前状态",
+                value: "等待查询",
+                note: "加载看板 DB 后，输入钱包地址开始查询。",
+              },
+              {
+                label: "默认 DB",
+                value: DEFAULT_NETWORK,
+                note: "也可以手动选择本地同结构的看板 SQLite 文件。",
+              },
+              {
+                label: "归类口径",
+                value: "交易级摘要",
+                note: "奖励、行动参与 / 追加 / 退出、Transfer、原生币转账都会归并成单行。",
+              },
+            );
+          }
         } else {
           const latest = rows[0];
           const earliest = rows[rows.length - 1];
@@ -1328,17 +1429,9 @@
           state.rows = queryActivityRows(address);
           state.activeFilter = "all";
           renderFilters();
-          renderSummary(state.rows);
-          renderTable(state.rows);
-          if (state.rows.length) {
-            setBanner("query-banner", "success", `已查询到 <strong>${state.rows.length}</strong> 条记录。`);
-          } else {
-            setBanner(
-              "query-banner",
-              "warning",
-              `地址 <code>${escapeHtml(address)}</code> 在当前看板 DB 中没有命中记录。`,
-            );
-          }
+          renderSummary(getVisibleRows());
+          renderTable(getFilteredRows());
+          renderQueryResultBanner();
         } catch (error) {
           setBanner("query-banner", "error", escapeHtml(error.message || String(error)));
         } finally {
@@ -1388,6 +1481,14 @@
           arrayBufferPromise: file.arrayBuffer(),
         });
         event.target.value = "";
+      });
+
+      document.getElementById("show-failed-toggle").addEventListener("change", (event) => {
+        state.showFailed = event.target.checked;
+        renderFilters();
+        renderSummary(getVisibleRows());
+        renderTable(getFilteredRows());
+        renderQueryResultBanner();
       });
 
       if (!window.initSqlJs) {

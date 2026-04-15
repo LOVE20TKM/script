@@ -20,6 +20,14 @@ PAIR_LABELS = {
     "love20life20pair": "LOVE20/LIFE20 LP",
     "life20tusdtpair": "LIFE20/TUSDT LP",
 }
+ROUTER_LABEL = "uniswapV2Router02"
+ROUTER_SELECTORS = {
+    "0x38ed1739": "swapExactTokensForTokens",
+    "0x18cbafe5": "swapExactTokensForETH",
+    "0x7ff36ab5": "swapExactETHForTokens",
+    "0xe8e33700": "addLiquidity",
+    "0xbaa2abde": "removeLiquidity",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -182,6 +190,71 @@ def describe_counterparty(counterparty: str | None, contract_map: dict[str, str]
     return short_address(normalized)
 
 
+def is_sl_token_label(label: str | None) -> bool:
+    return bool(label) and str(label).lower().endswith("sltoken")
+
+
+def transfer_amounts(items: list[dict]) -> list[dict]:
+    return collapse_amounts(
+        [
+            {
+                "token": item["token"],
+                "raw": str(item["raw"]),
+                "decimals": int(item.get("decimals", 18)),
+            }
+            for item in items
+        ]
+    )
+
+
+def amount_item(token: str, raw: int | str, decimals: int = 18) -> dict:
+    return {
+        "token": token,
+        "raw": str(raw),
+        "decimals": decimals,
+    }
+
+
+def selector_name(input_selector: str | None) -> str:
+    return ROUTER_SELECTORS.get((input_selector or "").lower(), "")
+
+
+def is_router_address(address: str | None, contract_map: dict[str, str]) -> bool:
+    return contract_map.get(normalize_address(address)) == ROUTER_LABEL
+
+
+def first_token_name(items: list[dict], fallback: str = "Token") -> str:
+    for item in items:
+        token = str(item.get("token") or "").strip()
+        if token:
+            return token
+    return fallback
+
+
+def pair_counterparties(items: list[dict], contract_map: dict[str, str]) -> list[str]:
+    pairs: list[str] = []
+    for item in items:
+        counterparty = normalize_address(item.get("counterparty"))
+        label = contract_map.get(counterparty, "")
+        if is_lp_token(token_label(label)) or (label and label.lower().endswith("pair")):
+            pairs.append(counterparty)
+    return list(dict.fromkeys(pairs))
+
+
+def failed_router_action(selector: str, *, for_router: bool) -> tuple[str, str]:
+    if selector == "swapExactETHForTokens":
+        return ("Router 买入失败", "收到失败的原生币买币调用") if for_router else ("买入代币失败", f"向 {ROUTER_LABEL} 发送原生币买币，但调用失败")
+    if selector == "swapExactTokensForETH":
+        return ("Router 卖出失败", "收到失败的卖币出金调用") if for_router else ("卖出代币失败", f"向 {ROUTER_LABEL} 发起卖币出金，但调用失败")
+    if selector == "swapExactTokensForTokens":
+        return ("Router 换币失败", "收到失败的换币调用") if for_router else ("兑换代币失败", f"通过 {ROUTER_LABEL} 换币，但调用失败")
+    if selector == "addLiquidity":
+        return ("Router 加池失败", "收到失败的加池调用") if for_router else ("加池失败", f"通过 {ROUTER_LABEL} 加池，但调用失败")
+    if selector == "removeLiquidity":
+        return ("Router 撤池失败", "收到失败的撤池调用") if for_router else ("撤池失败", f"通过 {ROUTER_LABEL} 撤池，但调用失败")
+    return ("Router 调用失败", "收到失败的路由调用") if for_router else ("路由调用失败", f"调用 {ROUTER_LABEL} 失败")
+
+
 def infer_lp_label_for_token(token_address: str | None, contract_map: dict[str, str]) -> str:
     token_name = contract_map.get(normalize_address(token_address), "")
     if token_name in {"LIFE20", "TUSDT", "TKM20"}:
@@ -301,6 +374,8 @@ def has_token_activity(summary: dict) -> bool:
             "transfers_out",
             "mints_in",
             "burns_out",
+            "native_in",
+            "native_out",
         )
     )
 
@@ -362,6 +437,10 @@ def build_row(
     account_address = normalize_address(account)
     tx_to = normalize_address(tx_meta["tx_to"])
     tx_from = normalize_address(tx_meta["tx_from"])
+    input_selector = (tx_meta.get("input") or "")[:10]
+    selector = selector_name(input_selector)
+    tx_to_is_router = is_router_address(tx_to, contract_map)
+    account_is_router = contract_map.get(account_address) == ROUTER_LABEL
 
     action = ""
     action_group = "other"
@@ -372,7 +451,106 @@ def build_row(
     counterparties: list[dict] = []
     communities: list[dict] = []
 
-    if summary["claims"] or summary["reward_mints"]:
+    if account_is_router and selector == "swapExactTokensForETH" and summary["transfers_in"]:
+        action = "Router 卖出代币"
+        action_group = "swap"
+        received_token = first_token_name(summary["transfers_in"])
+        description = f"{ROUTER_LABEL} 从池子收回 {received_token} 并继续出金"
+        amounts = collapse_amounts(
+            [
+                *[amount_item(item["token"], item["raw"], int(item.get("decimals", 18))) for item in summary["transfers_in"]],
+                *([amount_item("原生币", summary["native_out"], 18)] if summary["native_out"] > 0 else []),
+            ]
+        )
+        for pair_address in pair_counterparties(summary["transfers_in"], contract_map):
+            add_counterparty(counterparties, pair_address, contract_map, skip_address=account_address)
+        add_counterparty(counterparties, tx_from, contract_map, skip_address=account_address)
+    elif account_is_router and selector == "swapExactETHForTokens" and summary["transfers_out"]:
+        action = "Router 买入代币"
+        action_group = "swap"
+        paid_token = first_token_name(summary["transfers_out"])
+        description = f"{ROUTER_LABEL} 把原生币换成 {paid_token} 并送入池子"
+        amounts = collapse_amounts(
+            [
+                amount_item("原生币", int(tx_meta.get("value_wei") or 0), 18),
+                *[amount_item(item["token"], item["raw"], int(item.get("decimals", 18))) for item in summary["transfers_out"]],
+            ]
+        )
+        for pair_address in pair_counterparties(summary["transfers_out"], contract_map):
+            add_counterparty(counterparties, pair_address, contract_map, skip_address=account_address)
+        add_counterparty(counterparties, tx_from, contract_map, skip_address=account_address)
+    elif tx_to_is_router and selector == "swapExactTokensForTokens" and summary["transfers_in"] and summary["transfers_out"]:
+        action = "兑换代币"
+        action_group = "swap"
+        sold_token = first_token_name(summary["transfers_out"])
+        bought_token = first_token_name(summary["transfers_in"])
+        description = f"通过 {ROUTER_LABEL} 把 {sold_token} 换成 {bought_token}"
+        amounts = collapse_amounts(
+            [
+                *[amount_item(item["token"], item["raw"], int(item.get("decimals", 18))) for item in summary["transfers_out"]],
+                *[amount_item(item["token"], item["raw"], int(item.get("decimals", 18))) for item in summary["transfers_in"]],
+            ]
+        )
+        add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address)
+        for pair_address in pair_counterparties([*summary["transfers_out"], *summary["transfers_in"]], contract_map):
+            add_counterparty(counterparties, pair_address, contract_map, skip_address=account_address)
+    elif tx_to_is_router and selector == "swapExactTokensForETH" and summary["transfers_out"]:
+        action = "卖出代币"
+        action_group = "swap"
+        sold_token = first_token_name(summary["transfers_out"])
+        description = f"通过 {ROUTER_LABEL} 卖出 {sold_token} 换原生币"
+        amounts = collapse_amounts(
+            [
+                *[amount_item(item["token"], item["raw"], int(item.get("decimals", 18))) for item in summary["transfers_out"]],
+                *([amount_item("原生币", summary["native_in"], 18)] if account_address == tx_from and summary["native_in"] > 0 else []),
+            ]
+        )
+        add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address)
+        for pair_address in pair_counterparties(summary["transfers_out"], contract_map):
+            add_counterparty(counterparties, pair_address, contract_map, skip_address=account_address)
+    elif tx_to_is_router and selector == "swapExactETHForTokens" and (summary["transfers_in"] or int(tx_meta.get("value_wei") or 0) > 0):
+        action = "买入代币"
+        action_group = "swap"
+        bought_token = first_token_name(summary["transfers_in"])
+        description = f"通过 {ROUTER_LABEL} 用原生币买入 {bought_token}"
+        amounts = collapse_amounts(
+            [
+                amount_item("原生币", int(tx_meta.get("value_wei") or 0), 18),
+                *[amount_item(item["token"], item["raw"], int(item.get("decimals", 18))) for item in summary["transfers_in"]],
+            ]
+        )
+        add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address)
+        for pair_address in pair_counterparties(summary["transfers_in"], contract_map):
+            add_counterparty(counterparties, pair_address, contract_map, skip_address=account_address)
+    elif tx_to_is_router and selector == "removeLiquidity" and summary["transfers_out"] and summary["transfers_in"] and any(is_lp_token(item["token"]) for item in summary["transfers_out"]):
+        action = "撤池"
+        action_group = "liquidity"
+        lp_token = first_token_name([item for item in summary["transfers_out"] if is_lp_token(item["token"])], "LP")
+        description = f"通过 {ROUTER_LABEL} 销毁 {lp_token} 取回底层资产"
+        amounts = collapse_amounts(
+            [
+                *[amount_item(item["token"], item["raw"], int(item.get("decimals", 18))) for item in summary["transfers_out"]],
+                *[amount_item(item["token"], item["raw"], int(item.get("decimals", 18))) for item in summary["transfers_in"]],
+            ]
+        )
+        add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address)
+        for pair_address in pair_counterparties([*summary["transfers_out"], *summary["transfers_in"]], contract_map):
+            add_counterparty(counterparties, pair_address, contract_map, skip_address=account_address)
+    elif tx_to_is_router and selector == "removeLiquidity" and summary["burns_out"] and summary["transfers_in"]:
+        action = "撤池"
+        action_group = "liquidity"
+        lp_token = first_token_name(summary["burns_out"], "LP")
+        description = f"通过 {ROUTER_LABEL} 销毁 {lp_token} 取回底层资产"
+        amounts = collapse_amounts(
+            [
+                *[amount_item(item["token"], item["raw"], int(item.get("decimals", 18))) for item in summary["burns_out"]],
+                *[amount_item(item["token"], item["raw"], int(item.get("decimals", 18))) for item in summary["transfers_in"]],
+            ]
+        )
+        add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address)
+        for pair_address in pair_counterparties([*summary["burns_out"], *summary["transfers_in"]], contract_map):
+            add_counterparty(counterparties, pair_address, contract_map, skip_address=account_address)
+    elif summary["claims"] or summary["reward_mints"]:
         action_group = "reward"
         action_ids = [
             item["action_id"]
@@ -491,10 +669,38 @@ def build_row(
         add_counterparty(counterparties, tx_to or summary["group_verify_submissions"][0]["contract_address"], contract_map, skip_address=account_address)
         for item in summary["group_verify_submissions"]:
             add_community(communities, item.get("token_address"), contract_map)
+    elif summary["mints_in"] and has_non_lp(summary["transfers_out"]) and any(is_sl_token_label(item["token"]) for item in summary["mints_in"]):
+        sl_mints = [item for item in summary["mints_in"] if is_sl_token_label(item["token"])]
+        action = "质押流动性"
+        action_group = "liquidity"
+        first_sl_token = sl_mints[0]["token"]
+        if contract_map.get(tx_to) == "hub":
+            description = f"通过 hub 质押流动性，收到 {first_sl_token}"
+        else:
+            description = f"质押流动性，收到 {first_sl_token}"
+        amounts = collapse_amounts(
+            [
+                *[
+                    {"token": item["token"], "raw": str(item["raw"]), "decimals": int(item.get("decimals", 18))}
+                    for item in summary["transfers_out"]
+                    if not is_sl_token_label(item["token"])
+                ],
+                *[
+                    {"token": item["token"], "raw": str(item["raw"]), "decimals": int(item.get("decimals", 18))}
+                    for item in sl_mints
+                ],
+            ]
+        )
+        add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address)
+        for item in sl_mints:
+            add_counterparty(counterparties, item.get("contract_address"), contract_map, skip_address=account_address)
     elif summary["mints_in"] and has_non_lp(summary["transfers_out"]) and any(is_lp_token(item["token"]) for item in summary["mints_in"]):
         action = "加池 / LP 铸造"
         action_group = "liquidity"
-        description = "把代币放入池子，收到 LP"
+        if tx_to_is_router and selector == "addLiquidity":
+            description = f"通过 {ROUTER_LABEL} 把代币放入池子，收到 LP"
+        else:
+            description = "把代币放入池子，收到 LP"
         amounts = collapse_amounts(
             [
                 *[
@@ -510,6 +716,48 @@ def build_row(
             ]
         )
         add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address)
+    elif contract_map.get(account_address) == "hub" and summary["transfers_in"] and summary["transfers_out"]:
+        sl_targets = [
+            item["counterparty"]
+            for item in summary["transfers_out"]
+            if is_sl_token_label(contract_map.get(normalize_address(item.get("counterparty"))))
+        ]
+        if sl_targets:
+            action = "Hub 中转质押"
+            action_group = "liquidity"
+            description = f"hub 收到用户代币后转给 {describe_counterparty(sl_targets[0], contract_map)}"
+            amounts = transfer_amounts(
+                [
+                    item
+                    for item in summary["transfers_out"]
+                    if normalize_address(item.get("counterparty")) in {normalize_address(addr) for addr in sl_targets}
+                ]
+            )
+            for item in summary["transfers_in"]:
+                add_counterparty(counterparties, item["counterparty"], contract_map, skip_address=account_address)
+            for counterparty in sl_targets:
+                add_counterparty(counterparties, counterparty, contract_map, skip_address=account_address)
+        else:
+            action = "复杂代币交互"
+            action_group = "complex"
+            description = "同一笔交易里同时发生代币转入和转出"
+            add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address, known_only=True)
+            amounts = collapse_amounts(
+                [
+                    *[
+                        {"token": item["token"], "raw": str(item["raw"]), "decimals": int(item.get("decimals", 18))}
+                        for item in summary["transfers_out"]
+                    ],
+                    *[
+                        {"token": item["token"], "raw": str(item["raw"]), "decimals": int(item.get("decimals", 18))}
+                        for item in summary["transfers_in"]
+                    ],
+                ]
+            )
+            for item in summary["transfers_out"]:
+                add_counterparty(counterparties, item["counterparty"], contract_map, skip_address=account_address)
+            for item in summary["transfers_in"]:
+                add_counterparty(counterparties, item["counterparty"], contract_map, skip_address=account_address)
     elif summary["approvals"] and not summary["transfers_in"] and not summary["transfers_out"] and not summary["mints_in"] and not summary["burns_out"]:
         action_group = "approval"
         if len(summary["approvals"]) == 1:
@@ -616,7 +864,7 @@ def build_row(
         "description": description,
         "tx_from": tx_from,
         "tx_to": tx_to,
-        "input_selector": (tx_meta.get("input") or "")[:10],
+        "input_selector": input_selector,
     }
 
 
@@ -746,7 +994,7 @@ def process_event_stream(
         """
         SELECT COUNT(*)
         FROM events
-        WHERE event_name IN ('Transfer', 'ClaimReward', 'MintActionReward', 'MintGovReward', 'Join', 'Exit', 'Withdraw')
+        WHERE event_name IN ('Transfer', 'ClaimReward', 'MintActionReward', 'MintGovReward', 'Join', 'Exit', 'Withdraw', 'Withdrawal')
         """
     ).fetchone()[0]
     print(f"Relevant events: {relevant_count}")
@@ -770,7 +1018,7 @@ def process_event_stream(
         FROM events e
         JOIN blocks b ON b.block_number = e.block_number
         LEFT JOIN transactions t ON t.tx_hash = e.tx_hash
-        WHERE e.event_name IN ('Transfer', 'ClaimReward', 'MintActionReward', 'MintGovReward', 'Join', 'Exit', 'Withdraw')
+        WHERE e.event_name IN ('Transfer', 'ClaimReward', 'MintActionReward', 'MintGovReward', 'Join', 'Exit', 'Withdraw', 'Withdrawal')
         ORDER BY e.block_number, COALESCE(e.tx_index, t.tx_index, 0), e.log_index, e.id
     """
 
@@ -924,6 +1172,21 @@ def process_event_stream(
                         "contract_address": contract_address,
                     }
                 )
+        elif event_name == "Withdrawal":
+            amount = int(payload.get("wad") or payload.get("value") or 0)
+            source_address = normalize_address(payload.get("src") or payload.get("from") or payload.get("account"))
+            tx_sender = normalize_address(current_meta.get("tx_from")) if current_meta else ""
+            tx_receiver = normalize_address(current_meta.get("tx_to")) if current_meta else ""
+            selector = selector_name((current_meta.get("input") or "")[:10]) if current_meta else ""
+
+            if amount <= 0:
+                continue
+
+            if source_address:
+                summaries[source_address]["native_out"] += amount
+
+            if tx_sender and is_router_address(tx_receiver, contract_map) and selector == "swapExactTokensForETH":
+                summaries[tx_sender]["native_in"] += amount
         elif event_name in {"Join", "Exit"} and contract_name == "groupJoin":
             account = normalize_address(payload.get("account"))
             if not account:
@@ -1026,6 +1289,58 @@ def process_native_only_transactions(
 
         sender = normalize_address(row["tx_from"])
         receiver = normalize_address(row["tx_to"])
+        selector = selector_name((tx_meta["input"] or "")[:10])
+
+        if tx_meta["status"] == 0 and is_router_address(receiver, contract_map):
+            sender_action, sender_description = failed_router_action(selector, for_router=False)
+            router_action, router_description = failed_router_action(selector, for_router=True)
+            if sender:
+                rows.append(
+                    {
+                        "account": sender,
+                        "block_number": tx_meta["block_number"],
+                        "block_timestamp": tx_meta["block_timestamp"],
+                        "tx_hash": tx_meta["tx_hash"],
+                        "tx_index": tx_meta["tx_index"],
+                        "status": tx_meta["status"],
+                        "action": sender_action,
+                        "action_group": "swap" if selector.startswith("swap") else "other",
+                        "action_id_text": "",
+                        "group_id_text": "",
+                        "communities_json": "[]",
+                        "amounts_json": json.dumps([{"token": "原生币", "raw": str(value_raw), "decimals": 18}], ensure_ascii=False),
+                        "counterparties_json": json.dumps(unique_counterparties([{"address": receiver, "label": contract_map.get(receiver, "")}]), ensure_ascii=False),
+                        "description": sender_description,
+                        "tx_from": sender,
+                        "tx_to": receiver,
+                        "input_selector": (tx_meta["input"] or "")[:10],
+                    }
+                )
+            if receiver:
+                rows.append(
+                    {
+                        "account": receiver,
+                        "block_number": tx_meta["block_number"],
+                        "block_timestamp": tx_meta["block_timestamp"],
+                        "tx_hash": tx_meta["tx_hash"],
+                        "tx_index": tx_meta["tx_index"],
+                        "status": tx_meta["status"],
+                        "action": router_action,
+                        "action_group": "swap" if selector.startswith("swap") else "other",
+                        "action_id_text": "",
+                        "group_id_text": "",
+                        "communities_json": "[]",
+                        "amounts_json": json.dumps([{"token": "原生币", "raw": str(value_raw), "decimals": 18}], ensure_ascii=False),
+                        "counterparties_json": json.dumps(unique_counterparties([{"address": sender, "label": contract_map.get(sender, "")}]), ensure_ascii=False),
+                        "description": router_description,
+                        "tx_from": sender,
+                        "tx_to": receiver,
+                        "input_selector": (tx_meta["input"] or "")[:10],
+                    }
+                )
+            if len(rows) >= 1000:
+                inserted += flush_rows(dest, rows)
+            continue
 
         if sender:
             rows.append(
