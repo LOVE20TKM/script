@@ -263,24 +263,41 @@
         cursor: pointer;
       }
 
-      .filters {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-
       .filter-tools {
-        display: flex;
+        display: grid;
         gap: 12px;
-        align-items: center;
-        justify-content: space-between;
-        flex-wrap: wrap;
       }
 
-      .status-filters {
+      .filter-row {
+        display: grid;
+        grid-template-columns: 92px minmax(0, 1fr);
+        gap: 10px;
+        align-items: start;
+      }
+
+      .filter-row-label {
+        padding-top: 8px;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--muted);
+        line-height: 1.4;
+      }
+
+      .filter-row-chips,
+      .filters,
+      .status-filters,
+      .community-filters,
+      .subcategory-filters {
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
+      }
+
+      .filter-empty {
+        padding: 8px 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
       }
 
       .filter-btn {
@@ -1091,6 +1108,14 @@
           width: 100%;
         }
 
+        .filter-row {
+          grid-template-columns: 1fr;
+        }
+
+        .filter-row-label {
+          padding-top: 0;
+        }
+
         th:nth-child(1),
         td:nth-child(1),
         th:nth-child(2),
@@ -1153,8 +1178,22 @@
             </div>
           </div>
           <div class="filter-tools" id="filter-tools">
-            <div class="filters" id="filters"></div>
-            <div class="status-filters" id="status-filters"></div>
+            <div class="filter-row">
+              <div class="filter-row-label">交易状态</div>
+              <div class="status-filters filter-row-chips" id="status-filters"></div>
+            </div>
+            <div class="filter-row">
+              <div class="filter-row-label">代币社区</div>
+              <div class="community-filters filter-row-chips" id="community-filters"></div>
+            </div>
+            <div class="filter-row">
+              <div class="filter-row-label">交易大类</div>
+              <div class="filters filter-row-chips" id="filters"></div>
+            </div>
+            <div class="filter-row">
+              <div class="filter-row-label">交易小类</div>
+              <div class="subcategory-filters filter-row-chips" id="subcategory-filters"></div>
+            </div>
           </div>
         </div>
 
@@ -1240,6 +1279,75 @@
         { key: "failed", label: "失败" },
       ];
       const DEFAULT_STATUS_FILTER_KEYS = STATUS_FILTER_OPTIONS.map((item) => item.key);
+      const COMMUNITY_FILTER_OPTIONS = [
+        { key: "LOVE20", label: "LOVE20" },
+        { key: "LIFE20", label: "LIFE20" },
+        { key: "GROW20", label: "GROW20" },
+      ];
+      const COMMUNITY_FILTER_KEYS = COMMUNITY_FILTER_OPTIONS.map((item) => item.key);
+      const DEFAULT_ACTIVE_COMMUNITY_KEYS = COMMUNITY_FILTER_KEYS;
+      const SUBCATEGORY_GROUP_DEFINITIONS = {
+        incentive: [
+          { key: "incentive-claim", label: "领取行动激励" },
+          { key: "incentive-gov-in", label: "治理激励入账" },
+          { key: "incentive-action-in", label: "行动激励入账" },
+          { key: "incentive-mixed-in", label: "激励入账" },
+        ],
+        actionJoin: [
+          { key: "action-join", label: "参与行动" },
+          { key: "action-join-add", label: "追加行动代币" },
+          { key: "action-join-exit", label: "退出行动" },
+        ],
+        governance: [
+          { key: "governance-groupverify", label: "提交 groupVerify 评分" },
+          { key: "governance-vote", label: "投票" },
+          { key: "governance-verify", label: "提交验证" },
+        ],
+        submit: [
+          { key: "submit-create-submit", label: "创建并提交行动" },
+          { key: "submit-create", label: "创建行动" },
+          { key: "submit-submit", label: "提交行动" },
+        ],
+        launch: [{ key: "launch-launch", label: "发起代币" }],
+        stake: [
+          { key: "stake-token", label: "质押代币" },
+          { key: "stake-liquidity", label: "质押流动性" },
+          { key: "stake-hub", label: "Hub 中转质押" },
+        ],
+        liquidity: [
+          { key: "liquidity-remove", label: "撤池" },
+          { key: "liquidity-add", label: "加池 / LP 铸造" },
+        ],
+        swap: [
+          { key: "swap-router-sell", label: "Router 卖出代币" },
+          { key: "swap-router-buy", label: "Router 买入代币" },
+          { key: "swap-exchange", label: "兑换代币" },
+          { key: "swap-sell", label: "卖出代币" },
+          { key: "swap-buy", label: "买入代币" },
+        ],
+        approval: [
+          { key: "approval-single", label: "授权" },
+          { key: "approval-batch", label: "批量授权" },
+        ],
+        transfer: [
+          { key: "transfer-in", label: "转入" },
+          { key: "transfer-out", label: "转出" },
+        ],
+        native: [
+          { key: "native-out", label: "原生币转账" },
+          { key: "native-in", label: "原生币转入" },
+        ],
+        complex: [{ key: "complex-interaction", label: "复杂代币交互" }],
+        group: [{ key: "group-create", label: "创建群组" }],
+        other: [{ key: "other-call", label: "未归类调用" }],
+      };
+      const SUBCATEGORY_FILTER_OPTIONS = Object.entries(SUBCATEGORY_GROUP_DEFINITIONS).flatMap(([groupKey, items]) =>
+        items.map((item) => ({ ...item, groupKey }))
+      );
+      const SUBCATEGORY_FILTER_KEYS = SUBCATEGORY_FILTER_OPTIONS.map((item) => item.key);
+      const DEFAULT_ACTIVE_SUBCATEGORY_KEYS = SUBCATEGORY_FILTER_OPTIONS.filter((item) =>
+        DEFAULT_ACTIVE_FILTER_KEYS.includes(item.groupKey)
+      ).map((item) => item.key);
       let copyToastTimer = null;
 
       const state = {
@@ -1256,6 +1364,8 @@
         pageSize: PAGE_SIZE,
         activeFilters: new Set(DEFAULT_ACTIVE_FILTER_KEYS),
         selectedStatuses: new Set(DEFAULT_STATUS_FILTER_KEYS),
+        selectedCommunities: new Set(DEFAULT_ACTIVE_COMMUNITY_KEYS),
+        selectedSubcategories: new Set(DEFAULT_ACTIVE_SUBCATEGORY_KEYS),
         isFetching: false,
         abortController: null,
         requestSeq: 0,
@@ -1431,17 +1541,14 @@
         state.hasMore = false;
         state.nextCursor = null;
         state.expandedTxs = new Set();
-        renderFilters();
-        renderStatusFilters();
-        renderSummary(getFilteredRows());
-        renderTable(getFilteredRows());
-        renderLoadMore();
-        renderQueryResultBanner();
+        renderAll();
       }
 
       function resetFiltersToDefault() {
         state.activeFilters = new Set(DEFAULT_ACTIVE_FILTER_KEYS);
         state.selectedStatuses = new Set(DEFAULT_STATUS_FILTER_KEYS);
+        state.selectedCommunities = new Set(DEFAULT_ACTIVE_COMMUNITY_KEYS);
+        state.selectedSubcategories = new Set(DEFAULT_ACTIVE_SUBCATEGORY_KEYS);
       }
 
       function setSummaryPanelVisible(isVisible) {
@@ -1509,6 +1616,16 @@
         }
         state.activeFilters = sanitizeStoredKeys(settings.activeFilters, CATEGORY_FILTER_KEYS, DEFAULT_ACTIVE_FILTER_KEYS);
         state.selectedStatuses = sanitizeStoredKeys(settings.selectedStatuses, DEFAULT_STATUS_FILTER_KEYS, DEFAULT_STATUS_FILTER_KEYS);
+        state.selectedCommunities = sanitizeStoredKeys(
+          settings.selectedCommunities,
+          COMMUNITY_FILTER_KEYS,
+          DEFAULT_ACTIVE_COMMUNITY_KEYS
+        );
+        const hasStoredSubcategories = Object.prototype.hasOwnProperty.call(settings, "selectedSubcategories");
+        state.selectedSubcategories = hasStoredSubcategories
+          ? sanitizeStoredKeys(settings.selectedSubcategories, SUBCATEGORY_FILTER_KEYS, [])
+          : new Set(getAvailableSubcategoryKeys());
+        syncSubcategorySelectionForRestore();
       }
 
       function saveRecentQuerySettings() {
@@ -1519,6 +1636,8 @@
               pageSize: state.pageSize || PAGE_SIZE,
               activeFilters: Array.from(state.activeFilters),
               selectedStatuses: Array.from(state.selectedStatuses),
+              selectedCommunities: Array.from(state.selectedCommunities),
+              selectedSubcategories: Array.from(state.selectedSubcategories),
             })
           );
         } catch (error) {
@@ -1737,31 +1856,262 @@
         );
       }
 
-      function getVisibleRows() {
+      function getStatusFilteredRows(rows = state.rows) {
         if (!state.selectedStatuses.size) {
           return [];
         }
-        return state.rows.filter((row) => state.selectedStatuses.has(rowStatusKey(row)));
+        return rows.filter((row) => state.selectedStatuses.has(rowStatusKey(row)));
       }
 
-      function getFilteredRows() {
-        const rows = getVisibleRows();
-        if (state.activeFilters.size === 0) {
-          return [];
-        }
-        if (state.activeFilters.size === CATEGORY_FILTER_KEYS.length) {
-          return rows;
-        }
-        return rows.filter((row) => state.activeFilters.has(row.action_group));
+      function getVisibleRows() {
+        return getStatusFilteredRows();
       }
 
       function areAllFiltersSelected() {
         return CATEGORY_FILTER_KEYS.every((key) => state.activeFilters.has(key));
       }
 
+      function areAllCommunitiesSelected() {
+        return COMMUNITY_FILTER_KEYS.every((key) => state.selectedCommunities.has(key));
+      }
+
+      function getSelectedCategoryKeys() {
+        if (areAllFiltersSelected()) {
+          return CATEGORY_FILTER_KEYS;
+        }
+        return CATEGORY_FILTER_KEYS.filter((key) => state.activeFilters.has(key));
+      }
+
+      function getAvailableSubcategoryOptions() {
+        if (!state.activeFilters.size) {
+          return [];
+        }
+        if (areAllFiltersSelected()) {
+          return SUBCATEGORY_FILTER_OPTIONS;
+        }
+        const selectedCategories = new Set(getSelectedCategoryKeys());
+        return SUBCATEGORY_FILTER_OPTIONS.filter((item) => selectedCategories.has(item.groupKey));
+      }
+
+      function getAvailableSubcategoryKeys() {
+        return getAvailableSubcategoryOptions().map((item) => item.key);
+      }
+
+      function areAllSubcategoriesSelected() {
+        const availableKeys = getAvailableSubcategoryKeys();
+        return availableKeys.length > 0 && availableKeys.every((key) => state.selectedSubcategories.has(key));
+      }
+
+      function rowCommunityKeys(row) {
+        const keys = new Set();
+        for (const item of row.communities || []) {
+          const label = String(item?.label || "").toUpperCase();
+          if (label.includes("LOVE20")) {
+            keys.add("LOVE20");
+          }
+          if (label.includes("LIFE20")) {
+            keys.add("LIFE20");
+          }
+          if (label.includes("GROW20")) {
+            keys.add("GROW20");
+          }
+        }
+        return keys;
+      }
+
+      function rowMatchesSelectedCommunities(row) {
+        if (!state.selectedCommunities.size) {
+          return false;
+        }
+        const rowKeys = rowCommunityKeys(row);
+        for (const key of state.selectedCommunities) {
+          if (rowKeys.has(key)) {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function rowSubcategoryKey(row) {
+        const action = String(row.action || "").trim();
+        const group = String(row.action_group || "").trim();
+        switch (group) {
+          case "incentive":
+            if (action.includes("领取")) {
+              return "incentive-claim";
+            }
+            if (action.includes("治理激励")) {
+              return "incentive-gov-in";
+            }
+            if (action.includes("行动激励")) {
+              return "incentive-action-in";
+            }
+            return "incentive-mixed-in";
+          case "actionJoin":
+            if (action.includes("退出")) {
+              return "action-join-exit";
+            }
+            if (action.includes("追加")) {
+              return "action-join-add";
+            }
+            return "action-join";
+          case "governance":
+            if (action.includes("groupVerify")) {
+              return "governance-groupverify";
+            }
+            if (action.includes("投票")) {
+              return "governance-vote";
+            }
+            return "governance-verify";
+          case "submit":
+            if (action.includes("创建并提交")) {
+              return "submit-create-submit";
+            }
+            if (action.includes("创建行动")) {
+              return "submit-create";
+            }
+            return "submit-submit";
+          case "launch":
+            return "launch-launch";
+          case "stake":
+            if (action.includes("Hub")) {
+              return "stake-hub";
+            }
+            if (action.includes("流动性")) {
+              return "stake-liquidity";
+            }
+            return "stake-token";
+          case "liquidity":
+            if (action.includes("撤池")) {
+              return "liquidity-remove";
+            }
+            return "liquidity-add";
+          case "swap":
+            if (action.includes("Router 卖出")) {
+              return "swap-router-sell";
+            }
+            if (action.includes("Router 买入")) {
+              return "swap-router-buy";
+            }
+            if (action.includes("兑换代币")) {
+              return "swap-exchange";
+            }
+            if (action.includes("卖出")) {
+              return "swap-sell";
+            }
+            return "swap-buy";
+          case "approval":
+            if (action.includes("批量授权")) {
+              return "approval-batch";
+            }
+            return "approval-single";
+          case "transfer":
+            if (action.includes("接收") || action.includes("转入")) {
+              return "transfer-in";
+            }
+            return "transfer-out";
+          case "native":
+            if (action.includes("转入")) {
+              return "native-in";
+            }
+            return "native-out";
+          case "complex":
+            return "complex-interaction";
+          case "group":
+            return "group-create";
+          case "other":
+            return "other-call";
+          default:
+            return "other-call";
+        }
+      }
+
+      function countRowsByKey(rows, keyGetter) {
+        return rows.reduce((acc, row) => {
+          const key = keyGetter(row);
+          if (!key) {
+            return acc;
+          }
+          acc[key] = (acc[key] || 0) + 1;
+          return acc;
+        }, {});
+      }
+
+      function countRowsByKeys(rows, keysGetter) {
+        return rows.reduce((acc, row) => {
+          const keys = keysGetter(row);
+          const list = keys instanceof Set ? Array.from(keys) : Array.isArray(keys) ? keys : keys ? [keys] : [];
+          for (const key of list) {
+            acc[key] = (acc[key] || 0) + 1;
+          }
+          return acc;
+        }, {});
+      }
+
+      function getCommunityFilteredRows(rows = getStatusFilteredRows()) {
+        if (!state.selectedCommunities.size) {
+          return [];
+        }
+        if (areAllCommunitiesSelected()) {
+          return rows;
+        }
+        return rows.filter((row) => rowMatchesSelectedCommunities(row));
+      }
+
+      function getCategoryFilteredRows(rows = getCommunityFilteredRows()) {
+        if (!state.activeFilters.size) {
+          return [];
+        }
+        if (areAllFiltersSelected()) {
+          return rows;
+        }
+        return rows.filter((row) => state.activeFilters.has(row.action_group));
+      }
+
+      function getSubcategoryFilteredRows(rows = getCategoryFilteredRows()) {
+        const availableKeys = getAvailableSubcategoryKeys();
+        if (!availableKeys.length || !state.selectedSubcategories.size) {
+          return [];
+        }
+        if (availableKeys.every((key) => state.selectedSubcategories.has(key))) {
+          return rows;
+        }
+        return rows.filter((row) => state.selectedSubcategories.has(rowSubcategoryKey(row)));
+      }
+
+      function getFilteredRows() {
+        return getSubcategoryFilteredRows();
+      }
+
+      function syncSubcategorySelectionForRestore() {
+        const availableKeys = getAvailableSubcategoryKeys();
+        if (!availableKeys.length) {
+          state.selectedSubcategories = new Set();
+          return;
+        }
+        state.selectedSubcategories = new Set(
+          Array.from(state.selectedSubcategories).filter((key) => availableKeys.includes(key))
+        );
+      }
+
+      function syncSubcategorySelectionForCategoryChange() {
+        const availableKeys = getAvailableSubcategoryKeys();
+        if (!availableKeys.length) {
+          state.selectedSubcategories = new Set();
+          return;
+        }
+        const next = new Set(Array.from(state.selectedSubcategories).filter((key) => availableKeys.includes(key)));
+        if (next.size) {
+          state.selectedSubcategories = next;
+          return;
+        }
+        state.selectedSubcategories = new Set(availableKeys);
+      }
+
       function toggleFilter(key) {
         if (key === "all") {
           state.activeFilters = areAllFiltersSelected() ? new Set() : new Set(CATEGORY_FILTER_KEYS);
+          syncSubcategorySelectionForCategoryChange();
           return;
         }
         const next = new Set(state.activeFilters);
@@ -1771,6 +2121,36 @@
           next.add(key);
         }
         state.activeFilters = next;
+        syncSubcategorySelectionForCategoryChange();
+      }
+
+      function toggleCommunityFilter(key) {
+        const next = new Set(state.selectedCommunities);
+        if (next.has(key)) {
+          next.delete(key);
+        } else {
+          next.add(key);
+        }
+        state.selectedCommunities = next;
+      }
+
+      function toggleSubcategoryFilter(key) {
+        const availableKeys = getAvailableSubcategoryKeys();
+        if (!availableKeys.length) {
+          state.selectedSubcategories = new Set();
+          return;
+        }
+        if (key === "all") {
+          state.selectedSubcategories = areAllSubcategoriesSelected() ? new Set() : new Set(availableKeys);
+          return;
+        }
+        const next = new Set(state.selectedSubcategories);
+        if (next.has(key)) {
+          next.delete(key);
+        } else {
+          next.add(key);
+        }
+        state.selectedSubcategories = next;
       }
 
       function renderStatusFilters() {
@@ -1804,6 +2184,104 @@
         });
       }
 
+      function renderCommunityFilters() {
+        const rows = getStatusFilteredRows();
+        const counts = countRowsByKeys(rows, rowCommunityKeys);
+        document.getElementById("community-filters").innerHTML = COMMUNITY_FILTER_OPTIONS.map((item) => {
+          const active = state.selectedCommunities.has(item.key);
+          return `
+          <button
+            class="filter-btn community-filter-btn ${active ? "active" : ""}"
+            data-community-key="${escapeHtml(item.key)}"
+            type="button"
+          >
+            ${escapeHtml(item.label)} (${counts[item.key] || 0})
+          </button>
+        `;
+        }).join("");
+
+        document.querySelectorAll("[data-community-key]").forEach((button) => {
+          button.addEventListener("click", () => {
+            toggleCommunityFilter(button.dataset.communityKey);
+            saveRecentQuerySettings();
+            renderAll();
+          });
+        });
+      }
+
+      function renderFilters() {
+        setFilterToolsVisible(state.rows.length > 0 && !isPrimaryQueryLoading());
+        const rows = getCommunityFilteredRows();
+        const counts = countRowsByKey(rows, (row) => row.action_group);
+        const allSelected = areAllFiltersSelected();
+        document.getElementById("filters").innerHTML = FILTER_OPTIONS.map((item) => {
+          const count = item.key === "all" ? rows.length : counts[item.key] || 0;
+          const active = item.key === "all" ? allSelected : state.activeFilters.has(item.key);
+          return `
+          <button
+            class="filter-btn category-filter-btn ${active ? "active" : ""}"
+            data-filter-key="${escapeHtml(item.key)}"
+            type="button"
+          >
+            ${escapeHtml(item.label)} (${count})
+          </button>
+        `;
+        }).join("");
+
+        document.querySelectorAll("[data-filter-key]").forEach((button) => {
+          button.addEventListener("click", () => {
+            toggleFilter(button.dataset.filterKey);
+            saveRecentQuerySettings();
+            renderAll();
+          });
+        });
+      }
+
+      function renderSubcategoryFilters() {
+        const rows = getCategoryFilteredRows();
+        const availableOptions = getAvailableSubcategoryOptions();
+        const counts = countRowsByKey(rows, rowSubcategoryKey);
+        const allSelected = areAllSubcategoriesSelected();
+        const chips = [];
+        if (availableOptions.length) {
+          chips.push(`
+          <button
+            class="filter-btn subcategory-filter-btn ${allSelected ? "active" : ""}"
+            data-subcategory-key="all"
+            type="button"
+          >
+            全部 (${rows.length})
+          </button>
+        `);
+          chips.push(
+            ...availableOptions.map((item) => {
+              const active = state.selectedSubcategories.has(item.key);
+              return `
+          <button
+            class="filter-btn subcategory-filter-btn ${active ? "active" : ""}"
+            data-subcategory-key="${escapeHtml(item.key)}"
+            type="button"
+          >
+            ${escapeHtml(item.label)} (${counts[item.key] || 0})
+          </button>
+        `;
+            })
+          );
+        } else {
+          chips.push(`<span class="filter-empty">先选交易大类</span>`);
+        }
+
+        document.getElementById("subcategory-filters").innerHTML = chips.join("");
+
+        document.querySelectorAll("[data-subcategory-key]").forEach((button) => {
+          button.addEventListener("click", () => {
+            toggleSubcategoryFilter(button.dataset.subcategoryKey);
+            saveRecentQuerySettings();
+            renderAll();
+          });
+        });
+      }
+
       function renderQueryResultBanner() {
         if (isPrimaryQueryLoading()) {
           setBanner("query-banner", "", "");
@@ -1825,39 +2303,48 @@
           setBanner("query-banner", "", "");
           return;
         }
-        const visibleRows = getVisibleRows();
-        const filteredRows = getFilteredRows();
-        const statusCounts = getStatusCounts();
+        const statusRows = getStatusFilteredRows();
+        const communityRows = getCommunityFilteredRows(statusRows);
+        const categoryRows = getCategoryFilteredRows(communityRows);
+        const filteredRows = getSubcategoryFilteredRows(categoryRows);
         if (state.rows.length) {
-          if (!visibleRows.length && (statusCounts.success || statusCounts.failed)) {
-            const hiddenByStatus = [];
-            if (!state.selectedStatuses.has("success") && statusCounts.success) {
-              hiddenByStatus.push(`成功 <strong>${statusCounts.success}</strong> 条`);
+          const hiddenByStatus = state.rows.length - statusRows.length;
+          const hiddenByCommunity = statusRows.length - communityRows.length;
+          const hiddenByCategory = communityRows.length - categoryRows.length;
+          const hiddenBySubcategory = categoryRows.length - filteredRows.length;
+          if (!filteredRows.length) {
+            let hiddenMessage = "";
+            if (hiddenByStatus) {
+              hiddenMessage += `状态隐藏 <strong>${hiddenByStatus}</strong> 条`;
             }
-            if (!state.selectedStatuses.has("failed") && statusCounts.failed) {
-              hiddenByStatus.push(`失败 <strong>${statusCounts.failed}</strong> 条`);
+            if (hiddenByCommunity) {
+              hiddenMessage += `${hiddenMessage ? "，" : ""}社区隐藏 <strong>${hiddenByCommunity}</strong> 条`;
+            }
+            if (hiddenByCategory) {
+              hiddenMessage += `${hiddenMessage ? "，" : ""}大类隐藏 <strong>${hiddenByCategory}</strong> 条`;
+            }
+            if (hiddenBySubcategory) {
+              hiddenMessage += `${hiddenMessage ? "，" : ""}小类隐藏 <strong>${hiddenBySubcategory}</strong> 条`;
             }
             setBanner(
               "query-banner",
               "warning",
-              `当前已加载 <strong>${state.rows.length}</strong> 条记录；状态筛选后可见 <strong>0</strong> 条。${hiddenByStatus.length ? ` 已隐藏 ${hiddenByStatus.join("，")}。` : ""}`
+              `当前已加载 <strong>${state.rows.length}</strong> 条记录；筛选后可见 <strong>0</strong> 条。${hiddenMessage ? ` 已按 ${hiddenMessage}。` : ""}`
             );
             return;
           }
-          const hiddenByCategory = Math.max(visibleRows.length - filteredRows.length, 0);
-          const hiddenByStatus = [];
-          if (!state.selectedStatuses.has("success") && statusCounts.success) {
-            hiddenByStatus.push(`成功 <strong>${statusCounts.success}</strong> 条`);
-          }
-          if (!state.selectedStatuses.has("failed") && statusCounts.failed) {
-            hiddenByStatus.push(`失败 <strong>${statusCounts.failed}</strong> 条`);
-          }
           let message = `当前已加载 <strong>${state.rows.length}</strong> 条记录，当前筛选可见 <strong>${filteredRows.length}</strong> 条。`;
-          if (hiddenByStatus.length) {
-            message += ` 已按状态隐藏 ${hiddenByStatus.join("，")}。`;
+          if (hiddenByStatus) {
+            message += ` 已按状态隐藏 <strong>${hiddenByStatus}</strong> 条。`;
+          }
+          if (hiddenByCommunity) {
+            message += ` 已按社区隐藏 <strong>${hiddenByCommunity}</strong> 条。`;
           }
           if (hiddenByCategory) {
-            message += ` 已按类别隐藏 <strong>${hiddenByCategory}</strong> 条。`;
+            message += ` 已按大类隐藏 <strong>${hiddenByCategory}</strong> 条。`;
+          }
+          if (hiddenBySubcategory) {
+            message += ` 已按小类隐藏 <strong>${hiddenBySubcategory}</strong> 条。`;
           }
           if (state.hasMore) {
             message += " 可继续加载更早交易。";
@@ -1893,37 +2380,6 @@
       `;
       }
 
-      function renderFilters() {
-        setFilterToolsVisible(state.rows.length > 0 && !isPrimaryQueryLoading());
-        const rows = getVisibleRows();
-        const counts = rows.reduce((acc, row) => {
-          acc[row.action_group] = (acc[row.action_group] || 0) + 1;
-          return acc;
-        }, {});
-        const allSelected = areAllFiltersSelected();
-        document.getElementById("filters").innerHTML = FILTER_OPTIONS.map((item) => {
-          const count = item.key === "all" ? rows.length : counts[item.key] || 0;
-          const active = item.key === "all" ? allSelected : state.activeFilters.has(item.key);
-          return `
-          <button
-            class="filter-btn ${active ? "active" : ""}"
-            data-filter-key="${escapeHtml(item.key)}"
-            type="button"
-          >
-            ${escapeHtml(item.label)} (${count})
-          </button>
-        `;
-        }).join("");
-
-        document.querySelectorAll(".filter-btn").forEach((button) => {
-          button.addEventListener("click", () => {
-            toggleFilter(button.dataset.filterKey);
-            saveRecentQuerySettings();
-            renderAll();
-          });
-        });
-      }
-
       function renderSummary(rows) {
         if (!state.queriedAddress || isPrimaryQueryLoading()) {
           setSummaryPanelVisible(false);
@@ -1952,17 +2408,16 @@
               },
             );
           } else if (state.queriedAddress && state.rows.length) {
-            const visibleRows = getVisibleRows();
             cards.push(
               {
                 label: "当前状态",
                 value: "筛选后为空",
-                note: !visibleRows.length ? "当前状态筛选下没有可见记录。" : "当前筛选下没有可见记录。",
+                note: "当前筛选下没有可见记录；切换状态、社区、大类或小类标签后会重新计算。",
               },
               {
                 label: "钱包地址",
                 value: shortAddress(state.queriedAddress),
-                note: "切换类别标签或成功 / 失败标签后会重新计算。",
+                note: "切换状态、社区、大类或小类标签后会重新计算。",
               },
               {
                 label: "归类口径",
@@ -2309,13 +2764,10 @@
           : "输入钱包地址后直接查询活库。";
 
         if (!rows.length) {
-          const visibleRows = getVisibleRows();
           const emptyMessage = state.lastQueryError
             ? "查询失败，请看上方错误信息后重试。"
             : state.rows.length
-              ? !visibleRows.length
-                ? "当前状态筛选下没有可见记录。"
-                : "当前筛选下没有可见记录。"
+              ? "当前筛选下没有可见记录。"
               : state.queriedAddress
                 ? "没有查到匹配记录。"
                 : "等待输入地址。";
@@ -2475,14 +2927,7 @@
           syncPageSizeInput();
           saveRecentAddress(normalizedAddress);
           saveRecentQuerySettings();
-
-          renderMeta();
-          renderFilters();
-          renderStatusFilters();
-          renderSummary(getFilteredRows());
-          renderTable(getFilteredRows());
-          renderLoadMore();
-          renderQueryResultBanner();
+          renderAll();
           setBanner("load-banner", "", "");
           return payload;
         } catch (error) {
@@ -2502,13 +2947,7 @@
             state.pendingAddress = "";
             state.lastQueryError = message;
             state.fetchMode = "idle";
-            renderMeta();
-            renderFilters();
-            renderStatusFilters();
-            renderSummary(getFilteredRows());
-            renderTable(getFilteredRows());
-            renderLoadMore();
-            renderQueryResultBanner();
+            renderAll();
           }
         } finally {
           if (requestSeq === state.requestSeq) {
@@ -2544,10 +2983,13 @@
 
       function renderAll() {
         renderMeta();
-        renderFilters();
         renderStatusFilters();
-        renderSummary(getFilteredRows());
-        renderTable(getFilteredRows());
+        renderCommunityFilters();
+        renderFilters();
+        renderSubcategoryFilters();
+        const rows = getFilteredRows();
+        renderSummary(rows);
+        renderTable(rows);
         renderLoadMore();
         renderQueryResultBanner();
       }

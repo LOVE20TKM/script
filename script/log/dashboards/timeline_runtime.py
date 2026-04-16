@@ -156,6 +156,11 @@ def add_community(items: list[dict], token_address: str | None, contract_map: di
     )
 
 
+def add_communities_from_items(items: list[dict], source_items: list[dict], contract_map: dict[str, str]) -> None:
+    for item in source_items:
+        add_community(items, item.get("contract_address"), contract_map)
+
+
 def unique_counterparties(items: list[dict]) -> list[dict]:
     seen: set[str] = set()
     ordered: list[dict] = []
@@ -585,6 +590,7 @@ def build_row(account: str, summary: dict, tx_meta: dict, contract_map: dict[str
         )
         for pair_address in pair_counterparties(summary["transfers_in"], contract_map):
             add_counterparty(counterparties, pair_address, contract_map, skip_address=account_address)
+        add_communities_from_items(communities, summary["transfers_in"], contract_map)
         add_counterparty(counterparties, tx_from, contract_map, skip_address=account_address)
     elif account_is_router and selector == "swapExactETHForTokens" and summary["transfers_out"]:
         action = "Router 买入代币"
@@ -599,6 +605,7 @@ def build_row(account: str, summary: dict, tx_meta: dict, contract_map: dict[str
         )
         for pair_address in pair_counterparties(summary["transfers_out"], contract_map):
             add_counterparty(counterparties, pair_address, contract_map, skip_address=account_address)
+        add_communities_from_items(communities, summary["transfers_out"], contract_map)
         add_counterparty(counterparties, tx_from, contract_map, skip_address=account_address)
     elif tx_to_is_router and selector == "swapExactTokensForTokens" and summary["transfers_in"] and summary["transfers_out"]:
         action = "兑换代币"
@@ -615,6 +622,8 @@ def build_row(account: str, summary: dict, tx_meta: dict, contract_map: dict[str
         add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address)
         for pair_address in pair_counterparties([*summary["transfers_out"], *summary["transfers_in"]], contract_map):
             add_counterparty(counterparties, pair_address, contract_map, skip_address=account_address)
+        add_communities_from_items(communities, summary["transfers_out"], contract_map)
+        add_communities_from_items(communities, summary["transfers_in"], contract_map)
     elif tx_to_is_router and selector == "swapExactTokensForETH" and summary["transfers_out"]:
         action = "卖出代币"
         action_group = "swap"
@@ -629,6 +638,7 @@ def build_row(account: str, summary: dict, tx_meta: dict, contract_map: dict[str
         add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address)
         for pair_address in pair_counterparties(summary["transfers_out"], contract_map):
             add_counterparty(counterparties, pair_address, contract_map, skip_address=account_address)
+        add_communities_from_items(communities, summary["transfers_out"], contract_map)
     elif tx_to_is_router and selector == "swapExactETHForTokens" and (summary["transfers_in"] or int(tx_meta.get("value_wei") or 0) > 0):
         action = "买入代币"
         action_group = "swap"
@@ -643,6 +653,7 @@ def build_row(account: str, summary: dict, tx_meta: dict, contract_map: dict[str
         add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address)
         for pair_address in pair_counterparties(summary["transfers_in"], contract_map):
             add_counterparty(counterparties, pair_address, contract_map, skip_address=account_address)
+        add_communities_from_items(communities, summary["transfers_in"], contract_map)
     elif tx_to_is_router and selector == "removeLiquidity" and summary["transfers_out"] and summary["transfers_in"] and any(is_lp_token(item["token"]) for item in summary["transfers_out"]):
         action = "撤池"
         action_group = "liquidity"
@@ -657,6 +668,10 @@ def build_row(account: str, summary: dict, tx_meta: dict, contract_map: dict[str
         add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address)
         for pair_address in pair_counterparties([*summary["transfers_out"], *summary["transfers_in"]], contract_map):
             add_counterparty(counterparties, pair_address, contract_map, skip_address=account_address)
+        for item in summary["transfers_out"]:
+            add_community(communities, item.get("contract_address"), contract_map)
+        for item in summary["transfers_in"]:
+            add_community(communities, item.get("contract_address"), contract_map)
     elif tx_to_is_router and selector == "removeLiquidity" and summary["burns_out"] and summary["transfers_in"]:
         action = "撤池"
         action_group = "liquidity"
@@ -671,6 +686,10 @@ def build_row(account: str, summary: dict, tx_meta: dict, contract_map: dict[str
         add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address)
         for pair_address in pair_counterparties([*summary["burns_out"], *summary["transfers_in"]], contract_map):
             add_counterparty(counterparties, pair_address, contract_map, skip_address=account_address)
+        for item in summary["burns_out"]:
+            add_community(communities, item.get("contract_address"), contract_map)
+        for item in summary["transfers_in"]:
+            add_community(communities, item.get("contract_address"), contract_map)
     elif summary["claims"] or summary["reward_mints"]:
         reward_kinds = {item["kind"] for item in summary["reward_mints"]}
         has_action_incentive = bool(summary["claims"]) or "MintActionReward" in reward_kinds
@@ -947,6 +966,7 @@ def build_row(account: str, summary: dict, tx_meta: dict, contract_map: dict[str
             ]
         )
         add_counterparty(counterparties, tx_to or group_mint.get("contract_address"), contract_map, skip_address=account_address)
+        add_communities_from_items(communities, summary["transfers_out"], contract_map)
     elif summary["mints_in"] and has_non_lp(summary["transfers_out"]) and any(is_sl_token_label(item["token"]) for item in summary["mints_in"]):
         sl_mints = [item for item in summary["mints_in"] if is_sl_token_label(item["token"])]
         action = "质押流动性"
@@ -967,6 +987,8 @@ def build_row(account: str, summary: dict, tx_meta: dict, contract_map: dict[str
             ]
         )
         add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address)
+        for item in summary["transfers_out"]:
+            add_community(communities, item.get("contract_address"), contract_map)
         for item in sl_mints:
             add_counterparty(counterparties, item.get("contract_address"), contract_map, skip_address=account_address)
     elif summary["mints_in"] and has_non_lp(summary["transfers_out"]) and any(is_lp_token(item["token"]) for item in summary["mints_in"]):
@@ -988,6 +1010,10 @@ def build_row(account: str, summary: dict, tx_meta: dict, contract_map: dict[str
             ]
         )
         add_counterparty(counterparties, tx_to, contract_map, skip_address=account_address)
+        for item in summary["transfers_out"]:
+            add_community(communities, item.get("contract_address"), contract_map)
+        for item in summary["mints_in"]:
+            add_community(communities, item.get("contract_address"), contract_map)
     elif contract_map.get(account_address) == "hub" and summary["transfers_in"] and summary["transfers_out"]:
         sl_targets = [
             item["counterparty"]
@@ -1009,6 +1035,8 @@ def build_row(account: str, summary: dict, tx_meta: dict, contract_map: dict[str
                 add_counterparty(counterparties, item["counterparty"], contract_map, skip_address=account_address)
             for counterparty in sl_targets:
                 add_counterparty(counterparties, counterparty, contract_map, skip_address=account_address)
+            add_communities_from_items(communities, summary["transfers_in"], contract_map)
+            add_communities_from_items(communities, summary["transfers_out"], contract_map)
         else:
             action = "复杂代币交互"
             action_group = "complex"
@@ -1042,6 +1070,7 @@ def build_row(account: str, summary: dict, tx_meta: dict, contract_map: dict[str
         amounts = collapse_approvals(summary["approvals"])
         for item in summary["approvals"]:
             add_counterparty(counterparties, item["spender"], contract_map, skip_address=account_address)
+        add_communities_from_items(communities, summary["approvals"], contract_map)
     elif summary["transfers_in"] and not summary["transfers_out"] and not summary["mints_in"]:
         single_token = len({item["token"] for item in summary["transfers_in"]}) == 1
         first_token = summary["transfers_in"][0]["token"]
@@ -1057,6 +1086,7 @@ def build_row(account: str, summary: dict, tx_meta: dict, contract_map: dict[str
         )
         for item in summary["transfers_in"]:
             add_counterparty(counterparties, item["counterparty"], contract_map, skip_address=account_address)
+            add_community(communities, item.get("contract_address"), contract_map)
     elif summary["transfers_out"] and not summary["transfers_in"] and not summary["mints_in"]:
         single_token = len({item["token"] for item in summary["transfers_out"]}) == 1
         first_token = summary["transfers_out"][0]["token"]
@@ -1072,6 +1102,7 @@ def build_row(account: str, summary: dict, tx_meta: dict, contract_map: dict[str
         )
         for item in summary["transfers_out"]:
             add_counterparty(counterparties, item["counterparty"], contract_map, skip_address=account_address)
+            add_community(communities, item.get("contract_address"), contract_map)
     elif summary["transfers_in"] and summary["transfers_out"]:
         action = "复杂代币交互"
         action_group = "complex"
@@ -1091,8 +1122,10 @@ def build_row(account: str, summary: dict, tx_meta: dict, contract_map: dict[str
         )
         for item in summary["transfers_out"]:
             add_counterparty(counterparties, item["counterparty"], contract_map, skip_address=account_address)
+            add_community(communities, item.get("contract_address"), contract_map)
         for item in summary["transfers_in"]:
             add_counterparty(counterparties, item["counterparty"], contract_map, skip_address=account_address)
+            add_community(communities, item.get("contract_address"), contract_map)
     elif summary["native_out"] > 0:
         action = "原生币转账"
         action_group = "native"

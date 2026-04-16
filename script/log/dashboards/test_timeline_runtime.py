@@ -175,6 +175,7 @@ class TimelineRuntimeTest(unittest.TestCase):
         row = result["rows"][0]
         self.assertEqual(row["action_group"], "approval")
         self.assertEqual(row["amounts"], [{"token": "TUSDT", "raw": "123456789", "decimals": 18}])
+        self.assertEqual(row["communities"], [{"address": TOKEN, "label": "TUSDT"}])
         self.assertEqual(row["counterparties"][0]["address"], SPENDER)
         self.assertEqual(row["transaction"]["tx_hash"], "0xaaaabbbbccccddddeeeeffff0000111122223333444455556666777788889999")
         self.assertEqual(len(row["events"]), 1)
@@ -454,6 +455,7 @@ class TimelineRuntimeTest(unittest.TestCase):
         )["rows"][0]
         self.assertEqual(row["action_group"], "stake")
         self.assertEqual(row["action"], "质押代币")
+        self.assertEqual(row["communities"], [{"address": TOKEN, "label": "LOVE20"}])
         self.assertEqual(
             row["amounts"],
             [
@@ -506,6 +508,7 @@ class TimelineRuntimeTest(unittest.TestCase):
         )["rows"][0]
         self.assertEqual(row["action_group"], "stake")
         self.assertEqual(row["action"], "质押流动性")
+        self.assertEqual(row["communities"], [{"address": TOKEN, "label": "LOVE20"}])
         self.assertEqual(
             row["amounts"],
             [
@@ -621,7 +624,131 @@ class TimelineRuntimeTest(unittest.TestCase):
         group_row = next(row for row in rows if row["tx_hash"] == group_tx)
         self.assertEqual(group_row["action_group"], "group")
         self.assertEqual(group_row["action"], "创建群组")
+        self.assertEqual(group_row["communities"], [{"address": TOKEN, "label": "LOVE20"}])
         self.assertIn("测试群组", group_row["description"])
+
+    def test_swap_and_hub_rows_are_counted_as_communities(self) -> None:
+        conn = make_conn()
+        router = "0x7777777777777777777777777777777777777777"
+        pair = "0x8888888888888888888888888888888888888888"
+        grow20 = "0x9999999999999999999999999999999999999999"
+        hub_contract = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        sl_token = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+        sell_tx = "0xaaaa0000111122223333444455556666777788889999aaaabbbbccccddddeeee"
+        insert_tx(
+            conn,
+            tx_hash=sell_tx,
+            block_number=110,
+            tx_index=0,
+            tx_from=ACCOUNT,
+            tx_to=router,
+            input_data="0x38ed1739",
+        )
+        insert_event(
+            conn,
+            tx_hash=sell_tx,
+            block_number=110,
+            tx_index=0,
+            log_index=0,
+            contract_name="LIFE20",
+            event_name="Transfer",
+            address=TOKEN,
+            payload={"from": ACCOUNT, "to": pair, "value": "100"},
+        )
+        insert_event(
+            conn,
+            tx_hash=sell_tx,
+            block_number=110,
+            tx_index=0,
+            log_index=1,
+            contract_name="GROW20",
+            event_name="Transfer",
+            address=grow20,
+            payload={"from": pair, "to": ACCOUNT, "value": "80"},
+        )
+
+        router_tx = "0xbbbb0000111122223333444455556666777788889999aaaabbbbccccddddeeee"
+        insert_tx(
+            conn,
+            tx_hash=router_tx,
+            block_number=111,
+            tx_index=0,
+            tx_from=ACCOUNT,
+            tx_to=router,
+            input_data="0x18cbafe5",
+        )
+        insert_event(
+            conn,
+            tx_hash=router_tx,
+            block_number=111,
+            tx_index=0,
+            log_index=0,
+            contract_name="LIFE20",
+            event_name="Transfer",
+            address=TOKEN,
+            payload={"from": pair, "to": router, "value": "55"},
+        )
+
+        hub_tx = "0xcccc0000111122223333444455556666777788889999aaaabbbbccccddddeeee"
+        insert_tx(
+            conn,
+            tx_hash=hub_tx,
+            block_number=112,
+            tx_index=0,
+            tx_from=ACCOUNT,
+            tx_to=hub_contract,
+        )
+        insert_event(
+            conn,
+            tx_hash=hub_tx,
+            block_number=112,
+            tx_index=0,
+            log_index=0,
+            contract_name="LIFE20",
+            event_name="Transfer",
+            address=TOKEN,
+            payload={"from": ACCOUNT, "to": hub_contract, "value": "200"},
+        )
+        insert_event(
+            conn,
+            tx_hash=hub_tx,
+            block_number=112,
+            tx_index=0,
+            log_index=1,
+            contract_name="LIFE20",
+            event_name="Transfer",
+            address=TOKEN,
+            payload={"from": hub_contract, "to": sl_token, "value": "200"},
+        )
+
+        user_rows = timeline_runtime.query_activity_rows_by_account(
+            conn,
+            {TOKEN: "LOVE20", grow20: "GROW20", pair: "love20grow20pair", router: "uniswapV2Router02"},
+            ACCOUNT,
+        )["rows"]
+        user_by_hash = {row["tx_hash"]: row for row in user_rows}
+        self.assertEqual(user_by_hash[sell_tx]["action_group"], "swap")
+        self.assertTrue(any(item["label"] == "LOVE20" for item in user_by_hash[sell_tx]["communities"]))
+        self.assertTrue(any(item["label"] == "GROW20" for item in user_by_hash[sell_tx]["communities"]))
+
+        router_rows = timeline_runtime.query_activity_rows_by_account(
+            conn,
+            {TOKEN: "LOVE20", pair: "love20grow20pair", router: "uniswapV2Router02"},
+            router,
+        )["rows"]
+        router_by_hash = {row["tx_hash"]: row for row in router_rows}
+        self.assertEqual(router_by_hash[router_tx]["action_group"], "swap")
+        self.assertTrue(any(item["label"] == "LOVE20" for item in router_by_hash[router_tx]["communities"]))
+
+        hub_rows = timeline_runtime.query_activity_rows_by_account(
+            conn,
+            {TOKEN: "LOVE20", hub_contract: "hub", sl_token: "love20slToken"},
+            hub_contract,
+        )["rows"]
+        hub_by_hash = {row["tx_hash"]: row for row in hub_rows}
+        self.assertEqual(hub_by_hash[hub_tx]["action"], "Hub 中转质押")
+        self.assertTrue(any(item["label"] == "LOVE20" for item in hub_by_hash[hub_tx]["communities"]))
 
     def test_known_selectors_without_events_are_decoded(self) -> None:
         conn = make_conn()
@@ -743,8 +870,127 @@ class TimelineRuntimeTest(unittest.TestCase):
         self.assertEqual(row["tx_hash"], tx_hash)
         self.assertEqual(row["action_group"], "transfer")
         self.assertEqual(row["amounts"], [{"token": "TUSDT", "raw": "150", "decimals": 18}])
+        self.assertEqual(row["communities"], [{"address": TOKEN, "label": "TUSDT"}])
         self.assertEqual(len(row["events"]), 3)
         self.assertEqual(row["events"][-1]["event_name"], "Sync")
+
+    def test_life20_transfer_is_counted_as_community(self) -> None:
+        conn = make_conn()
+        tx_hash = "0xccccddddeeeeffff0000111122223333444455556666777788889999aaaabbbb"
+        life20 = "0x6666666666666666666666666666666666666666"
+        insert_tx(
+            conn,
+            tx_hash=tx_hash,
+            block_number=103,
+            tx_index=0,
+            tx_from=ACCOUNT,
+            tx_to=COUNTERPARTY,
+        )
+        insert_event(
+            conn,
+            tx_hash=tx_hash,
+            block_number=103,
+            tx_index=0,
+            log_index=0,
+            contract_name="LIFE20",
+            event_name="Transfer",
+            address=life20,
+            payload={"from": ACCOUNT, "to": COUNTERPARTY, "value": "88"},
+        )
+
+        result = timeline_runtime.query_activity_rows_by_account(
+            conn,
+            {life20: "LIFE20", COUNTERPARTY: "receiver"},
+            ACCOUNT,
+        )
+
+        self.assertEqual(len(result["rows"]), 1)
+        row = result["rows"][0]
+        self.assertEqual(row["action_group"], "transfer")
+        self.assertEqual(row["communities"], [{"address": life20, "label": "LIFE20"}])
+
+    def test_liquidity_rows_are_counted_as_communities(self) -> None:
+        conn = make_conn()
+        router = "0x7777777777777777777777777777777777777777"
+        pair = "0x8888888888888888888888888888888888888888"
+        life20 = "0x6666666666666666666666666666666666666666"
+
+        add_tx = "0xaaaa0000111122223333444455556666777788889999aaaabbbbccccddddeeee"
+        insert_tx(
+            conn,
+            tx_hash=add_tx,
+            block_number=104,
+            tx_index=0,
+            tx_from=ACCOUNT,
+            tx_to=router,
+            input_data="0xe8e33700",
+        )
+        insert_event(
+            conn,
+            tx_hash=add_tx,
+            block_number=104,
+            tx_index=0,
+            log_index=0,
+            contract_name="LIFE20",
+            event_name="Transfer",
+            address=life20,
+            payload={"from": ACCOUNT, "to": pair, "value": "88"},
+        )
+        insert_event(
+            conn,
+            tx_hash=add_tx,
+            block_number=104,
+            tx_index=0,
+            log_index=1,
+            contract_name="love20life20pair",
+            event_name="Transfer",
+            address=pair,
+            payload={"from": timeline_runtime.ZERO_ADDRESS, "to": ACCOUNT, "value": "77"},
+        )
+
+        remove_tx = "0xbbbb0000111122223333444455556666777788889999aaaabbbbccccddddeeee"
+        insert_tx(
+            conn,
+            tx_hash=remove_tx,
+            block_number=105,
+            tx_index=0,
+            tx_from=ACCOUNT,
+            tx_to=router,
+            input_data="0xbaa2abde",
+        )
+        insert_event(
+            conn,
+            tx_hash=remove_tx,
+            block_number=105,
+            tx_index=0,
+            log_index=0,
+            contract_name="love20life20pair",
+            event_name="Transfer",
+            address=pair,
+            payload={"from": ACCOUNT, "to": pair, "value": "77"},
+        )
+        insert_event(
+            conn,
+            tx_hash=remove_tx,
+            block_number=105,
+            tx_index=0,
+            log_index=1,
+            contract_name="LIFE20",
+            event_name="Transfer",
+            address=life20,
+            payload={"from": pair, "to": ACCOUNT, "value": "88"},
+        )
+
+        result = timeline_runtime.query_activity_rows_by_account(
+            conn,
+            {router: "uniswapV2Router02", pair: "love20life20pair", life20: "LIFE20"},
+            ACCOUNT,
+        )
+        by_hash = {row["tx_hash"]: row for row in result["rows"]}
+        self.assertIn(add_tx, by_hash)
+        self.assertIn(remove_tx, by_hash)
+        self.assertTrue(any(item["label"] == "LIFE20" for item in by_hash[add_tx]["communities"]))
+        self.assertTrue(any(item["label"] == "LIFE20" for item in by_hash[remove_tx]["communities"]))
 
     def test_unclassified_zero_value_call_still_keeps_tx_row(self) -> None:
         conn = make_conn()
