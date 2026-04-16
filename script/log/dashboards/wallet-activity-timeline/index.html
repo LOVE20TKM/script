@@ -135,10 +135,10 @@
       }
 
       .query-row {
-        display: flex;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 148px auto;
         gap: 12px;
-        flex-wrap: wrap;
-        align-items: center;
+        align-items: end;
       }
 
       .input-wrap {
@@ -201,6 +201,7 @@
         gap: 10px;
         flex-wrap: wrap;
         align-items: center;
+        min-width: 0;
       }
 
       .btn {
@@ -1108,6 +1109,10 @@
           width: 100%;
         }
 
+        .query-row {
+          grid-template-columns: 1fr;
+        }
+
         .filter-row {
           grid-template-columns: 1fr;
         }
@@ -1174,7 +1179,6 @@
             </div>
             <div class="button-row">
               <button class="btn btn-primary" id="query-btn" type="button">查询时间线</button>
-              <button class="btn" id="refresh-btn" type="button">刷新当前地址</button>
             </div>
           </div>
           <div class="filter-tools" id="filter-tools">
@@ -1758,13 +1762,11 @@
       function setFetching(isFetching) {
         state.isFetching = isFetching;
         const queryButton = document.getElementById("query-btn");
-        const refreshButton = document.getElementById("refresh-btn");
         const loadMoreButton = document.getElementById("load-more-btn");
         const addressInput = document.getElementById("address-input");
         const pageSizeInput = document.getElementById("page-size-input");
 
         queryButton.disabled = isFetching;
-        refreshButton.disabled = isFetching;
         loadMoreButton.disabled = isFetching || !state.hasMore;
         addressInput.disabled = isFetching;
         pageSizeInput.disabled = isFetching;
@@ -1772,7 +1774,6 @@
         pageSizeInput.setAttribute("aria-busy", isFetching ? "true" : "false");
 
         queryButton.textContent = isFetching && state.fetchMode === "query" ? "查询中..." : "查询时间线";
-        refreshButton.textContent = isFetching && state.fetchMode === "metadata" ? "连接中..." : "刷新当前地址";
         loadMoreButton.textContent = isFetching && state.fetchMode === "append" ? "加载中..." : "加载更多";
 
         queryButton.classList.toggle("is-loading", isFetching && state.fetchMode === "query");
@@ -2960,8 +2961,12 @@
       async function runQuery({ silent = false, append = false } = {}) {
         const addressInput = document.getElementById("address-input");
         const pageSizeInput = document.getElementById("page-size-input");
-        const address = normalizeAddress(append ? state.queriedAddress : addressInput.value);
+        const address = normalizeAddress(append ? state.queriedAddress : addressInput.value || state.queriedAddress);
         if (!isAddress(address)) {
+          if (!append && !address) {
+            await requestTimeline("", { metadataOnly: true, silent });
+            return;
+          }
           setBanner("query-banner", "warning", "请输入完整的钱包地址，格式需要是 42 位的 <code>0x...</code>。");
           return;
         }
@@ -2970,6 +2975,9 @@
           if (!parsedPageSize) {
             setBanner("query-banner", "warning", "每页 tx 数需要是 1 到 500 的整数。");
             return;
+          }
+          if (!addressInput.value.trim() && state.queriedAddress) {
+            addressInput.value = state.queriedAddress;
           }
           if (address !== normalizeAddress(state.queriedAddress)) {
             resetFiltersToDefault();
@@ -2996,25 +3004,6 @@
 
       document.getElementById("query-btn").addEventListener("click", () => {
         runQuery({}).catch(() => {});
-      });
-
-      document.getElementById("refresh-btn").addEventListener("click", () => {
-        const addressInput = document.getElementById("address-input");
-        const inputAddress = normalizeAddress(addressInput.value);
-        if (inputAddress) {
-          if (!isAddress(inputAddress)) {
-            setBanner("query-banner", "warning", "请输入完整的钱包地址，格式需要是 42 位的 <code>0x...</code>。");
-            return;
-          }
-          runQuery({}).catch(() => {});
-          return;
-        }
-        if (state.queriedAddress) {
-          addressInput.value = state.queriedAddress;
-          runQuery({}).catch(() => {});
-          return;
-        }
-        requestTimeline("", { metadataOnly: true }).catch(() => {});
       });
 
       document.getElementById("load-more-btn").addEventListener("click", () => {
