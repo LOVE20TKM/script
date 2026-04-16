@@ -32,7 +32,13 @@ cd /Users/BigPolarBear/Documents/github/LOVE20TKM/script/script/log/dashboards
 python3 dashboard_server.py --host 127.0.0.1 --port 8000 --network thinkium70001_public
 ```
 
-然后访问：
+然后先访问统一入口页：
+
+- `http://127.0.0.1:8000/dashboards/`
+
+入口页会列出当前看板，并可点击后新开 tab 打开具体看板。
+
+也可直接访问具体看板：
 
 - `http://127.0.0.1:8000/dashboards/mint-addresses-by-log-round/`
 - `http://127.0.0.1:8000/dashboards/wallet-activity-timeline/`

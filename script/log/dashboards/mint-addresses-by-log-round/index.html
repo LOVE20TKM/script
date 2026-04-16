@@ -264,6 +264,10 @@
       gap: 20px;
     }
 
+    .grid-two > * {
+      min-width: 0;
+    }
+
     .panel {
       padding: 22px;
     }
@@ -388,7 +392,9 @@
 
     .notes {
       display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
       gap: 12px;
+      align-items: start;
     }
 
     .note {
@@ -396,6 +402,7 @@
       border-radius: 16px;
       background: var(--panel-strong);
       border: 1px solid rgba(31, 41, 51, 0.08);
+      min-width: 0;
     }
 
     .note-title {
@@ -407,9 +414,19 @@
     }
 
     .note strong {
+      display: block;
       font-size: 24px;
-      display: inline-block;
       margin-bottom: 8px;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .note-title,
+    .note div,
+    .note code {
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .table-wrap {
@@ -501,6 +518,10 @@
 
       #chart {
         height: 280px;
+      }
+
+      .notes {
+        grid-template-columns: 1fr;
       }
     }
   </style>

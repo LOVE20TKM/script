@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LOVE20 看板入口</title>
+  <style>
+    :root {
+      --bg: #f4eee3;
+      --bg-deep: #e8dcc8;
+      --panel: rgba(255, 251, 244, 0.88);
+      --panel-strong: rgba(255, 251, 244, 0.96);
+      --text: #1f2933;
+      --muted: #5e6974;
+      --line: rgba(31, 41, 51, 0.1);
+      --accent: #1d5b89;
+      --accent-2: #b35c2e;
+      --accent-3: #1f7b63;
+      --shadow: 0 28px 72px rgba(70, 53, 34, 0.14);
+      --radius: 26px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      font-family: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(179, 92, 46, 0.18), transparent 34%),
+        radial-gradient(circle at top right, rgba(31, 123, 99, 0.16), transparent 28%),
+        linear-gradient(180deg, #fbf7f0 0%, var(--bg) 50%, var(--bg-deep) 100%);
+      padding: 28px 18px 64px;
+    }
+
+    .shell {
+      max-width: 1240px;
+      margin: 0 auto;
+      display: grid;
+      gap: 18px;
+    }
+
+    .hero,
+    .panel {
+      background: var(--panel);
+      border: 1px solid rgba(31, 41, 51, 0.08);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+    }
+
+    .hero {
+      padding: 30px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .hero-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      font-size: 12px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    h1 {
+      margin: 0;
+      font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      font-size: clamp(34px, 5vw, 58px);
+      line-height: 1.02;
+      letter-spacing: -0.035em;
+    }
+
+    .hero-copy {
+      display: grid;
+      gap: 10px;
+      max-width: 820px;
+    }
+
+    .hero-copy p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.72;
+      font-size: 15px;
+    }
+
+    .meta {
+      min-width: 280px;
+      padding: 18px 20px;
+      border-radius: 20px;
+      background: var(--panel-strong);
+      border: 1px solid rgba(31, 41, 51, 0.08);
+      display: grid;
+      gap: 12px;
+    }
+
+    .meta-label {
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .meta-value {
+      font-size: 15px;
+      line-height: 1.55;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 11px 16px;
+      border-radius: 999px;
+      border: 1px solid rgba(31, 41, 51, 0.12);
+      text-decoration: none;
+      font-size: 14px;
+      color: var(--text);
+      background: rgba(31, 41, 51, 0.05);
+      transition:
+        transform 140ms ease,
+        background 140ms ease,
+        border-color 140ms ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      color: #fff;
+      background: var(--accent);
+      border-color: rgba(29, 91, 137, 0.44);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+    }
+
+    .stat {
+      padding: 18px;
+      border-radius: 20px;
+      background: var(--panel-strong);
+      border: 1px solid rgba(31, 41, 51, 0.08);
+    }
+
+    .stat-label {
+      margin-bottom: 10px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    .stat-value {
+      font-size: clamp(30px, 4vw, 42px);
+      line-height: 1;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .stat-note {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .panel {
+      padding: 24px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .panel-title {
+      margin: 0;
+      font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      font-size: clamp(24px, 3vw, 34px);
+      line-height: 1.08;
+      letter-spacing: -0.02em;
+    }
+
+    .panel-note {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.65;
+      font-size: 14px;
+      max-width: 760px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      display: grid;
+      gap: 16px;
+      min-height: 100%;
+      padding: 22px;
+      border-radius: 24px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.54), rgba(255, 255, 255, 0.22)),
+        var(--panel-strong);
+      border: 1px solid rgba(31, 41, 51, 0.08);
+      box-shadow: 0 18px 48px rgba(70, 53, 34, 0.1);
+    }
+
+    .card:nth-child(3n + 1) {
+      border-top: 4px solid var(--accent-2);
+    }
+
+    .card:nth-child(3n + 2) {
+      border-top: 4px solid var(--accent);
+    }
+
+    .card:nth-child(3n + 3) {
+      border-top: 4px solid var(--accent-3);
+    }
+
+    .card-top {
+      display: grid;
+      gap: 10px;
+    }
+
+    .badge {
+      display: inline-flex;
+      width: fit-content;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(31, 41, 51, 0.06);
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .card h2 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 14px;
+    }
+
+    .detail-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .detail {
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: rgba(31, 41, 51, 0.04);
+      border: 1px solid rgba(31, 41, 51, 0.06);
+    }
+
+    .detail-label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .detail-value {
+      font-size: 14px;
+      line-height: 1.55;
+      word-break: break-all;
+    }
+
+    .card-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: auto;
+    }
+
+    .footer-note {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    code {
+      font-family: "SFMono-Regular", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.94em;
+    }
+
+    @media (max-width: 720px) {
+      body {
+        padding-top: 18px;
+      }
+
+      .hero,
+      .panel {
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="hero">
+      <div class="hero-top">
+        <div class="hero-copy">
+          <p class="eyebrow">LOVE20 Dashboards</p>
+          <h1>看板统一入口</h1>
+          <p>这里集中列出当前可用的本地分析看板。点卡片里的按钮，会直接新开 tab 进入对应页面，方便并排观察不同视角的数据。</p>
+        </div>
+        <div class="meta">
+          <div>
+            <div class="meta-label">默认入口</div>
+            <div class="meta-value"><code>/dashboards/</code></div>
+          </div>
+          <div>
+            <div class="meta-label">打开方式</div>
+            <div class="meta-value">点击“新开查看”后，浏览器在新 tab 打开看板。</div>
+          </div>
+        </div>
+      </div>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="./mint-addresses-by-log-round/" target="_blank" rel="noreferrer">先看铸币地址轮次</a>
+        <a class="btn" href="./wallet-activity-timeline/" target="_blank" rel="noreferrer">再看钱包时间线</a>
+      </div>
+      <div class="stats">
+        <article class="stat">
+          <div class="stat-label">当前看板数</div>
+          <div class="stat-value">2</div>
+          <div class="stat-note">现有两个单页看板，均由本地 `dashboard_server.py` 提供。</div>
+        </article>
+        <article class="stat">
+          <div class="stat-label">服务地址</div>
+          <div class="stat-value">/dashboards</div>
+          <div class="stat-note">服务启动后，直接访问入口页，再从这里分发到具体看板。</div>
+        </article>
+        <article class="stat">
+          <div class="stat-label">目标场景</div>
+          <div class="stat-value">总览</div>
+          <div class="stat-note">适合先看有哪些看板，再按需新开 tab 深入。</div>
+        </article>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2 class="panel-title">当前可用看板</h2>
+          <p class="panel-note">每张卡片都包含入口路径、适合用途、以及新开 tab 的访问按钮。若后续新增看板，可继续把新入口补到这里。</p>
+        </div>
+      </div>
+      <div class="grid">
+        <article class="card">
+          <div class="card-top">
+            <span class="badge">Mint / Round</span>
+            <h2>每轮铸币地址看板</h2>
+            <p>查看各 `log_round` 的铸币地址数、治理铸币地址数、行动铸币地址数，并支持切换是否显示同步中的最新轮次。</p>
+          </div>
+          <div class="detail-list">
+            <div class="detail">
+              <span class="detail-label">入口路径</span>
+              <div class="detail-value"><code>/dashboards/mint-addresses-by-log-round/</code></div>
+            </div>
+            <div class="detail">
+              <span class="detail-label">适合用途</span>
+              <div class="detail-value">快速看轮次级铸币覆盖面，判断治理 / 行动铸币地址规模变化。</div>
+            </div>
+          </div>
+          <div class="card-actions">
+            <a class="btn btn-primary" href="./mint-addresses-by-log-round/" target="_blank" rel="noreferrer">新开查看</a>
+            <a class="btn" href="./mint-addresses-by-log-round/">当前页打开</a>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="badge">Wallet / Timeline</span>
+            <h2>钱包地址时间线看板</h2>
+            <p>输入钱包地址后，按区块和交易顺序查看交易级摘要、原始 tx 数据、以及该 tx 下全部原始事件。</p>
+          </div>
+          <div class="detail-list">
+            <div class="detail">
+              <span class="detail-label">入口路径</span>
+              <div class="detail-value"><code>/dashboards/wallet-activity-timeline/</code></div>
+            </div>
+            <div class="detail">
+              <span class="detail-label">适合用途</span>
+              <div class="detail-value">排查单地址交互轨迹，追交易级动作摘要与底层原始事件。</div>
+            </div>
+          </div>
+          <div class="card-actions">
+            <a class="btn btn-primary" href="./wallet-activity-timeline/" target="_blank" rel="noreferrer">新开查看</a>
+            <a class="btn" href="./wallet-activity-timeline/">当前页打开</a>
+          </div>
+        </article>
+      </div>
+      <div class="footer-note">
+        启动服务后访问 <code>http://127.0.0.1:8000/dashboards/</code>。若浏览器已打开某个看板，也可直接把入口页固定在一个 tab 里，当成总目录使用。
+      </div>
+    </section>
+  </div>
+</body>
+</html>
