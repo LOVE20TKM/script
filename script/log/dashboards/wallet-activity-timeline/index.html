@@ -614,6 +614,41 @@
         white-space: nowrap;
       }
 
+      .copy-chip {
+        appearance: none;
+        border: 1px solid transparent;
+        cursor: pointer;
+        font: inherit;
+        margin: 0;
+        max-width: 100%;
+        text-align: left;
+        transition:
+          transform 140ms ease,
+          border-color 140ms ease,
+          background 140ms ease,
+          color 140ms ease,
+          box-shadow 140ms ease;
+      }
+
+      .copy-chip:hover {
+        transform: translateY(-1px);
+        border-color: rgba(33, 91, 143, 0.18);
+        background: rgba(33, 91, 143, 0.12);
+        color: var(--accent);
+      }
+
+      .copy-chip:focus-visible {
+        outline: none;
+        border-color: rgba(33, 91, 143, 0.34);
+        box-shadow: 0 0 0 4px rgba(33, 91, 143, 0.12);
+      }
+
+      .copy-chip.is-copied {
+        border-color: rgba(31, 122, 98, 0.2);
+        background: rgba(31, 122, 98, 0.14);
+        color: var(--accent-3);
+      }
+
       .tx-meta-cell {
         display: grid;
         gap: 6px;
@@ -902,6 +937,35 @@
         font-size: 0.94em;
       }
 
+      .copy-toast {
+        position: fixed;
+        right: 18px;
+        bottom: 18px;
+        z-index: 30;
+        min-width: 180px;
+        max-width: min(320px, calc(100vw - 36px));
+        padding: 11px 14px;
+        border-radius: 14px;
+        background: rgba(29, 36, 48, 0.92);
+        color: #fff;
+        box-shadow: 0 18px 40px rgba(29, 36, 48, 0.24);
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(8px);
+        transition:
+          opacity 140ms ease,
+          transform 140ms ease;
+      }
+
+      .copy-toast.show {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .copy-toast[data-tone="error"] {
+        background: rgba(143, 47, 45, 0.96);
+      }
+
       @media (max-width: 720px) {
         body {
           padding-left: 12px;
@@ -1024,6 +1088,7 @@
         </div>
       </section>
     </div>
+    <div class="copy-toast" id="copy-toast" aria-live="polite"></div>
 
     <script>
       const pageParams = new URLSearchParams(window.location.search);
@@ -1066,6 +1131,7 @@
         { key: "failed", label: "失败" },
       ];
       const DEFAULT_STATUS_FILTER_KEYS = STATUS_FILTER_OPTIONS.map((item) => item.key);
+      let copyToastTimer = null;
 
       const state = {
         sourceLabel: `script/log/db/${DEFAULT_NETWORK}/events.db`,
@@ -1104,6 +1170,109 @@
 
       function normalizeTxHash(value) {
         return String(value || "").trim().toLowerCase();
+      }
+
+      function renderCopyButton(innerHtml, value, className, label) {
+        const copyValue = String(value || "").trim();
+        if (!copyValue) {
+          return innerHtml;
+        }
+        const title = `${copyValue}\n点击复制`;
+        const ariaLabel = `复制${label || "内容"}: ${copyValue}`;
+        return `
+        <button
+          class="${escapeHtml(className || "copy-chip")}"
+          type="button"
+          data-copy-value="${escapeHtml(copyValue)}"
+          data-copy-label="${escapeHtml(label || "内容")}"
+          title="${escapeHtml(title)}"
+          aria-label="${escapeHtml(ariaLabel)}"
+        >
+          ${innerHtml}
+        </button>`;
+      }
+
+      function showCopyToast(message, tone = "success") {
+        const node = document.getElementById("copy-toast");
+        node.textContent = message;
+        node.setAttribute("data-tone", tone);
+        node.classList.add("show");
+        if (copyToastTimer) {
+          window.clearTimeout(copyToastTimer);
+        }
+        copyToastTimer = window.setTimeout(() => {
+          node.classList.remove("show");
+        }, 1300);
+      }
+
+      function flashCopiedState(node) {
+        node.classList.add("is-copied");
+        window.setTimeout(() => {
+          node.classList.remove("is-copied");
+        }, 900);
+      }
+
+      function legacyCopyText(value) {
+        const textarea = document.createElement("textarea");
+        textarea.value = value;
+        textarea.setAttribute("readonly", "readonly");
+        textarea.style.position = "fixed";
+        textarea.style.top = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        textarea.setSelectionRange(0, textarea.value.length);
+        const copied = document.execCommand("copy");
+        document.body.removeChild(textarea);
+        if (!copied) {
+          throw new Error("execCommand copy failed");
+        }
+      }
+
+      async function copyText(value) {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(value);
+          return;
+        }
+        legacyCopyText(value);
+      }
+
+      async function copyFromTrigger(node) {
+        const value = String(node?.dataset?.copyValue || "").trim();
+        if (!value) {
+          return;
+        }
+        await copyText(value);
+        flashCopiedState(node);
+        showCopyToast(`已复制${node.dataset.copyLabel || "内容"}`);
+      }
+
+      function handleCopyClick(event) {
+        const trigger = event.target.closest("[data-copy-value]");
+        if (!trigger) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        copyFromTrigger(trigger).catch((error) => {
+          console.error(error);
+          showCopyToast("复制失败，请检查剪贴板权限。", "error");
+        });
+      }
+
+      function handleCopyKeydown(event) {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+        const trigger = event.target.closest("[data-copy-value]");
+        if (!trigger) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        copyFromTrigger(trigger).catch((error) => {
+          console.error(error);
+          showCopyToast("复制失败，请检查剪贴板权限。", "error");
+        });
       }
 
       function renderTxMetaIcon(kind) {
@@ -1735,13 +1904,13 @@
           return "";
         }
         return `<div class="community-stack">${items
-          .map(
-            (item) => `
-        <span class="community-card" title="${escapeHtml(item.address || "")}">
-          <span class="community-label">${renderTokenInline(item.label || shortAddress(item.address || ""))}</span>
-        </span>
-      `
-          )
+          .map((item) => {
+            const address = normalizeAddress(item.address || "");
+            const innerHtml = `<span class="community-label">${renderTokenInline(item.label || shortAddress(address))}</span>`;
+            return address
+              ? renderCopyButton(innerHtml, address, "community-card copy-chip", "合约地址")
+              : `<span class="community-card">${innerHtml}</span>`;
+          })
           .join("")}</div>`;
       }
 
@@ -1785,7 +1954,12 @@
         const timeStatusClass =
           row.status === 0 ? "status-failed" : row.status === 1 ? "status-success" : "status-unknown";
         const txHashHtml = row.tx_hash
-          ? `<span class="action-id-chip" title="${escapeHtml(row.tx_hash)}">Tx ${escapeHtml(shortAddress(row.tx_hash))}</span>`
+          ? renderCopyButton(
+              `Tx ${escapeHtml(shortAddress(row.tx_hash))}`,
+              normalizeTxHash(row.tx_hash),
+              "action-id-chip copy-chip",
+              "Tx 哈希"
+            )
           : "";
         return `
         <div class="tx-meta-cell">
@@ -1809,14 +1983,16 @@
           return '<span class="muted">-</span>';
         }
         return `<div class="counterparty-stack">${items
-          .map(
-            (item) => `
-        <span class="counterparty-chip" title="${escapeHtml(item.address || "")}">
-          ${item.label ? `<span class="counterparty-label">${escapeHtml(item.label)}</span>` : ""}
-          <span class="counterparty-address">${escapeHtml(shortAddress(item.address || ""))}</span>
-        </span>
-      `
-          )
+          .map((item) => {
+            const address = normalizeAddress(item.address || "");
+            const innerHtml = `
+        ${item.label ? `<span class="counterparty-label">${escapeHtml(item.label)}</span>` : ""}
+        <span class="counterparty-address">${escapeHtml(shortAddress(address))}</span>
+      `;
+            return address
+              ? renderCopyButton(innerHtml, address, "counterparty-chip copy-chip", "地址")
+              : `<span class="counterparty-chip">${innerHtml}</span>`;
+          })
           .join("")}</div>`;
       }
 
@@ -1829,11 +2005,15 @@
       }
 
       function renderRawEventCard(item) {
+        const address = normalizeAddress(item.address || "");
+        const addressChip = address
+          ? renderCopyButton(escapeHtml(shortAddress(address)), address, "action-id-chip copy-chip", "合约地址")
+          : '<span class="action-id-chip">-</span>';
         return `
         <article class="raw-event-card">
           <div class="raw-event-head">
             <span>#${escapeHtml(item.log_index ?? "-")} ${escapeHtml(item.contract_name || "-")} / ${escapeHtml(item.event_name || "-")}</span>
-            <span class="action-id-chip" title="${escapeHtml(item.address || "")}">${escapeHtml(shortAddress(item.address || ""))}</span>
+            ${addressChip}
           </div>
           <pre class="raw-pre">${escapeHtml(stringifyJson(item))}</pre>
         </article>
@@ -1877,8 +2057,13 @@
       function renderTable(rows) {
         const tbody = document.getElementById("table-body");
         const subtitle = document.getElementById("table-subtitle");
-        subtitle.textContent = state.queriedAddress
-          ? `${shortAddress(state.queriedAddress)} 当前已加载 ${rows.length} 条记录；默认每条对应 1 笔交易，按区块和交易顺序倒序显示，点击条目可展开原始 tx / events。`
+        subtitle.innerHTML = state.queriedAddress
+          ? `${renderCopyButton(
+              escapeHtml(shortAddress(state.queriedAddress)),
+              normalizeAddress(state.queriedAddress),
+              "action-id-chip copy-chip",
+              "钱包地址"
+            )} 当前已加载 ${escapeHtml(rows.length.toLocaleString("zh-CN"))} 条记录；默认每条对应 1 笔交易，按区块和交易顺序倒序显示，点击条目可展开原始 tx / events。`
           : "输入钱包地址后直接查询活库。";
 
         if (!rows.length) {
@@ -2114,6 +2299,9 @@
         }
         runQuery({ append: true, silent: true }).catch(() => {});
       });
+
+      document.addEventListener("click", handleCopyClick, true);
+      document.addEventListener("keydown", handleCopyKeydown, true);
 
       document.getElementById("address-input").addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
