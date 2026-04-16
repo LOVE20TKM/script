@@ -430,17 +430,17 @@
 
       th:nth-child(2),
       td:nth-child(2) {
-        width: 36%;
+        width: 34%;
       }
 
       th:nth-child(3),
       td:nth-child(3) {
-        width: 19%;
+        width: 18%;
       }
 
       th:nth-child(4),
       td:nth-child(4) {
-        width: 16%;
+        width: 20%;
       }
 
       th:nth-child(5),
@@ -880,9 +880,34 @@
         max-width: 100%;
       }
 
+      .amount-chip,
+      .amount-chip .token-inline,
+      .amount-token {
+        white-space: nowrap;
+        overflow-wrap: normal;
+        word-break: keep-all;
+      }
+
+      .amount-chip {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 4px;
+        align-items: start;
+        white-space: normal;
+      }
+
       .amount-token {
         font-weight: 700;
         color: var(--text);
+        overflow: visible;
+        text-overflow: clip;
+      }
+
+      .amount-chip .token-inline,
+      .amount-chip .token-pair {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
 
       .amount-value {
@@ -890,6 +915,9 @@
         align-items: baseline;
         gap: 0;
         min-width: 0;
+        white-space: nowrap;
+        overflow-wrap: normal;
+        word-break: keep-all;
       }
 
       .amount-int {
@@ -897,6 +925,10 @@
         font-weight: 800;
         color: var(--text);
         line-height: 1.2;
+        flex: 0 0 auto;
+        white-space: nowrap;
+        overflow-wrap: normal;
+        word-break: keep-all;
       }
 
       .amount-frac {
@@ -904,6 +936,9 @@
         font-weight: 600;
         color: var(--muted);
         line-height: 1.2;
+        white-space: nowrap;
+        overflow-wrap: normal;
+        word-break: keep-all;
       }
 
       .counterparty-label {
@@ -1847,12 +1882,12 @@
         const formatted = formatBigInt(raw, decimals);
         const dotIndex = formatted.indexOf(".");
         if (dotIndex < 0) {
-          return `<span class="amount-value"><span class="amount-int">${escapeHtml(formatted)}</span></span>`;
+          return `<span class="amount-value" title="${escapeHtml(formatted)}"><span class="amount-int">${escapeHtml(formatted)}</span></span>`;
         }
         const integerPart = formatted.slice(0, dotIndex);
         const fractionPart = formatted.slice(dotIndex);
         return `
-        <span class="amount-value">
+        <span class="amount-value" title="${escapeHtml(formatted)}">
           <span class="amount-int">${escapeHtml(integerPart)}</span><span class="amount-frac">${escapeHtml(fractionPart)}</span>
         </span>`;
       }
