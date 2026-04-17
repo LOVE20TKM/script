@@ -411,6 +411,10 @@
         gap: 16px;
       }
 
+      .panel[hidden] {
+        display: none !important;
+      }
+
       .panel-head {
         display: flex;
         justify-content: space-between;
@@ -729,10 +733,14 @@
         display: inline-flex;
         align-items: center;
         gap: 7px;
-        font-size: 13px;
+        width: fit-content;
+        padding: 4px 9px;
+        border-radius: 999px;
+        font-size: 12px;
         font-weight: 700;
         color: var(--muted);
-        line-height: 1.45;
+        line-height: 1.3;
+        background: rgba(29, 36, 48, 0.08);
       }
 
       .tx-meta-time {
@@ -1124,6 +1132,14 @@
           grid-template-columns: 1fr;
         }
 
+        .query-row .button-row {
+          width: 100%;
+        }
+
+        .query-row .button-row .btn {
+          width: 100%;
+        }
+
         .filter-row {
           grid-template-columns: 1fr;
         }
@@ -1151,6 +1167,14 @@
           border: 1px solid rgba(29, 36, 48, 0.08);
           border-radius: 18px;
           background: rgba(255, 255, 255, 0.72);
+          display: grid;
+          grid-template-columns: minmax(220px, 0.9fr) minmax(0, 1.35fr);
+          gap: 12px 16px;
+          align-items: start;
+        }
+
+        tbody tr.summary-row.no-amounts > td.amount-cell {
+          display: none;
         }
 
         tbody tr.summary-row.is-expanded {
@@ -1175,6 +1199,8 @@
           align-items: center;
           justify-content: center;
           gap: 12px;
+          width: 100%;
+          box-sizing: border-box;
           min-height: 180px;
           padding: 20px 16px;
           border: 1px solid rgba(29, 36, 48, 0.08);
@@ -1183,15 +1209,48 @@
           text-align: center;
         }
 
+        tbody tr > td.empty.loading {
+          border: 0;
+          background: transparent;
+          min-height: 160px;
+          padding-top: 8px;
+          padding-bottom: 8px;
+        }
+
         tbody tr.summary-row > td {
           display: block;
-          width: 100%;
-          padding: 10px 0 0;
+          min-width: 0;
+          width: auto;
+          padding: 0;
           border-bottom: 0;
         }
 
-        tbody tr.summary-row > td:first-child {
-          padding-top: 0;
+        tbody tr.summary-row > td:nth-child(1) {
+          grid-column: 1;
+        }
+
+        tbody tr.summary-row > td:nth-child(2) {
+          grid-column: 2;
+        }
+
+        tbody tr.summary-row > td:nth-child(3) {
+          grid-column: 1;
+        }
+
+        tbody tr.summary-row > td:nth-child(4) {
+          grid-column: 2;
+        }
+
+        tbody tr.summary-row > td:nth-child(5) {
+          grid-column: 2;
+        }
+
+        .counterparty-stack,
+        .amount-stack,
+        .gas-stack {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
         }
 
         tbody td[data-label]::before {
@@ -1300,6 +1359,42 @@
           grid-template-columns: 1fr;
         }
       }
+
+      @media (max-width: 900px) {
+        tbody tr.summary-row {
+          grid-template-columns: minmax(180px, 0.88fr) minmax(0, 1.12fr);
+        }
+
+        tbody tr.summary-row > td:nth-child(1) {
+          grid-column: 1;
+        }
+
+        tbody tr.summary-row > td:nth-child(2) {
+          grid-column: 2;
+        }
+
+        tbody tr.summary-row > td:nth-child(3) {
+          grid-column: 1;
+        }
+
+        tbody tr.summary-row > td:nth-child(4) {
+          grid-column: 2;
+        }
+
+        tbody tr.summary-row > td:nth-child(5) {
+          grid-column: 2;
+        }
+      }
+
+      @media (max-width: 620px) {
+        tbody tr.summary-row {
+          grid-template-columns: 1fr;
+        }
+
+        tbody tr.summary-row > td {
+          grid-column: 1 / -1;
+        }
+      }
     </style>
   </head>
   <body>
@@ -1309,10 +1404,6 @@
           <div>
             <p class="eyebrow">Wallet Activity Timeline</p>
             <h1>钱包地址时间线看板</h1>
-            <p>
-              输入任意钱包地址后，页面会直接查询活 <code>events.db</code>，按区块和交易顺序拉出该地址的时间线，并把
-              激励、行动参与 / 追加 / 退出、授权、groupVerify 提交、转账、加池 / LP 铸造这类交易归类成接近人工整理的表格。
-            </p>
           </div>
           <aside class="meta" id="meta"></aside>
         </div>
@@ -1371,11 +1462,11 @@
         <div class="summary-grid" id="summary-cards"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel" id="timeline-panel" hidden>
         <div class="panel-head">
           <div>
             <h2 class="panel-title">时间线明细</h2>
-            <p class="panel-subtitle" id="table-subtitle">输入钱包地址后直接查询活库。</p>
+            <p class="panel-subtitle" id="table-subtitle"></p>
           </div>
         </div>
         <div class="table-wrap">
@@ -1384,7 +1475,7 @@
               <tr>
                 <th>交易</th>
                 <th>类型 / 摘要</th>
-                <th>对手方 / 目标地址</th>
+                <th>交互地址 / 目标地址</th>
                 <th>数量</th>
                 <th>Gas</th>
               </tr>
@@ -1545,6 +1636,10 @@
           .replace(/>/g, "&gt;")
           .replace(/"/g, "&quot;")
           .replace(/'/g, "&#39;");
+      }
+
+      function compactHomePath(value) {
+        return String(value || "").replace(/^\/Users\/[^/]+/, "~");
       }
 
       function normalizeAddress(value) {
@@ -1719,6 +1814,11 @@
 
       function setSummaryPanelVisible(isVisible) {
         const panel = document.getElementById("summary-panel");
+        panel.hidden = !isVisible;
+      }
+
+      function setTimelinePanelVisible(isVisible) {
+        const panel = document.getElementById("timeline-panel");
         panel.hidden = !isVisible;
       }
 
@@ -2530,7 +2630,7 @@
         </div>
         <div class="meta-row">
           <div class="meta-label">DB Source</div>
-          <div class="meta-value">${escapeHtml(state.sourceLabel)}</div>
+          <div class="meta-value">${escapeHtml(compactHomePath(state.sourceLabel))}</div>
         </div>
         <div class="meta-row">
           <div class="meta-label">DB MTime</div>
@@ -2544,7 +2644,7 @@
       }
 
       function renderSummary(rows) {
-        if (!state.queriedAddress || isPrimaryQueryLoading()) {
+        if ((!state.queriedAddress && !state.lastQueryError) || isPrimaryQueryLoading()) {
           setSummaryPanelVisible(false);
           return;
         }
@@ -2899,6 +2999,7 @@
       function renderTable(rows) {
         const tbody = document.getElementById("table-body");
         const subtitle = document.getElementById("table-subtitle");
+        setTimelinePanelVisible(Boolean(state.queriedAddress || state.lastQueryError) && !isPrimaryQueryLoading());
         if (isPrimaryQueryLoading()) {
           subtitle.innerHTML = `${renderCopyButton(
             escapeHtml(shortAddress(state.pendingAddress)),
@@ -2924,7 +3025,7 @@
               "action-id-chip copy-chip",
               "钱包地址"
             )} 当前已加载 ${escapeHtml(rows.length.toLocaleString("zh-CN"))} 条记录；默认每条对应 1 笔交易，按区块和交易顺序倒序显示，点击条目可展开原始 tx / events。`
-          : "输入钱包地址后直接查询活库。";
+          : "";
 
         if (!rows.length) {
           const emptyMessage = state.lastQueryError
@@ -2943,12 +3044,13 @@
             (row) => {
               const txKey = normalizeTxHash(row.tx_hash);
               const expanded = state.expandedTxs.has(txKey);
+              const hasAmounts = Array.isArray(row.amounts) && row.amounts.length > 0;
               return `
-        <tr class="summary-row ${expanded ? "is-expanded" : ""}" data-row-tx-hash="${escapeHtml(txKey)}">
+        <tr class="summary-row ${expanded ? "is-expanded" : ""} ${hasAmounts ? "" : "no-amounts"}" data-row-tx-hash="${escapeHtml(txKey)}">
           <td data-label="交易">${renderTxMetaCell(row)}</td>
           <td data-label="类型 / 摘要">${renderActionCell(row)}</td>
-          <td data-label="对手方 / 目标地址">${renderCounterpartyCell(row.counterparties)}</td>
-          <td data-label="数量">${renderAmountCell(row.amounts)}</td>
+          <td data-label="交互地址 / 目标地址">${renderCounterpartyCell(row.counterparties)}</td>
+          <td data-label="数量" class="amount-cell">${renderAmountCell(row.amounts)}</td>
           <td data-label="GAS">${renderGasCell(row)}</td>
         </tr>
         ${
