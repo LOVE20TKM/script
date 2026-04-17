@@ -1093,7 +1093,7 @@
         }
       }
 
-      @media (max-width: 720px) {
+      @media (max-width: 1180px) {
         body {
           padding-left: 12px;
           padding-right: 12px;
@@ -1109,6 +1109,17 @@
           width: 100%;
         }
 
+        .table-wrap {
+          overflow: hidden;
+          border-radius: 16px;
+        }
+
+        table {
+          display: block;
+          table-layout: auto;
+          width: 100%;
+        }
+
         .query-row {
           grid-template-columns: 1fr;
         }
@@ -1121,17 +1132,168 @@
           padding-top: 0;
         }
 
-        th:nth-child(1),
-        td:nth-child(1),
-        th:nth-child(2),
-        td:nth-child(2),
-        th:nth-child(3),
-        td:nth-child(3),
-        th:nth-child(4),
-        td:nth-child(4),
-        th:nth-child(5),
-        td:nth-child(5) {
-          width: auto;
+        thead {
+          display: none;
+        }
+
+        tbody {
+          display: grid;
+          gap: 12px;
+          padding: 12px;
+        }
+
+        tbody tr {
+          display: block;
+        }
+
+        tbody tr.summary-row {
+          padding: 12px;
+          border: 1px solid rgba(29, 36, 48, 0.08);
+          border-radius: 18px;
+          background: rgba(255, 255, 255, 0.72);
+        }
+
+        tbody tr.summary-row.is-expanded {
+          background: rgba(33, 91, 143, 0.05);
+        }
+
+        tbody tr.detail-row {
+          margin-top: -6px;
+        }
+
+        tbody tr.detail-row td {
+          display: block;
+          width: 100%;
+          padding: 0 0 12px;
+          border-bottom: 0;
+          background: transparent;
+        }
+
+        tbody tr > td.empty {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
+          min-height: 180px;
+          padding: 20px 16px;
+          border: 1px solid rgba(29, 36, 48, 0.08);
+          border-radius: 18px;
+          background: rgba(255, 255, 255, 0.72);
+          text-align: center;
+        }
+
+        tbody tr.summary-row > td {
+          display: block;
+          width: 100%;
+          padding: 10px 0 0;
+          border-bottom: 0;
+        }
+
+        tbody tr.summary-row > td:first-child {
+          padding-top: 0;
+        }
+
+        tbody td[data-label]::before {
+          content: attr(data-label);
+          display: block;
+          margin-bottom: 4px;
+          font-size: 12px;
+          font-weight: 800;
+          color: var(--muted);
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .action-head {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .action-top,
+        .action-meta,
+        .tx-meta-actions {
+          width: 100%;
+        }
+
+        .tx-meta-cell,
+        .action-cell {
+          min-width: 0;
+        }
+
+        .action-title,
+        .action-summary,
+        .action-extra {
+          gap: 6px;
+          line-height: 1.45;
+        }
+
+        .tx-meta-cell {
+          gap: 4px;
+        }
+
+        .tx-meta-time,
+        .tx-meta-block,
+        .action-id-chip,
+        .badge,
+        .community-card,
+        .counterparty-chip,
+        .gas-chip,
+        .amount-chip {
+          max-width: 100%;
+          white-space: normal;
+          overflow-wrap: anywhere;
+          word-break: break-word;
+        }
+
+        .tx-meta-actions .action-id-chip {
+          line-height: 1.3;
+        }
+
+        .community-stack {
+          width: 100%;
+        }
+
+        .counterparty-stack,
+        .amount-stack,
+        .gas-stack {
+          width: 100%;
+        }
+
+        .community-card {
+          padding: 7px 9px;
+        }
+
+        .amount-chip {
+          gap: 3px;
+          padding: 6px 8px;
+          align-items: flex-start;
+        }
+
+        .amount-chip .token-inline,
+        .amount-chip .token-pair,
+        .amount-token,
+        .amount-value,
+        .amount-int,
+        .amount-frac {
+          white-space: normal;
+          overflow-wrap: anywhere;
+          word-break: break-word;
+        }
+
+        .amount-value {
+          display: inline-flex;
+          flex-wrap: wrap;
+        }
+
+        .amount-int,
+        .amount-frac {
+          font-size: 13px;
+        }
+
+        .gas-chip,
+        .counterparty-chip {
+          padding: 6px 8px;
         }
 
         .raw-grid {
@@ -2783,11 +2945,11 @@
               const expanded = state.expandedTxs.has(txKey);
               return `
         <tr class="summary-row ${expanded ? "is-expanded" : ""}" data-row-tx-hash="${escapeHtml(txKey)}">
-          <td>${renderTxMetaCell(row)}</td>
-          <td>${renderActionCell(row)}</td>
-          <td>${renderCounterpartyCell(row.counterparties)}</td>
-          <td>${renderAmountCell(row.amounts)}</td>
-          <td>${renderGasCell(row)}</td>
+          <td data-label="交易">${renderTxMetaCell(row)}</td>
+          <td data-label="类型 / 摘要">${renderActionCell(row)}</td>
+          <td data-label="对手方 / 目标地址">${renderCounterpartyCell(row.counterparties)}</td>
+          <td data-label="数量">${renderAmountCell(row.amounts)}</td>
+          <td data-label="GAS">${renderGasCell(row)}</td>
         </tr>
         ${
           expanded
