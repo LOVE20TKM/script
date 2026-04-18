@@ -33,7 +33,7 @@
 使用说明：
 
 ```bash
-cd /Users/BigPolarBear/Documents/github/LOVE20TKM/script/script/log/dashboards
+cd script/log/dashboards
 python3 dashboard_server.py --host 127.0.0.1 --port 8000 --network thinkium70001_public
 ```
 
@@ -48,3 +48,26 @@ python3 dashboard_server.py --host 127.0.0.1 --port 8000 --network thinkium70001
 - `http://127.0.0.1:8000/dashboards/mint-addresses-by-log-round/`
 - `http://127.0.0.1:8000/dashboards/wallet-activity-timeline/`
 - `http://127.0.0.1:8000/dashboards/tusdt-flow/`
+
+## macOS 后台自启
+
+如果想在登录 mac 后自动后台启动看板服务，推荐使用 `LaunchAgent`。
+
+安装并加载：
+
+```bash
+bash ./launchd/install.sh
+```
+
+关闭自启：
+
+```bash
+bash ./launchd/uninstall.sh
+```
+
+默认行为：
+
+- 监听 `127.0.0.1:8000`
+- 使用 `thinkium70001_public`
+- 日志写到 `~/Library/Logs/LOVE20/`
+- 运行脚本会被安装到 `~/Library/Application Support/LOVE20/dashboards/`，避免 macOS 对 `Documents` 路径的限制
