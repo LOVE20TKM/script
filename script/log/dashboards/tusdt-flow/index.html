@@ -1,0 +1,1365 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TUSDT 流入流出看板</title>
+    <style>
+      :root {
+        --bg: #f3efe7;
+        --bg-deep: #ebe2d3;
+        --panel: rgba(255, 252, 246, 0.88);
+        --panel-strong: rgba(255, 252, 246, 0.96);
+        --text: #22313d;
+        --muted: #5e6974;
+        --line: rgba(31, 41, 51, 0.1);
+        --accent: #195d8f;
+        --accent-2: #a3572a;
+        --accent-3: #1f7a62;
+        --danger: #9d3931;
+        --danger-soft: rgba(157, 57, 49, 0.12);
+        --success: #176d58;
+        --success-soft: rgba(23, 109, 88, 0.12);
+        --shadow: 0 16px 38px rgba(72, 55, 34, 0.08);
+        --radius: 20px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--text);
+        font-family: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(163, 87, 42, 0.12), transparent 30%),
+          radial-gradient(circle at top right, rgba(31, 122, 98, 0.1), transparent 26%),
+          linear-gradient(180deg, #fbf7ef 0%, var(--bg) 48%, var(--bg-deep) 100%);
+        padding: 20px 16px 44px;
+      }
+
+      .shell {
+        max-width: 1520px;
+        margin: 0 auto;
+        display: grid;
+        gap: 14px;
+      }
+
+      .hero,
+      .panel {
+        background: var(--panel);
+        border: 1px solid rgba(31, 41, 51, 0.08);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(12px);
+      }
+
+      .hero {
+        padding: 22px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .hero-top {
+        display: grid;
+        grid-template-columns: minmax(0, 1.32fr) minmax(280px, 0.88fr);
+        gap: 16px;
+        align-items: start;
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        font-size: 11px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      h1 {
+        margin: 0;
+        font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+        font-size: clamp(30px, 3.6vw, 46px);
+        line-height: 1.06;
+        letter-spacing: -0.03em;
+      }
+
+      .hero-copy {
+        display: grid;
+        gap: 10px;
+        max-width: 760px;
+      }
+
+      .hero-copy p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.62;
+        font-size: 14px;
+      }
+
+      .hero-note {
+        padding: 12px 14px;
+        border-radius: 16px;
+        background: rgba(25, 93, 143, 0.06);
+        border: 1px solid rgba(25, 93, 143, 0.1);
+        color: var(--muted);
+        line-height: 1.56;
+        font-size: 13px;
+      }
+
+      .meta {
+        min-width: 0;
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: var(--panel-strong);
+        border: 1px solid rgba(31, 41, 51, 0.08);
+        display: grid;
+        gap: 10px;
+      }
+
+      .meta-row {
+        display: grid;
+        gap: 4px;
+      }
+
+      .meta-label {
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .meta-value {
+        font-size: 13px;
+        line-height: 1.46;
+        word-break: break-all;
+      }
+
+      .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 12px;
+        background: rgba(31, 41, 51, 0.06);
+        border: 1px solid rgba(31, 41, 51, 0.08);
+        color: var(--muted);
+      }
+
+      .panel {
+        padding: 18px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .panel-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .panel-title {
+        margin: 0;
+        font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+        font-size: clamp(22px, 2.5vw, 30px);
+        line-height: 1.12;
+        letter-spacing: -0.02em;
+      }
+
+      .panel-note {
+        margin: 5px 0 0;
+        color: var(--muted);
+        line-height: 1.56;
+        font-size: 13px;
+        max-width: 760px;
+      }
+
+      .controls {
+        display: grid;
+        gap: 12px;
+      }
+
+      .control-grid {
+        display: grid;
+        grid-template-columns: minmax(160px, 200px) minmax(0, 1fr);
+        gap: 12px;
+        align-items: end;
+      }
+
+      .field {
+        display: grid;
+        gap: 8px;
+      }
+
+      .field-label {
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .field-input {
+        width: 100%;
+        border: 1px solid rgba(31, 41, 51, 0.14);
+        background: rgba(255, 255, 255, 0.78);
+        color: var(--text);
+        border-radius: 14px;
+        padding: 12px 14px;
+        font-size: 14px;
+        outline: none;
+        transition:
+          border-color 140ms ease,
+          box-shadow 140ms ease;
+      }
+
+      .field-input:focus {
+        border-color: rgba(25, 93, 143, 0.46);
+        box-shadow: 0 0 0 4px rgba(25, 93, 143, 0.12);
+      }
+
+      .toggle-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .toggle-btn,
+      .row-btn {
+        border: 1px solid rgba(31, 41, 51, 0.12);
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-size: 12px;
+        background: rgba(31, 41, 51, 0.06);
+        color: var(--text);
+        cursor: pointer;
+        transition:
+          transform 140ms ease,
+          background 140ms ease,
+          border-color 140ms ease;
+      }
+
+      .toggle-btn:hover,
+      .row-btn:hover {
+        transform: translateY(-1px);
+      }
+
+      .row-btn.is-loading {
+        position: relative;
+        padding-left: 32px;
+      }
+
+      .row-btn.is-loading::before {
+        content: "";
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        width: 12px;
+        height: 12px;
+        margin-top: -6px;
+        border-radius: 50%;
+        border: 2px solid rgba(31, 41, 51, 0.18);
+        border-top-color: currentColor;
+        animation: spin 780ms linear infinite;
+      }
+
+      .toggle-btn.active {
+        background: var(--text);
+        color: #fffaf3;
+        border-color: rgba(31, 41, 51, 0.28);
+      }
+
+      .toggle-btn:disabled,
+      .row-btn:disabled {
+        opacity: 0.6;
+        cursor: wait;
+        transform: none;
+      }
+
+      .status-banner {
+        display: none;
+        padding: 12px 14px;
+        border-radius: 16px;
+        font-size: 13px;
+        line-height: 1.55;
+        border: 1px solid transparent;
+      }
+
+      .status-banner[data-tone="info"] {
+        display: block;
+        background: rgba(25, 93, 143, 0.1);
+        border-color: rgba(25, 93, 143, 0.16);
+      }
+
+      .status-banner[data-tone="success"] {
+        display: block;
+        background: rgba(23, 109, 88, 0.1);
+        border-color: rgba(23, 109, 88, 0.16);
+      }
+
+      .status-banner[data-tone="warning"] {
+        display: block;
+        background: rgba(163, 87, 42, 0.1);
+        border-color: rgba(163, 87, 42, 0.16);
+      }
+
+      .status-banner[data-tone="error"] {
+        display: block;
+        background: rgba(157, 57, 49, 0.1);
+        border-color: rgba(157, 57, 49, 0.16);
+      }
+
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .card {
+        padding: 14px 16px;
+        border-radius: 16px;
+        background: var(--panel-strong);
+        border: 1px solid rgba(31, 41, 51, 0.08);
+        display: grid;
+        gap: 6px;
+        align-content: start;
+      }
+
+      .card-label {
+        margin-bottom: 0;
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .card-value {
+        font-size: clamp(26px, 3vw, 38px);
+        line-height: 0.98;
+        font-weight: 700;
+        margin-bottom: 0;
+        letter-spacing: -0.04em;
+      }
+
+      .metric-value {
+        font-size: clamp(22px, 2.3vw, 30px);
+        line-height: 1.08;
+        letter-spacing: -0.03em;
+        overflow-wrap: anywhere;
+      }
+
+      .card-note {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.24fr) minmax(380px, 0.96fr);
+        gap: 14px;
+        align-items: start;
+      }
+
+      .section-block {
+        display: grid;
+        gap: 12px;
+      }
+
+      .mini-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .detail-tools {
+        display: grid;
+        gap: 8px;
+        justify-items: end;
+      }
+
+      .detail-sort {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 14px;
+        justify-content: flex-end;
+      }
+
+      .detail-sort-group {
+        display: grid;
+        gap: 6px;
+        justify-items: end;
+      }
+
+      .detail-sort-label {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .mini-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 12px;
+        background: rgba(31, 41, 51, 0.06);
+        color: var(--muted);
+      }
+
+      .table-shell {
+        overflow: auto;
+        border-radius: 16px;
+        border: 1px solid rgba(31, 41, 51, 0.08);
+        background: rgba(255, 255, 255, 0.62);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 880px;
+      }
+
+      .detail-table {
+        min-width: 1320px;
+      }
+
+      th,
+      td {
+        padding: 11px 12px;
+        border-bottom: 1px solid var(--line);
+        text-align: right;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      th:first-child,
+      td:first-child {
+        text-align: left;
+        position: sticky;
+        left: 0;
+        background: inherit;
+      }
+
+      thead th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: rgba(250, 246, 239, 0.98);
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      tbody tr {
+        transition: background 140ms ease;
+      }
+
+      tbody tr:hover {
+        background: rgba(25, 93, 143, 0.04);
+      }
+
+      tbody tr.selected {
+        background: rgba(25, 93, 143, 0.1);
+      }
+
+      .signed {
+        font-variant-numeric: tabular-nums;
+      }
+
+      .amount {
+        display: inline-flex;
+        align-items: baseline;
+        justify-content: flex-end;
+        max-width: 100%;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .amount-sign {
+        margin-right: 0.04em;
+      }
+
+      .amount-dec {
+        margin-left: 0.06em;
+        font-size: 0.58em;
+        opacity: 0.56;
+        font-weight: 600;
+      }
+
+      .metric-value .amount-dec {
+        font-size: 0.52em;
+        opacity: 0.5;
+      }
+
+      .amount-empty {
+        opacity: 0.72;
+      }
+
+      .signed.positive {
+        color: var(--success);
+      }
+
+      .signed.negative {
+        color: var(--danger);
+      }
+
+      .address-cell {
+        display: flex;
+        align-items: center;
+      }
+
+      .address-copy {
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-start;
+        max-width: 100%;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        font: inherit;
+        text-align: left;
+      }
+
+      .address-copy strong {
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        font-size: 12px;
+        letter-spacing: 0.01em;
+      }
+
+      .address-copy:hover strong {
+        color: var(--accent);
+      }
+
+      .address-copy:focus-visible {
+        outline: 2px solid rgba(25, 93, 143, 0.28);
+        outline-offset: 4px;
+        border-radius: 8px;
+      }
+
+      .empty-state {
+        padding: 16px;
+        border-radius: 16px;
+        border: 1px dashed rgba(31, 41, 51, 0.14);
+        color: var(--muted);
+        line-height: 1.58;
+        background: rgba(255, 255, 255, 0.42);
+      }
+
+      .empty-state strong {
+        color: var(--text);
+      }
+
+      .footnote {
+        color: var(--muted);
+        line-height: 1.55;
+        font-size: 12px;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @media (max-width: 1240px) {
+        .cards {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 1180px) {
+        .hero-top,
+        .layout {
+          grid-template-columns: 1fr;
+        }
+
+        .meta {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 980px) {
+        .control-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .cards,
+        .meta {
+          grid-template-columns: 1fr;
+        }
+
+        .detail-tools {
+          justify-items: start;
+          width: 100%;
+        }
+
+        .detail-sort,
+        .detail-sort-group {
+          justify-content: flex-start;
+          justify-items: start;
+        }
+      }
+
+      @media (max-width: 720px) {
+        body {
+          padding: 14px 12px 28px;
+        }
+
+        .hero,
+        .panel {
+          padding: 16px;
+        }
+
+        h1 {
+          font-size: 28px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <section class="hero">
+        <div class="hero-top">
+          <div class="hero-copy">
+            <div>
+              <p class="eyebrow">LOVE20 Dashboards</p>
+              <h1>TUSDT 流入流出看板</h1>
+            </div>
+            <p>窗口内 TUSDT 链内 / 跨链流量总览。左侧看轮次，右侧看地址聚合明细。</p>
+            <div class="hero-note">
+              链内净流量 = `swap + LP`；跨链流量单列展示；累计模式只累计当前窗口。
+            </div>
+            <div class="chip-row">
+              <span class="chip">默认窗口：最近 15 轮</span>
+              <span class="chip">模式：按轮次 / 累计</span>
+              <span class="chip">地址可点按复制</span>
+            </div>
+          </div>
+          <div class="meta">
+            <div class="meta-row">
+              <div class="meta-label">网络</div>
+              <div class="meta-value" id="metaNetwork">-</div>
+            </div>
+            <div class="meta-row">
+              <div class="meta-label">数据更新时间</div>
+              <div class="meta-value" id="metaUpdatedAt">-</div>
+            </div>
+            <div class="meta-row">
+              <div class="meta-label">源库</div>
+              <div class="meta-value" id="metaSourceDb">-</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2 class="panel-title">筛选条件</h2>
+            <p class="panel-note">改最近轮数或切模式都会直接重算。累计模式下，点某一轮表示“窗口起点累计到该轮”。</p>
+          </div>
+        </div>
+
+        <div class="controls">
+          <div class="control-grid">
+            <label class="field">
+              <span class="field-label">最近轮数</span>
+              <input id="recentRoundsInput" class="field-input" type="number" min="1" step="1" value="15" />
+            </label>
+
+            <div class="field">
+              <span class="field-label">统计模式</span>
+              <div class="toggle-group" id="modeButtons">
+                <button class="toggle-btn" type="button" data-mode="round">按轮次</button>
+                <button class="toggle-btn" type="button" data-mode="cumulative">累计</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="statusBanner" class="status-banner" aria-live="polite"></div>
+        </div>
+
+        <div class="cards">
+          <article class="card">
+            <div class="card-label">窗口轮次</div>
+            <div class="card-value" id="windowRoundsValue">-</div>
+            <div class="card-note" id="windowRoundsNote">-</div>
+          </article>
+          <article class="card">
+            <div class="card-label">当前明细范围</div>
+            <div class="card-value" id="detailScopeValue">-</div>
+            <div class="card-note" id="detailScopeNote">-</div>
+          </article>
+          <article class="card">
+            <div class="card-label">窗口链内净流量</div>
+            <div class="card-value metric-value" id="windowNetValue">-</div>
+            <div class="card-note">`swap + LP` 合计，按当前窗口计算。</div>
+          </article>
+          <article class="card">
+            <div class="card-label">窗口跨链净流量</div>
+            <div class="card-value metric-value" id="windowCrosschainValue">-</div>
+            <div class="card-note">`Transfer` 零地址口径，按当前窗口计算。</div>
+          </article>
+        </div>
+      </section>
+
+      <section class="layout">
+        <section class="panel section-block">
+          <div class="panel-head">
+            <div>
+              <h2 class="panel-title">轮次总览</h2>
+              <p class="panel-note">按轮次模式一行一个 `log_round`；累计模式则聚成窗口累计结果。点“查看地址”切右侧明细。</p>
+            </div>
+            <div class="mini-row" id="summaryMiniRow"></div>
+          </div>
+
+          <div class="table-shell">
+            <table>
+              <thead>
+                <tr>
+                  <th>log_round / 窗口</th>
+                  <th>链内流入</th>
+                  <th>链内流出</th>
+                  <th>链内净流量</th>
+                  <th>Swap 净流量</th>
+                  <th>LP 净流量</th>
+                  <th>跨链流入</th>
+                  <th>跨链流出</th>
+                  <th>跨链净流量</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="summaryTableBody"></tbody>
+            </table>
+          </div>
+
+          <div id="summaryEmptyState" class="empty-state" hidden>当前窗口内没有可展示的 `log_round` 数据。</div>
+        </section>
+
+        <section class="panel section-block">
+          <div class="panel-head">
+            <div>
+              <h2 class="panel-title">地址聚合明细</h2>
+              <p class="panel-note">口径仿照 `flow.sql`。排序只作用于这里，先选字段，再选方向。</p>
+            </div>
+            <div class="detail-tools">
+              <div class="detail-sort">
+                <div class="detail-sort-group">
+                  <span class="detail-sort-label">排序字段</span>
+                  <div class="toggle-group" id="sortFieldButtons">
+                    <button class="toggle-btn" type="button" data-sort-field="net_inflow">链内净流量</button>
+                    <button class="toggle-btn" type="button" data-sort-field="crosschain_net">跨链净流量</button>
+                  </div>
+                </div>
+                <div class="detail-sort-group">
+                  <span class="detail-sort-label">排序方向</span>
+                  <div class="toggle-group" id="sortDirectionButtons">
+                    <button class="toggle-btn" type="button" data-sort-direction="asc">流出 → 流入</button>
+                    <button class="toggle-btn" type="button" data-sort-direction="desc">流入 → 流出</button>
+                  </div>
+                </div>
+              </div>
+              <div class="mini-row" id="detailMiniRow"></div>
+            </div>
+          </div>
+
+          <div class="table-shell">
+            <table class="detail-table">
+              <thead>
+                <tr>
+                  <th>地址</th>
+                  <th>链内流入</th>
+                  <th>链内流出</th>
+                  <th>链内净流量</th>
+                  <th>Swap 流入</th>
+                  <th>Swap 流出</th>
+                  <th>Swap 净流量</th>
+                  <th>LP 流入</th>
+                  <th>LP 流出</th>
+                  <th>LP 净流量</th>
+                  <th>LOVE20 Swap</th>
+                  <th>LIFE20 Swap</th>
+                  <th>LOVE20 LP</th>
+                  <th>LIFE20 LP</th>
+                  <th>跨链流入</th>
+                  <th>跨链流出</th>
+                  <th>跨链净流量</th>
+                </tr>
+              </thead>
+              <tbody id="detailTableBody"></tbody>
+            </table>
+          </div>
+
+          <div id="detailLoadingState" class="empty-state" hidden>
+            <strong>地址聚合明细加载中...</strong>
+            <div>正在按当前选择重算地址聚合，请稍等。</div>
+          </div>
+          <div id="detailEmptyState" class="empty-state" hidden>先查询有效轮次，再点左侧轮次查看地址聚合数据。</div>
+          <div class="footnote">默认排序：链内净流量 + 流出 → 流入。</div>
+        </section>
+      </section>
+    </div>
+
+    <script>
+      const pageParams = new URLSearchParams(window.location.search);
+      const API_URL = "/api/dashboards/tusdt-flow";
+      const DEFAULT_NETWORK = pageParams.get("network") || "thinkium70001_public";
+
+      function parseInteger(value, fallback) {
+        const parsed = Number.parseInt(value || "", 10);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+      }
+
+      function parseMaybeInteger(value) {
+        const parsed = Number.parseInt(value || "", 10);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+
+      const state = {
+        network: DEFAULT_NETWORK,
+        recentRounds: parseInteger(pageParams.get("recent_rounds"), 15),
+        mode: pageParams.get("mode") === "cumulative" ? "cumulative" : "round",
+        sortBy: pageParams.get("sort_by") === "crosschain_net" ? "crosschain_net" : "net_inflow",
+        sortDirection: pageParams.get("sort_direction") === "desc" ? "desc" : "asc",
+        selectedRound: parseMaybeInteger(pageParams.get("selected_round")),
+        loading: false,
+        detailLoading: false,
+        pendingDetailRound: null,
+        payload: null,
+      };
+
+      const recentRoundsInput = document.getElementById("recentRoundsInput");
+      const statusBanner = document.getElementById("statusBanner");
+      const modeButtons = [...document.querySelectorAll("#modeButtons [data-mode]")];
+      const sortFieldButtons = [...document.querySelectorAll("#sortFieldButtons [data-sort-field]")];
+      const sortDirectionButtons = [...document.querySelectorAll("#sortDirectionButtons [data-sort-direction]")];
+      const summaryTableBody = document.getElementById("summaryTableBody");
+      const detailTableBody = document.getElementById("detailTableBody");
+      const summaryEmptyState = document.getElementById("summaryEmptyState");
+      const detailLoadingState = document.getElementById("detailLoadingState");
+      const detailEmptyState = document.getElementById("detailEmptyState");
+      const summaryMiniRow = document.getElementById("summaryMiniRow");
+      const detailMiniRow = document.getElementById("detailMiniRow");
+
+      const metaNetwork = document.getElementById("metaNetwork");
+      const metaUpdatedAt = document.getElementById("metaUpdatedAt");
+      const metaSourceDb = document.getElementById("metaSourceDb");
+
+      const windowRoundsValue = document.getElementById("windowRoundsValue");
+      const windowRoundsNote = document.getElementById("windowRoundsNote");
+      const detailScopeValue = document.getElementById("detailScopeValue");
+      const detailScopeNote = document.getElementById("detailScopeNote");
+      const windowNetValue = document.getElementById("windowNetValue");
+      const windowCrosschainValue = document.getElementById("windowCrosschainValue");
+
+      const numberFormatter = new Intl.NumberFormat("zh-CN", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+
+      const SORT_FIELD_LABELS = {
+        net_inflow: "链内净流量",
+        crosschain_net: "跨链净流量",
+      };
+
+      const SORT_DIRECTION_LABELS = {
+        asc: "流出 → 流入",
+        desc: "流入 → 流出",
+      };
+
+      function setStatus(message, tone = "") {
+        if (!message) {
+          statusBanner.textContent = "";
+          statusBanner.removeAttribute("data-tone");
+          return;
+        }
+        statusBanner.textContent = message;
+        statusBanner.setAttribute("data-tone", tone || "info");
+      }
+
+      function setLoading(isLoading) {
+        state.loading = isLoading;
+        recentRoundsInput.disabled = isLoading;
+        modeButtons.forEach((button) => {
+          button.disabled = isLoading;
+        });
+        sortFieldButtons.forEach((button) => {
+          button.disabled = isLoading;
+        });
+        sortDirectionButtons.forEach((button) => {
+          button.disabled = isLoading;
+        });
+      }
+
+      function syncControls() {
+        recentRoundsInput.value = String(state.recentRounds);
+        modeButtons.forEach((button) => {
+          button.classList.toggle("active", button.dataset.mode === state.mode);
+        });
+        sortFieldButtons.forEach((button) => {
+          button.classList.toggle("active", button.dataset.sortField === state.sortBy);
+        });
+        sortDirectionButtons.forEach((button) => {
+          button.classList.toggle("active", button.dataset.sortDirection === state.sortDirection);
+        });
+      }
+
+      function syncUrl() {
+        const params = new URLSearchParams();
+        params.set("network", state.network);
+        params.set("recent_rounds", String(state.recentRounds));
+        params.set("mode", state.mode);
+        params.set("sort_by", state.sortBy);
+        params.set("sort_direction", state.sortDirection);
+        if (state.selectedRound !== null) {
+          params.set("selected_round", String(state.selectedRound));
+        }
+        const next = `${window.location.pathname}?${params.toString()}`;
+        window.history.replaceState({}, "", next);
+      }
+
+      function normalizeNumericValue(value) {
+        if (value === null || value === undefined) {
+          return null;
+        }
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) {
+          return null;
+        }
+        const rounded = Math.round(numeric * 100) / 100;
+        if (Math.abs(rounded) < 0.005) {
+          return 0;
+        }
+        return rounded;
+      }
+
+      function splitFormattedAmount(value) {
+        const formatted = numberFormatter.format(Math.abs(value));
+        const dotIndex = formatted.lastIndexOf(".");
+        if (dotIndex === -1) {
+          return {
+            integerPart: formatted,
+            decimalPart: "00",
+          };
+        }
+        return {
+          integerPart: formatted.slice(0, dotIndex),
+          decimalPart: formatted.slice(dotIndex + 1),
+        };
+      }
+
+      function renderAmountHtml(value, { signed = false } = {}) {
+        const normalized = normalizeNumericValue(value);
+        if (normalized === null) {
+          return '<span class="amount amount-empty">-</span>';
+        }
+        let sign = "";
+        if (signed) {
+          if (normalized > 0) {
+            sign = "+";
+          } else if (normalized < 0) {
+            sign = "-";
+          }
+        } else if (normalized < 0) {
+          sign = "-";
+        }
+        const { integerPart, decimalPart } = splitFormattedAmount(normalized);
+        return [
+          '<span class="amount">',
+          `<span class="amount-sign">${escapeHtml(sign)}</span>`,
+          `<span class="amount-int">${escapeHtml(integerPart)}</span>`,
+          `<span class="amount-dec">.${escapeHtml(decimalPart)}</span>`,
+          "</span>",
+        ].join("");
+      }
+
+      function signedClass(value) {
+        const numeric = normalizeNumericValue(value);
+        if (numeric === null || numeric === 0) {
+          return "signed";
+        }
+        return numeric > 0 ? "signed positive" : "signed negative";
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+
+      function shortAddress(address) {
+        if (!address || address.length < 12) {
+          return address || "-";
+        }
+        return `${address.slice(0, 10)}...${address.slice(-6)}`;
+      }
+
+      function getSortFieldLabel(sortBy) {
+        return SORT_FIELD_LABELS[sortBy] || SORT_FIELD_LABELS.net_inflow;
+      }
+
+      function getSortDirectionLabel(sortDirection) {
+        return SORT_DIRECTION_LABELS[sortDirection] || SORT_DIRECTION_LABELS.asc;
+      }
+
+      function getDetailSortFieldKey(sortBy) {
+        return sortBy === "crosschain_net" ? "tusdt_crosschain_net_tusdt_flow" : "net_inflow_tusdt";
+      }
+
+      function getRowSortValue(row, fieldKey) {
+        const numeric = Number(row?.[fieldKey]);
+        return Number.isFinite(numeric) ? numeric : 0;
+      }
+
+      function sortDetailRows(rows) {
+        const fieldKey = getDetailSortFieldKey(state.sortBy);
+        const directionFactor = state.sortDirection === "desc" ? -1 : 1;
+
+        return [...rows].sort((left, right) => {
+          const numericDiff = (getRowSortValue(left, fieldKey) - getRowSortValue(right, fieldKey)) * directionFactor;
+          if (numericDiff !== 0) {
+            return numericDiff;
+          }
+          return String(left?.address || "").localeCompare(String(right?.address || ""));
+        });
+      }
+
+      async function copyTextToClipboard(text) {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
+          return;
+        }
+
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        textarea.remove();
+      }
+
+      function renderMeta(payload) {
+        metaNetwork.textContent = payload?.network || state.network;
+        metaUpdatedAt.textContent = payload?.updated_at || "-";
+        metaSourceDb.textContent = payload?.source_db || "-";
+      }
+
+      function renderCards(data) {
+        const windowInfo = data?.window || {};
+        const totals = data?.summary?.window_totals || {};
+        const detailInfo = data?.detail || {};
+
+        if (!data) {
+          windowRoundsValue.textContent = "-";
+          windowRoundsNote.textContent = "-";
+          detailScopeValue.textContent = "-";
+          detailScopeNote.textContent = "-";
+          windowNetValue.innerHTML = "-";
+          windowNetValue.className = "card-value metric-value";
+          windowCrosschainValue.innerHTML = "-";
+          windowCrosschainValue.className = "card-value metric-value";
+          return;
+        }
+
+        const minRound = windowInfo.min_round;
+        const maxRound = windowInfo.max_round;
+        windowRoundsValue.textContent = windowInfo.round_count ? `${windowInfo.round_count} 轮` : "0 轮";
+        windowRoundsNote.textContent =
+          minRound === null || maxRound === null
+            ? "当前窗口没有可用轮次。"
+            : `当前窗口覆盖 log_round ${minRound} 至 ${maxRound}。`;
+
+        detailScopeValue.textContent = windowInfo.detail_scope_label || "-";
+        detailScopeNote.textContent = `地址明细 ${detailInfo.row_count || 0} 行，模式 ${data.mode_label || "-"}`;
+
+        windowNetValue.innerHTML = renderAmountHtml(totals.net_inflow_tusdt, { signed: true });
+        windowNetValue.className = `card-value metric-value ${signedClass(totals.net_inflow_tusdt)}`;
+
+        windowCrosschainValue.innerHTML = renderAmountHtml(totals.tusdt_crosschain_net_tusdt_flow, { signed: true });
+        windowCrosschainValue.className = `card-value metric-value ${signedClass(totals.tusdt_crosschain_net_tusdt_flow)}`;
+      }
+
+      function renderMiniRows(data) {
+        const selectedSummary = data?.selected_summary;
+        summaryMiniRow.innerHTML = "";
+        detailMiniRow.innerHTML = "";
+
+        summaryMiniRow.innerHTML = [
+          `<span class="mini-chip">模式：${escapeHtml(data?.mode_label || "-")}</span>`,
+          `<span class="mini-chip">窗口：最近 ${escapeHtml(String(data?.recent_rounds || 0))} 轮</span>`,
+        ].join("");
+
+        if (!selectedSummary) {
+          detailMiniRow.innerHTML = [
+            `<span class="mini-chip">字段：${escapeHtml(getSortFieldLabel(state.sortBy))}</span>`,
+            `<span class="mini-chip">方向：${escapeHtml(getSortDirectionLabel(state.sortDirection))}</span>`,
+            `<span class="mini-chip">暂无选中轮次</span>`,
+          ].join("");
+          return;
+        }
+
+        detailMiniRow.innerHTML = [
+          `<span class="mini-chip">字段：${escapeHtml(getSortFieldLabel(state.sortBy))}</span>`,
+          `<span class="mini-chip">方向：${escapeHtml(getSortDirectionLabel(state.sortDirection))}</span>`,
+          `<span class="mini-chip">当前：${escapeHtml(String(selectedSummary.log_round_label || selectedSummary.log_round))}</span>`,
+          `<span class="mini-chip">链内净：<strong>${renderAmountHtml(selectedSummary.net_inflow_tusdt, { signed: true })}</strong></span>`,
+          `<span class="mini-chip">跨链净：<strong>${renderAmountHtml(selectedSummary.tusdt_crosschain_net_tusdt_flow, { signed: true })}</strong></span>`,
+          `<span class="mini-chip">地址数：${escapeHtml(String(data?.detail?.row_count || 0))}</span>`,
+        ].join("");
+      }
+
+      function renderSummaryTable(data) {
+        const rows = data?.summary?.rows || [];
+        const displayRows = data?.mode === "round" ? [...rows].reverse() : rows;
+        const activeRound = state.pendingDetailRound ?? data?.selected_round ?? null;
+        summaryTableBody.innerHTML = "";
+        summaryEmptyState.hidden = displayRows.length > 0;
+
+        if (!displayRows.length) {
+          return;
+        }
+
+        summaryTableBody.innerHTML = displayRows
+          .map((row) => {
+            const rowRound = Number(row.log_round);
+            const selected = Number(activeRound) === rowRound;
+            const isPending = state.detailLoading && state.pendingDetailRound !== null && Number(state.pendingDetailRound) === rowRound;
+            return `
+              <tr class="${selected ? "selected" : ""}" data-round="${escapeHtml(String(row.log_round))}">
+                <td><strong>${escapeHtml(String(row.log_round_label || row.log_round))}</strong></td>
+                <td>${renderAmountHtml(row.chain_inflow_tusdt)}</td>
+                <td>${renderAmountHtml(row.chain_outflow_tusdt)}</td>
+                <td class="${signedClass(row.net_inflow_tusdt)}">${renderAmountHtml(row.net_inflow_tusdt, { signed: true })}</td>
+                <td class="${signedClass(row.net_swap_tusdt_flow)}">${renderAmountHtml(row.net_swap_tusdt_flow, { signed: true })}</td>
+                <td class="${signedClass(row.net_lp_tusdt_flow)}">${renderAmountHtml(row.net_lp_tusdt_flow, { signed: true })}</td>
+                <td>${renderAmountHtml(row.tusdt_crosschain_in_tusdt)}</td>
+                <td>${renderAmountHtml(row.tusdt_crosschain_out_tusdt)}</td>
+                <td class="${signedClass(row.tusdt_crosschain_net_tusdt_flow)}">${renderAmountHtml(row.tusdt_crosschain_net_tusdt_flow, { signed: true })}</td>
+                <td>
+                  <button class="row-btn ${isPending ? "is-loading" : ""}" type="button" data-round="${escapeHtml(String(row.log_round))}" ${isPending ? "disabled" : ""}>${isPending ? "加载中..." : "查看地址"}</button>
+                </td>
+              </tr>
+            `;
+          })
+          .join("");
+      }
+
+      function renderDetailTable(data) {
+        const rows = data?.detail?.rows || [];
+        const displayRows = sortDetailRows(rows);
+        detailTableBody.innerHTML = "";
+        detailLoadingState.hidden = !state.detailLoading;
+        detailEmptyState.hidden = state.detailLoading || displayRows.length > 0;
+
+        if (state.detailLoading) {
+          return;
+        }
+
+        if (!displayRows.length) {
+          return;
+        }
+
+        detailTableBody.innerHTML = displayRows
+          .map(
+            (row) => `
+              <tr>
+                <td>
+                  <div class="address-cell">
+                    <button
+                      class="address-copy"
+                      type="button"
+                      data-address="${escapeHtml(row.address)}"
+                      title="点击复制完整地址"
+                      aria-label="复制完整地址"
+                    >
+                      <strong>${escapeHtml(shortAddress(row.address))}</strong>
+                    </button>
+                  </div>
+                </td>
+                <td>${renderAmountHtml(row.chain_inflow_tusdt)}</td>
+                <td>${renderAmountHtml(row.chain_outflow_tusdt)}</td>
+                <td class="${signedClass(row.net_inflow_tusdt)}">${renderAmountHtml(row.net_inflow_tusdt, { signed: true })}</td>
+                <td>${renderAmountHtml(row.swap_in_tusdt)}</td>
+                <td>${renderAmountHtml(row.swap_out_tusdt)}</td>
+                <td class="${signedClass(row.net_swap_tusdt_flow)}">${renderAmountHtml(row.net_swap_tusdt_flow, { signed: true })}</td>
+                <td>${renderAmountHtml(row.lp_in_tusdt)}</td>
+                <td>${renderAmountHtml(row.lp_out_tusdt)}</td>
+                <td class="${signedClass(row.net_lp_tusdt_flow)}">${renderAmountHtml(row.net_lp_tusdt_flow, { signed: true })}</td>
+                <td class="${signedClass(row.love20_swap_tusdt_flow)}">${renderAmountHtml(row.love20_swap_tusdt_flow, { signed: true })}</td>
+                <td class="${signedClass(row.life20_swap_tusdt_flow)}">${renderAmountHtml(row.life20_swap_tusdt_flow, { signed: true })}</td>
+                <td class="${signedClass(row.love20_lp_tusdt_flow)}">${renderAmountHtml(row.love20_lp_tusdt_flow, { signed: true })}</td>
+                <td class="${signedClass(row.life20_lp_tusdt_flow)}">${renderAmountHtml(row.life20_lp_tusdt_flow, { signed: true })}</td>
+                <td>${renderAmountHtml(row.tusdt_crosschain_in_tusdt)}</td>
+                <td>${renderAmountHtml(row.tusdt_crosschain_out_tusdt)}</td>
+                <td class="${signedClass(row.tusdt_crosschain_net_tusdt_flow)}">${renderAmountHtml(row.tusdt_crosschain_net_tusdt_flow, { signed: true })}</td>
+              </tr>
+            `,
+          )
+          .join("");
+      }
+
+      function render() {
+        const payload = state.payload;
+        renderMeta(payload);
+        renderCards(payload?.data);
+        renderMiniRows(payload?.data);
+        renderSummaryTable(payload?.data);
+        renderDetailTable(payload?.data);
+      }
+
+      async function loadData() {
+        state.detailLoading = true;
+        setLoading(true);
+        setStatus("正在查询最近轮次与地址聚合...", "info");
+        syncControls();
+        render();
+
+        const params = new URLSearchParams();
+        params.set("network", state.network);
+        params.set("recent_rounds", String(state.recentRounds));
+        params.set("mode", state.mode);
+        params.set("sort_by", state.sortBy);
+        if (state.selectedRound !== null) {
+          params.set("selected_round", String(state.selectedRound));
+        }
+
+        try {
+          const response = await fetch(`${API_URL}?${params.toString()}`, { cache: "no-store" });
+          const payload = await response.json();
+          if (!response.ok) {
+            throw new Error(payload.error || `HTTP ${response.status}`);
+          }
+
+          state.payload = payload;
+          state.selectedRound = payload?.data?.selected_round ?? null;
+          state.pendingDetailRound = null;
+          state.detailLoading = false;
+          syncUrl();
+          render();
+
+          if ((payload?.data?.summary?.rows || []).length) {
+            setStatus("查询完成。可继续切模式、改排序，或点某一轮查看地址明细。", "success");
+          } else {
+            setStatus("查询完成，但当前窗口内没有命中可展示数据。", "warning");
+          }
+        } catch (error) {
+          state.payload = null;
+          state.pendingDetailRound = null;
+          state.detailLoading = false;
+          render();
+          setStatus(`查询失败：${error instanceof Error ? error.message : String(error)}`, "error");
+        } finally {
+          setLoading(false);
+          syncControls();
+        }
+      }
+
+      function applyRecentRounds() {
+        if (state.loading) {
+          return;
+        }
+        state.recentRounds = parseInteger(recentRoundsInput.value, 15);
+        loadData();
+      }
+
+      modeButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          if (state.loading) {
+            return;
+          }
+          state.recentRounds = parseInteger(recentRoundsInput.value, 15);
+          state.mode = button.dataset.mode;
+          loadData();
+        });
+      });
+
+      sortFieldButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          if (state.loading) {
+            return;
+          }
+          state.sortBy = button.dataset.sortField || "net_inflow";
+          syncControls();
+          syncUrl();
+          render();
+        });
+      });
+
+      sortDirectionButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          if (state.loading) {
+            return;
+          }
+          state.sortDirection = button.dataset.sortDirection === "desc" ? "desc" : "asc";
+          syncControls();
+          syncUrl();
+          render();
+        });
+      });
+
+      recentRoundsInput.addEventListener("change", () => {
+        applyRecentRounds();
+      });
+
+      recentRoundsInput.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") {
+          return;
+        }
+        event.preventDefault();
+        applyRecentRounds();
+      });
+
+      summaryTableBody.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-round]");
+        if (!button || state.loading) {
+          return;
+        }
+        const nextRound = parseMaybeInteger(button.dataset.round);
+        if (nextRound === null) {
+          return;
+        }
+        state.selectedRound = nextRound;
+        state.pendingDetailRound = nextRound;
+        loadData();
+      });
+
+      detailTableBody.addEventListener("click", async (event) => {
+        const button = event.target.closest(".address-copy");
+        if (!button) {
+          return;
+        }
+
+        const address = button.dataset.address || "";
+        if (!address) {
+          return;
+        }
+
+        try {
+          await copyTextToClipboard(address);
+          setStatus(`已复制地址 ${shortAddress(address)}`, "success");
+        } catch (error) {
+          setStatus(`复制失败：${error instanceof Error ? error.message : String(error)}`, "error");
+        }
+      });
+
+      syncControls();
+      render();
+      loadData();
+    </script>
+  </body>
+</html>

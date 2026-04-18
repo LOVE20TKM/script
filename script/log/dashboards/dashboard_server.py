@@ -9,6 +9,13 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from timeline_runtime import TIMELINE_INDEX_DEFINITIONS, load_contract_map, now_iso, query_activity_rows_by_account
+from tusdt_flow_runtime import (
+    parse_tusdt_flow_mode,
+    parse_tusdt_flow_recent_rounds,
+    parse_tusdt_flow_selected_round,
+    parse_tusdt_flow_sort_by,
+    query_tusdt_flow_data,
+)
 
 
 DASHBOARDS_DIR = Path(__file__).resolve().parent
@@ -121,6 +128,40 @@ def timeline_payload(network: str, db_path: Path, address: str | None, *, limit:
     return payload
 
 
+def tusdt_flow_payload(
+    network: str,
+    db_path: Path,
+    *,
+    recent_rounds: int,
+    mode: str,
+    selected_round: int | None,
+    sort_by: str,
+) -> dict:
+    db_mtime = db_path.stat().st_mtime
+
+    conn = sqlite3.connect(db_path, timeout=60.0)
+    conn.row_factory = sqlite3.Row
+    try:
+        data = query_tusdt_flow_data(
+            conn,
+            recent_rounds=recent_rounds,
+            mode=mode,
+            selected_round=selected_round,
+            sort_by=sort_by,
+        )
+    finally:
+        conn.close()
+
+    payload = {
+        "network": network,
+        "source_db": str(db_path),
+        "db_mtime": iso_from_timestamp(db_mtime),
+        "updated_at": now_iso(),
+        "data": data,
+    }
+    return payload
+
+
 class DashboardRequestHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, directory: str | None = None, **kwargs):
         super().__init__(*args, directory=directory or str(LOG_DIR), **kwargs)
@@ -152,6 +193,22 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 limit = parse_limit(params.get("limit", [""])[0])
                 cursor = parse_timeline_cursor(params)
                 payload = timeline_payload(network, db_path, address, limit=limit, cursor=cursor)
+                self.respond_json(200, payload)
+                return
+
+            if parsed.path == "/api/dashboards/tusdt-flow":
+                recent_rounds = parse_tusdt_flow_recent_rounds(params.get("recent_rounds", [""])[0])
+                mode = parse_tusdt_flow_mode(params.get("mode", [""])[0])
+                selected_round = parse_tusdt_flow_selected_round(params.get("selected_round", [""])[0])
+                sort_by = parse_tusdt_flow_sort_by(params.get("sort_by", [""])[0])
+                payload = tusdt_flow_payload(
+                    network,
+                    db_path,
+                    recent_rounds=recent_rounds,
+                    mode=mode,
+                    selected_round=selected_round,
+                    sort_by=sort_by,
+                )
                 self.respond_json(200, payload)
                 return
 

@@ -359,12 +359,13 @@
       <div class="hero-actions">
         <a class="btn btn-primary" href="./mint-addresses-by-log-round/" target="_blank" rel="noreferrer">先看铸币地址轮次</a>
         <a class="btn" href="./wallet-activity-timeline/" target="_blank" rel="noreferrer">再看钱包时间线</a>
+        <a class="btn" href="./tusdt-flow/" target="_blank" rel="noreferrer">也看 TUSDT 流入流出</a>
       </div>
       <div class="stats">
         <article class="stat">
           <div class="stat-label">当前看板数</div>
-          <div class="stat-value">2</div>
-          <div class="stat-note">现有两个单页看板，均由本地 `dashboard_server.py` 提供。</div>
+          <div class="stat-value">3</div>
+          <div class="stat-note">现有三个单页看板，均由本地 `dashboard_server.py` 提供。</div>
         </article>
         <article class="stat">
           <div class="stat-label">服务地址</div>
@@ -428,6 +429,28 @@
           <div class="card-actions">
             <a class="btn btn-primary" href="./wallet-activity-timeline/" target="_blank" rel="noreferrer">新开查看</a>
             <a class="btn" href="./wallet-activity-timeline/">当前页打开</a>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="badge">TUSDT / Flow</span>
+            <h2>TUSDT 流入流出看板</h2>
+            <p>默认看最近 15 轮，支持按轮次与累计两种模式展示 TUSDT 流量，并可点开某一轮查看地址聚合明细。</p>
+          </div>
+          <div class="detail-list">
+            <div class="detail">
+              <span class="detail-label">入口路径</span>
+              <div class="detail-value"><code>/dashboards/tusdt-flow/</code></div>
+            </div>
+            <div class="detail">
+              <span class="detail-label">适合用途</span>
+              <div class="detail-value">先看轮次级流入流出，再切到地址聚合排查主要净流入 / 净流出来源。</div>
+            </div>
+          </div>
+          <div class="card-actions">
+            <a class="btn btn-primary" href="./tusdt-flow/" target="_blank" rel="noreferrer">新开查看</a>
+            <a class="btn" href="./tusdt-flow/">当前页打开</a>
           </div>
         </article>
       </div>
