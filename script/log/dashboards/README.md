@@ -71,3 +71,25 @@ bash ./launchd/uninstall.sh
 - 使用 `thinkium70001_public`
 - 日志写到 `~/Library/Logs/LOVE20/`
 - 运行脚本会被安装到 `~/Library/Application Support/LOVE20/dashboards/`，避免 macOS 对 `Documents` 路径的限制
+
+## events.db 每小时同步
+
+如果想在登录 mac 后每小时自动增量同步 `events.db`，可在 `script/log/` 下安装独立的 `LaunchAgent`：
+
+```bash
+bash ./launchd_sync/install.sh
+```
+
+关闭定时同步：
+
+```bash
+bash ./launchd_sync/uninstall.sh
+```
+
+默认行为：
+
+- 每次登录后立即触发一次
+- 此后每 3600 秒执行一次
+- 默认同步 `thinkium70001_public`
+- 日志写到 `~/Library/Logs/LOVE20/events-sync.out.log` 和 `~/Library/Logs/LOVE20/events-sync.err.log`
+- 并发锁位于 `script/log/one_click_process.sh`，因此手工同步与定时同步共享同一套保护

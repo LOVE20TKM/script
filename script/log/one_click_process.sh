@@ -6,6 +6,12 @@
 # Fetches all events for ALL contracts in a SINGLE parallelized RPC call.
 # ============================================================================
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOG_REPO_DIR="${LOVE20_LOG_REPO_DIR:-$SCRIPT_DIR}"
+DEFAULT_SYNC_LOCK_ROOT="${HOME}/Library/Application Support/LOVE20/events-sync"
+SYNC_LOCK_DIR=""
+SYNC_LOCK_ACQUIRED=0
+
 script_return_or_exit() {
   local code=$1
   if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
@@ -14,26 +20,43 @@ script_return_or_exit() {
   exit "$code"
 }
 
-# 引入初始化逻辑 (网络参数、ABI 路径、地址解析等)
-if ! source ./000_init.sh "$1"; then
-  echo "❌ Initialization failed."
-  script_return_or_exit 1
-fi
+sync_lock_root() {
+  printf '%s\n' "${LOVE20_SYNC_LOCK_ROOT:-$DEFAULT_SYNC_LOCK_ROOT}"
+}
 
-echo ""
-echo "🎯 Starting incremental event log processing..."
-echo "📊 This will fetch new logs since last sync and store them in SQLite."
-echo ""
+sync_lock_dir() {
+  local network_name=$1
+  printf '%s/%s.lock\n' "$(sync_lock_root)" "$network_name"
+}
 
-# Check Python dependencies
-if ! check_python_deps; then
-  echo "❌ Please install Python dependencies first: pip install -r requirements.txt"
-  script_return_or_exit 1
-fi
+acquire_sync_lock() {
+  local network_name=$1
+  local lock_root
+  lock_root="$(sync_lock_root)"
+  local lock_dir
+  lock_dir="$(sync_lock_dir "$network_name")"
 
-echo "====================================================================="
-echo "🚀 Processing contracts using current configuration in BATCH mode..."
-echo "====================================================================="
+  mkdir -p "$lock_root"
+  if mkdir "$lock_dir" 2>/dev/null; then
+    SYNC_LOCK_DIR="$lock_dir"
+    SYNC_LOCK_ACQUIRED=1
+    return 0
+  fi
+  return 1
+}
+
+release_sync_lock() {
+  if [ "${SYNC_LOCK_ACQUIRED:-0}" != "1" ]; then
+    return 0
+  fi
+
+  if [ -n "${SYNC_LOCK_DIR:-}" ] && [ -d "${SYNC_LOCK_DIR}" ]; then
+    rm -rf "${SYNC_LOCK_DIR}"
+  fi
+
+  SYNC_LOCK_DIR=""
+  SYNC_LOCK_ACQUIRED=0
+}
 
 run_event_processor() {
   "$PYTHON_CMD" "$PYTHON_PROCESSOR" \
@@ -48,88 +71,131 @@ run_event_processor() {
     --phase-blocks "$PHASE_BLOCKS"
 }
 
-run_event_processor
+main() {
+  local network="${1:-}"
 
-exit_code=$?
-if [ $exit_code -ne 0 ]; then
+  if [ -z "$network" ]; then
+    echo "Network parameter is required."
+    script_return_or_exit 1
+  fi
+
+  cd "$LOG_REPO_DIR" || script_return_or_exit 1
+
+  if ! acquire_sync_lock "$network"; then
+    echo ""
+    echo "⏭️ Sync already running for network: $network"
+    script_return_or_exit 0
+  fi
+  trap release_sync_lock EXIT INT TERM
+
+  # 引入初始化逻辑 (网络参数、ABI 路径、地址解析等)
+  if ! source "$SCRIPT_DIR/000_init.sh" "$network"; then
+    echo "❌ Initialization failed."
+    script_return_or_exit 1
+  fi
+
   echo ""
-  echo "❌ Error during first event log processing pass."
-  script_return_or_exit $exit_code
-fi
-
-echo ""
-echo "🔎 Rebuilding auto-discovered extension configuration from events.db..."
-echo ""
-
-discover_status_file=$(mktemp)
-
-"$PYTHON_CMD" "$DISCOVER_PROCESSOR" \
-  --config "$CONFIG_FILE" \
-  --db-path "$db_dir/events.db" \
-  --status-file "$discover_status_file"
-
-discover_exit=$?
-if [ $discover_exit -ne 0 ]; then
-  rm -f "$discover_status_file"
+  echo "🎯 Starting incremental event log processing..."
+  echo "📊 This will fetch new logs since last sync and store them in SQLite."
   echo ""
-  echo "❌ Error while rebuilding extension configuration."
-  script_return_or_exit $discover_exit
-fi
 
-if [ -f "$discover_status_file" ]; then
-  # shellcheck disable=SC1090
-  source "$discover_status_file"
-fi
-rm -f "$discover_status_file"
+  # Check Python dependencies
+  if ! check_python_deps; then
+    echo "❌ Please install Python dependencies first: pip install -r requirements.txt"
+    script_return_or_exit 1
+  fi
 
-DISCOVER_SYNC_NEEDED=${DISCOVER_SYNC_NEEDED:-1}
-DISCOVER_CONFIG_CHANGED=${DISCOVER_CONFIG_CHANGED:-0}
-DISCOVER_GENERATED_COUNT=${DISCOVER_GENERATED_COUNT:-0}
-DISCOVER_RESET_CONTRACTS=${DISCOVER_RESET_CONTRACTS:-}
-
-if [ "$DISCOVER_SYNC_NEEDED" = "1" ]; then
-  echo ""
-  echo "🚀 Processing contracts again with refreshed extension configuration..."
-  echo ""
+  echo "====================================================================="
+  echo "🚀 Processing contracts using current configuration in BATCH mode..."
+  echo "====================================================================="
 
   run_event_processor
 
-  second_pass_exit=$?
-  if [ $second_pass_exit -ne 0 ]; then
+  exit_code=$?
+  if [ $exit_code -ne 0 ]; then
     echo ""
-    echo "❌ Error during second event log processing pass."
-    script_return_or_exit $second_pass_exit
+    echo "❌ Error during first event log processing pass."
+    script_return_or_exit $exit_code
   fi
-else
+
   echo ""
-  echo "⏭️ No new tracked contract events detected after discovery."
-  echo "   Skipping second event log processing pass."
+  echo "🔎 Rebuilding auto-discovered extension configuration from events.db..."
+  echo ""
+
+  discover_status_file=$(mktemp)
+
+  "$PYTHON_CMD" "$DISCOVER_PROCESSOR" \
+    --config "$CONFIG_FILE" \
+    --db-path "$db_dir/events.db" \
+    --status-file "$discover_status_file"
+
+  discover_exit=$?
+  if [ $discover_exit -ne 0 ]; then
+    rm -f "$discover_status_file"
+    echo ""
+    echo "❌ Error while rebuilding extension configuration."
+    script_return_or_exit $discover_exit
+  fi
+
+  if [ -f "$discover_status_file" ]; then
+    # shellcheck disable=SC1090
+    source "$discover_status_file"
+  fi
+  rm -f "$discover_status_file"
+
+  DISCOVER_SYNC_NEEDED=${DISCOVER_SYNC_NEEDED:-1}
+  DISCOVER_CONFIG_CHANGED=${DISCOVER_CONFIG_CHANGED:-0}
+  DISCOVER_GENERATED_COUNT=${DISCOVER_GENERATED_COUNT:-0}
+  DISCOVER_RESET_CONTRACTS=${DISCOVER_RESET_CONTRACTS:-}
+
+  echo ""
+  if [ "$DISCOVER_SYNC_NEEDED" = "1" ]; then
+    echo "🚀 Processing contracts again with refreshed extension configuration..."
+    echo ""
+
+    run_event_processor
+
+    second_pass_exit=$?
+    if [ $second_pass_exit -ne 0 ]; then
+      echo ""
+      echo "❌ Error during second event log processing pass."
+      script_return_or_exit $second_pass_exit
+    fi
+  else
+    echo ""
+    echo "⏭️ No new tracked contract events detected after discovery."
+    echo "   Skipping second event log processing pass."
+  fi
+
+  echo ""
+  echo "🎉 Event log processing completed!"
+  echo ""
+  echo "====================================================================="
+  echo "📦 Supplementing block metadata (blocks table)..."
+  echo "====================================================================="
+
+  $PYTHON_CMD "$BLOCK_PROCESSOR" \
+    --rpc "$RPC_URL" \
+    --to-block "$to_block" \
+    --db-path "$db_dir/events.db" \
+    --origin-blocks "$originBlocks" \
+    --batch-size 500 \
+    --concurrency 20 \
+    --retries "$maxRetries"
+
+  block_exit=$?
+
+  if [ $block_exit -eq 0 ]; then
+    echo ""
+    echo "🎉 All processing completed!"
+    echo "📊 Data is available in SQLite database: $db_dir/events.db"
+  else
+    echo ""
+    echo "⚠️ Block processor returned error (events were saved successfully)."
+  fi
+  script_return_or_exit $block_exit
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
 fi
-
-echo ""
-echo "🎉 Event log processing completed!"
-echo ""
-echo "====================================================================="
-echo "📦 Supplementing block metadata (blocks table)..."
-echo "====================================================================="
-
-$PYTHON_CMD "$BLOCK_PROCESSOR" \
-  --rpc "$RPC_URL" \
-  --to-block "$to_block" \
-  --db-path "$db_dir/events.db" \
-  --origin-blocks "$originBlocks" \
-  --batch-size 500 \
-  --concurrency 20 \
-  --retries "$maxRetries"
-
-block_exit=$?
-
-if [ $block_exit -eq 0 ]; then
-  echo ""
-  echo "🎉 All processing completed!"
-  echo "📊 Data is available in SQLite database: $db_dir/events.db"
-else
-  echo ""
-  echo "⚠️ Block processor returned error (events were saved successfully)."
-fi
-script_return_or_exit $block_exit

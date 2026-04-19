@@ -4,16 +4,20 @@ if [ -z "$network" ]; then
   return 1
 fi
 
+LOG_SCRIPT_DIR="${LOVE20_LOG_REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+NETWORK_ROOT="${LOVE20_LOG_NETWORK_ROOT:-$LOG_SCRIPT_DIR/../network}"
+NETWORK_DIR="$NETWORK_ROOT/$network"
+
 # Export all variables from parameter files so Python can access them
 set -a
-source ../network/$network/address.params || return 1
-source ../network/$network/network.params || return 1
-source ../network/$network/LOVE20.params || return 1
-source ../network/$network/address.extension.center.params || return 1
-source ../network/$network/address.extension.group.params || return 1
-source ../network/$network/address.extension.lp.params || return 1
-source ../network/$network/address.group.params || return 1
-source ../network/$network/address.else.params || return 1
+source "$NETWORK_DIR/address.params" || return 1
+source "$NETWORK_DIR/network.params" || return 1
+source "$NETWORK_DIR/LOVE20.params" || return 1
+source "$NETWORK_DIR/address.extension.center.params" || return 1
+source "$NETWORK_DIR/address.extension.group.params" || return 1
+source "$NETWORK_DIR/address.extension.lp.params" || return 1
+source "$NETWORK_DIR/address.group.params" || return 1
+source "$NETWORK_DIR/address.else.params" || return 1
 set +a
 
 export from_block=$originBlocks
@@ -143,14 +147,13 @@ export maxRetries=5
 export maxConcurrentJobs=10  # Reduced concurrency to avoid RPC rate limiting
 
 # Script directory for Python processor
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export PYTHON_PROCESSOR="$SCRIPT_DIR/event_processor.py"
-export BLOCK_PROCESSOR="$SCRIPT_DIR/block_processor.py"
-export DISCOVER_PROCESSOR="$SCRIPT_DIR/discover_extensions.py"
-export CONFIG_FILE="$SCRIPT_DIR/../network/$network/contracts.json"
+export PYTHON_PROCESSOR="$LOG_SCRIPT_DIR/event_processor.py"
+export BLOCK_PROCESSOR="$LOG_SCRIPT_DIR/block_processor.py"
+export DISCOVER_PROCESSOR="$LOG_SCRIPT_DIR/discover_extensions.py"
+export CONFIG_FILE="$NETWORK_DIR/contracts.json"
 
-export output_dir="./output/$network"
-export db_dir="./db/$network"
+export output_dir="$LOG_SCRIPT_DIR/output/$network"
+export db_dir="$LOG_SCRIPT_DIR/db/$network"
 
 # Create output directory if it doesn't exist
 if [ ! -d "$output_dir" ]; then
