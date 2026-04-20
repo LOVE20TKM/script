@@ -702,6 +702,21 @@
         color: var(--accent-3);
       }
 
+      .summary-address-chip {
+        display: inline-flex;
+        max-width: 100%;
+        justify-content: flex-start;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(29, 36, 48, 0.05);
+        color: var(--text);
+        font-size: 14px;
+        font-weight: 700;
+        white-space: normal;
+        word-break: break-all;
+        line-height: 1.35;
+      }
+
       .tx-meta-cell {
         display: grid;
         gap: 6px;
@@ -2628,7 +2643,12 @@
         setBanner(
           "query-banner",
           "warning",
-          `地址 <code>${escapeHtml(state.queriedAddress)}</code> 在当前活库中没有命中记录。`
+          `地址 ${renderCopyButton(
+            escapeHtml(shortAddress(state.queriedAddress)),
+            normalizeAddress(state.queriedAddress),
+            "action-id-chip copy-chip",
+            "钱包地址"
+          )} 在当前活库中没有命中记录。`
         );
       }
 
@@ -2653,6 +2673,15 @@
       `;
       }
 
+      function renderSummaryAddressValue(address) {
+        return renderCopyButton(
+          escapeHtml(shortAddress(address)),
+          normalizeAddress(address),
+          "summary-address-chip copy-chip",
+          "钱包地址"
+        );
+      }
+
       function renderSummary(rows) {
         if ((!state.queriedAddress && !state.lastQueryError) || isPrimaryQueryLoading()) {
           setSummaryPanelVisible(false);
@@ -2671,7 +2700,7 @@
               },
               {
                 label: "钱包地址",
-                value: shortAddress(state.queriedAddress),
+                valueHtml: renderSummaryAddressValue(state.queriedAddress),
                 note: "本次未保留旧结果，避免旧数据继续占位。",
               },
               {
@@ -2689,7 +2718,7 @@
               },
               {
                 label: "钱包地址",
-                value: shortAddress(state.queriedAddress),
+                valueHtml: renderSummaryAddressValue(state.queriedAddress),
                 note: "切换状态、社区、大类或小类标签后会重新计算。",
               },
               {
@@ -2707,7 +2736,7 @@
               },
               {
                 label: "钱包地址",
-                value: shortAddress(state.queriedAddress),
+                valueHtml: renderSummaryAddressValue(state.queriedAddress),
                 note: "可尝试切换网络、检查地址，或稍后再查同步后的活库。",
               },
               {
@@ -2771,7 +2800,7 @@
             (card) => `
         <article class="card ${escapeHtml(card.tone || "")}">
           <div class="card-label">${escapeHtml(card.label)}</div>
-          <div class="card-value">${escapeHtml(card.value)}</div>
+          <div class="card-value">${card.valueHtml || escapeHtml(card.value)}</div>
           <div class="card-note">${escapeHtml(card.note)}</div>
         </article>
       `
