@@ -1501,12 +1501,10 @@
       const API_URL = "/api/dashboards/wallet-activity-timeline";
       const PAGE_SIZE = 300;
       const MAX_PAGE_SIZE = 500;
-      const TIMEZONE = "Asia/Shanghai";
       const RECENT_ADDRESS_KEY = "wallet-activity-timeline:recent-address";
       const RECENT_QUERY_SETTINGS_KEY = "wallet-activity-timeline:recent-settings";
 
       const timeFormatter = new Intl.DateTimeFormat("zh-CN", {
-        timeZone: TIMEZONE,
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
@@ -1515,6 +1513,7 @@
         second: "2-digit",
         hour12: false,
       });
+      const LOCAL_TIMEZONE = timeFormatter.resolvedOptions().timeZone || "本地时区";
 
       const FILTER_OPTIONS = [
         { key: "all", label: "全部" },
@@ -2060,6 +2059,17 @@
           return "-";
         }
         return timeFormatter.format(new Date(Number(seconds) * 1000)).replace(/\//g, "-");
+      }
+
+      function formatIsoTimestamp(value) {
+        if (!value || value === "-") {
+          return "-";
+        }
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+          return String(value);
+        }
+        return timeFormatter.format(date).replace(/\//g, "-");
       }
 
       function formatBigInt(raw, decimals = 18, fractionDigits = 2) {
@@ -2633,12 +2643,12 @@
           <div class="meta-value">${escapeHtml(compactHomePath(state.sourceLabel))}</div>
         </div>
         <div class="meta-row">
-          <div class="meta-label">DB MTime</div>
-          <div class="meta-value">${escapeHtml(state.dbMtime || "-")}</div>
+          <div class="meta-label">DB 更新时间（${escapeHtml(LOCAL_TIMEZONE)}）</div>
+          <div class="meta-value">${escapeHtml(formatIsoTimestamp(state.dbMtime))}</div>
         </div>
         <div class="meta-row">
-          <div class="meta-label">Updated</div>
-          <div class="meta-value">${escapeHtml(state.loadedAt || "-")}</div>
+          <div class="meta-label">页面刷新时间（${escapeHtml(LOCAL_TIMEZONE)}）</div>
+          <div class="meta-value">${escapeHtml(formatIsoTimestamp(state.loadedAt))}</div>
         </div>
       `;
       }

@@ -650,7 +650,11 @@
               <div class="meta-value" id="metaNetwork">-</div>
             </div>
             <div class="meta-row">
-              <div class="meta-label">数据更新时间</div>
+              <div class="meta-label" id="metaDbMtimeLabel">DB 更新时间</div>
+              <div class="meta-value" id="metaDbMtime">-</div>
+            </div>
+            <div class="meta-row">
+              <div class="meta-label" id="metaUpdatedAtLabel">页面刷新时间</div>
               <div class="meta-value" id="metaUpdatedAt">-</div>
             </div>
             <div class="meta-row">
@@ -851,6 +855,9 @@
       const detailMiniRow = document.getElementById("detailMiniRow");
 
       const metaNetwork = document.getElementById("metaNetwork");
+      const metaDbMtimeLabel = document.getElementById("metaDbMtimeLabel");
+      const metaDbMtime = document.getElementById("metaDbMtime");
+      const metaUpdatedAtLabel = document.getElementById("metaUpdatedAtLabel");
       const metaUpdatedAt = document.getElementById("metaUpdatedAt");
       const metaSourceDb = document.getElementById("metaSourceDb");
 
@@ -860,6 +867,17 @@
       const detailScopeNote = document.getElementById("detailScopeNote");
       const windowNetValue = document.getElementById("windowNetValue");
       const windowCrosschainValue = document.getElementById("windowCrosschainValue");
+
+      const localTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      });
+      const LOCAL_TIMEZONE = localTimeFormatter.resolvedOptions().timeZone || "本地时区";
 
       const numberFormatter = new Intl.NumberFormat("zh-CN", {
         minimumFractionDigits: 2,
@@ -1053,9 +1071,23 @@
         textarea.remove();
       }
 
+      function formatIsoTimestamp(value) {
+        if (!value || value === "-") {
+          return "-";
+        }
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+          return String(value);
+        }
+        return localTimeFormatter.format(date).replace(/\//g, "-");
+      }
+
       function renderMeta(payload) {
         metaNetwork.textContent = payload?.network || state.network;
-        metaUpdatedAt.textContent = payload?.updated_at || "-";
+        metaDbMtimeLabel.textContent = `DB 更新时间（${LOCAL_TIMEZONE}）`;
+        metaDbMtime.textContent = formatIsoTimestamp(payload?.db_mtime || "-");
+        metaUpdatedAtLabel.textContent = `页面刷新时间（${LOCAL_TIMEZONE}）`;
+        metaUpdatedAt.textContent = formatIsoTimestamp(payload?.updated_at || "-");
         metaSourceDb.textContent = payload?.source_db || "-";
       }
 

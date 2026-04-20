@@ -624,6 +624,16 @@
     const STALE_TIME_MS = 30_000;
 
     const numberFormatter = new Intl.NumberFormat("zh-CN");
+    const localTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    });
+    const LOCAL_TIMEZONE = localTimeFormatter.resolvedOptions().timeZone || "本地时区";
 
     const state = {
       allRows: [],
@@ -664,6 +674,23 @@
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
+    }
+
+    function formatLocalTime(value) {
+      if (!value || value === "-") {
+        return "-";
+      }
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return String(value);
+      }
+      const parts = Object.fromEntries(
+        localTimeFormatter
+          .formatToParts(date)
+          .filter((part) => part.type !== "literal")
+          .map((part) => [part.type, part.value])
+      );
+      return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
     }
 
     function setFetching(isFetching) {
@@ -768,12 +795,12 @@
           <div class="meta-value">${escapeHtml(state.sourceLabel)}</div>
         </div>
         <div>
-          <div class="meta-label">DB MTime</div>
-          <div class="meta-value">${escapeHtml(state.dbMtime || "-")}</div>
+          <div class="meta-label">DB 更新时间（${escapeHtml(LOCAL_TIMEZONE)}）</div>
+          <div class="meta-value">${escapeHtml(formatLocalTime(state.dbMtime))}</div>
         </div>
         <div>
-          <div class="meta-label">Updated At</div>
-          <div class="meta-value">${escapeHtml(state.loadedAt || "-")}</div>
+          <div class="meta-label">页面刷新时间（${escapeHtml(LOCAL_TIMEZONE)}）</div>
+          <div class="meta-value">${escapeHtml(formatLocalTime(state.loadedAt))}</div>
         </div>
         <div>
           <div class="meta-label">Refresh</div>
