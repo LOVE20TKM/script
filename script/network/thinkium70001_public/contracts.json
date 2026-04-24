@@ -114,6 +114,14 @@
     ]
   },
   {
+    "name": "groupDefaults",
+    "address": "0xa8be3b119CE77438ea3Ca7cf9417368d5a011E7B",
+    "from_block": 72449466,
+    "abi_files": [
+      "../../abi/IGroupDefaults.sol/IGroupDefaults.json"
+    ]
+  },
+  {
     "name": "groupManager",
     "address_env_var": "groupManagerAddress",
     "abi_files": [
