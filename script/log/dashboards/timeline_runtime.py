@@ -10,13 +10,21 @@ PAIR_CONTRACTS = {
     "love20tusdtpair",
     "love20tkm20pair",
     "love20life20pair",
+    "love20grow20pair",
+    "love20livelypair",
     "life20tusdtpair",
+    "grow20tusdtpair",
+    "livelytusdtpair",
 }
 PAIR_LABELS = {
     "love20tusdtpair": "LOVE20/TUSDT LP",
     "love20tkm20pair": "LOVE20/TKM20 LP",
     "love20life20pair": "LOVE20/LIFE20 LP",
+    "love20grow20pair": "LOVE20/GROW20 LP",
+    "love20livelypair": "LOVE20/LIVELY LP",
     "life20tusdtpair": "LIFE20/TUSDT LP",
+    "grow20tusdtpair": "GROW20/TUSDT LP",
+    "livelytusdtpair": "LIVELY/TUSDT LP",
 }
 ROUTER_LABEL = "uniswapV2Router02"
 ROUTER_SELECTORS = {
@@ -371,7 +379,7 @@ def failed_router_action(selector: str, *, for_router: bool) -> tuple[str, str]:
 
 def infer_lp_label_for_token(token_address: str | None, contract_map: dict[str, str]) -> str:
     token_name = contract_map.get(normalize_address(token_address), "")
-    if token_name in {"LIFE20", "TUSDT", "TKM20"}:
+    if token_name in {"LIFE20", "GROW20", "LIVELY", "TUSDT", "TKM20"}:
         return f"LOVE20/{token_name} LP"
     return "LP"
 

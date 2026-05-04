@@ -142,6 +142,20 @@ def insert_event(
 
 
 class TimelineRuntimeTest(unittest.TestCase):
+    def test_tracked_pair_labels_include_grow20_and_lively(self) -> None:
+        self.assertEqual(timeline_runtime.token_label("grow20TusdtPair"), "GROW20/TUSDT LP")
+        self.assertEqual(timeline_runtime.token_label("livelyTusdtPair"), "LIVELY/TUSDT LP")
+        self.assertEqual(timeline_runtime.token_label("love20Grow20Pair"), "LOVE20/GROW20 LP")
+        self.assertEqual(timeline_runtime.token_label("love20LivelyPair"), "LOVE20/LIVELY LP")
+        self.assertEqual(
+            timeline_runtime.infer_lp_label_for_token(TOKEN, {TOKEN: "GROW20"}),
+            "LOVE20/GROW20 LP",
+        )
+        self.assertEqual(
+            timeline_runtime.infer_lp_label_for_token(TOKEN, {TOKEN: "LIVELY"}),
+            "LOVE20/LIVELY LP",
+        )
+
     def test_approval_only_tx_becomes_single_row(self) -> None:
         conn = make_conn()
         insert_tx(
