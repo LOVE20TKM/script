@@ -354,6 +354,47 @@
     ]
   },
   {
+    "name": "PRETTY",
+    "address": "0x9A4c8456E8a5C7c33984B0f0c351190828C3aa36",
+    "from_block": 72978130,
+    "abi_files": [
+      "../../abi/ILOVE20Token.sol/ILOVE20Token.json"
+    ],
+    "contract_type": "launch_token"
+  },
+  {
+    "name": "prettySlToken",
+    "address": "0xF10e18158950F446C38AEc501505A9e7A48EF40d",
+    "from_block": 72978130,
+    "abi_files": [
+      "../../abi/ILOVE20SLToken.sol/ILOVE20SLToken.json"
+    ]
+  },
+  {
+    "name": "prettyStToken",
+    "address": "0x8b0674231C69DE116CEdEcE94478b9F9EaF5F6F5",
+    "from_block": 72978130,
+    "abi_files": [
+      "../../abi/ILOVE20STToken.sol/ILOVE20STToken.json"
+    ]
+  },
+  {
+    "name": "love20PrettyPair",
+    "address": "0x9424Fe443c74abE52C06594912D5570045E57FE0",
+    "from_block": 72978130,
+    "abi_files": [
+      "../../abi/IUniswapV2Pair.sol/IUniswapV2Pair.0.5.16.json"
+    ]
+  },
+  {
+    "name": "prettyTusdtPair",
+    "address": "0xBe95A460FE05f60aC21b4f4CAF9Db824201BB802",
+    "from_block": 73074362,
+    "abi_files": [
+      "../../abi/IUniswapV2Pair.sol/IUniswapV2Pair.0.5.16.json"
+    ]
+  },
+  {
     "name": "ext24",
     "address": "0xd9228e0378049bfda65807c7d0473e7bfc699d29",
     "from_block": 70369237,
@@ -659,6 +700,20 @@
     "managed_by": "auto-discovery"
   },
   {
+    "name": "life20Ext12",
+    "address": "0x4cdd74e768328cf0382ed37024f153a1e3e7d715",
+    "from_block": 72729301,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x772127e10d2905951a302f482cd1de7f4a98aab6",
+    "action_id": 12,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
     "name": "livelyExt0",
     "address": "0x89f88af307063e76fc57756761db4a787ead1a30",
     "from_block": 72603901,
@@ -740,6 +795,94 @@
     "action_id": 6,
     "factory_name": "groupActionFactory",
     "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "livelyExt7",
+    "address": "0x740d98f1f6237142023db404219c933f99c68cde",
+    "from_block": 72809930,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x6417cbe33375698fb2c67ea468e7700030c56595",
+    "action_id": 7,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "livelyExt8",
+    "address": "0x5176c559577e8d0d5d0fe502b1711cea1821ba9b",
+    "from_block": 72846778,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json",
+      "../../abi/IGroupService.sol/IGroupServiceEvents.json",
+      "../../abi/IJoin.sol/IJoinEvents.json"
+    ],
+    "token_address": "0x6417cbe33375698fb2c67ea468e7700030c56595",
+    "action_id": 8,
+    "factory_name": "groupServiceFactory",
+    "factory_address": "0x0b915a64ae1c263e6230d8e8a7cc39e3f4f4c29f",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "livelyExt9",
+    "address": "0xe7be4080edb50c6614b24403eb88c1b411934316",
+    "from_block": 72948923,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x6417cbe33375698fb2c67ea468e7700030c56595",
+    "action_id": 9,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "livelyExt10",
+    "address": "0x50543cb64725f4ab74e282138ed8d67ccbea58d7",
+    "from_block": 72978908,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x6417cbe33375698fb2c67ea468e7700030c56595",
+    "action_id": 10,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "livelyExt12",
+    "address": "0xa3bef206126c10e77bee6da72e3dcbcb0ec88743",
+    "from_block": 73056508,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x6417cbe33375698fb2c67ea468e7700030c56595",
+    "action_id": 12,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "livelyExt13",
+    "address": "0xc2da30ce24072c69997bbc140671ea7db667ce2e",
+    "from_block": 73060128,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json",
+      "../../abi/IGroupService.sol/IGroupServiceEvents.json",
+      "../../abi/IJoin.sol/IJoinEvents.json"
+    ],
+    "token_address": "0x6417cbe33375698fb2c67ea468e7700030c56595",
+    "action_id": 13,
+    "factory_name": "groupServiceFactory",
+    "factory_address": "0x0b915a64ae1c263e6230d8e8a7cc39e3f4f4c29f",
     "managed_by": "auto-discovery"
   },
   {
@@ -986,6 +1129,76 @@
     "action_id": 22,
     "factory_name": "groupServiceFactory",
     "factory_address": "0x0b915a64ae1c263e6230d8e8a7cc39e3f4f4c29f",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "grow20Ext23",
+    "address": "0x877236291a1473ca6b89ee1458e7a079345a0ba7",
+    "from_block": 72870971,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x2800d80fda396248a7fe433c9dc003595f5c3bd7",
+    "action_id": 23,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "grow20Ext24",
+    "address": "0x651559f36fdf175c44840f31d09d9eed7a4a46c3",
+    "from_block": 72904033,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x2800d80fda396248a7fe433c9dc003595f5c3bd7",
+    "action_id": 24,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "grow20Ext25",
+    "address": "0x03a00c15afea198d22e4444a6698ec14dc127d7f",
+    "from_block": 72966827,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x2800d80fda396248a7fe433c9dc003595f5c3bd7",
+    "action_id": 25,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "prettyExt0",
+    "address": "0x9d6f659266bbf08a7689bc8b19328943aeb5677b",
+    "from_block": 73074595,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x9a4c8456e8a5c7c33984b0f0c351190828c3aa36",
+    "action_id": 0,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
+    "managed_by": "auto-discovery"
+  },
+  {
+    "name": "prettyExt1",
+    "address": "0x28d2770dde8da794ae75ff14fb53662ca0892a15",
+    "from_block": 73075029,
+    "abi_files": [
+      "../../abi/IExtension.sol/IExtensionEvents.json",
+      "../../abi/IReward.sol/IRewardEvents.json"
+    ],
+    "token_address": "0x9a4c8456e8a5c7c33984b0f0c351190828c3aa36",
+    "action_id": 1,
+    "factory_name": "groupActionFactory",
+    "factory_address": "0x53fa19beef0a16d3ed5a33acc3d3e6c805980406",
     "managed_by": "auto-discovery"
   }
 ]
