@@ -8,7 +8,8 @@ tracked_pairs(token_key, swap_bucket, lp_bucket, pair_contract_name, tusdt_side)
         ('love20', 'love20_swap', 'love20_lp', 'love20TusdtPair', 0),
         ('life20', 'life20_swap', 'life20_lp', 'life20TusdtPair', 0),
         ('grow20', 'grow20_swap', 'grow20_lp', 'grow20TusdtPair', 1),
-        ('lively', 'lively_swap', 'lively_lp', 'livelyTusdtPair', 0)
+        ('lively', 'lively_swap', 'lively_lp', 'livelyTusdtPair', 0),
+        ('pretty', 'pretty_swap', 'pretty_lp', 'prettyTusdtPair', 0)
 ),
 flow_rows AS (
     SELECT *
@@ -87,10 +88,12 @@ SELECT
     ROUND(COALESCE(SUM(CASE WHEN bucket = 'life20_swap' THEN tusdt_flow ELSE 0 END), 0), 6) AS life20_swap_tusdt_flow,
     ROUND(COALESCE(SUM(CASE WHEN bucket = 'grow20_swap' THEN tusdt_flow ELSE 0 END), 0), 6) AS grow20_swap_tusdt_flow,
     ROUND(COALESCE(SUM(CASE WHEN bucket = 'lively_swap' THEN tusdt_flow ELSE 0 END), 0), 6) AS lively_swap_tusdt_flow,
+    ROUND(COALESCE(SUM(CASE WHEN bucket = 'pretty_swap' THEN tusdt_flow ELSE 0 END), 0), 6) AS pretty_swap_tusdt_flow,
     ROUND(COALESCE(SUM(CASE WHEN bucket = 'love20_lp' THEN tusdt_flow ELSE 0 END), 0), 6) AS love20_lp_tusdt_flow,
     ROUND(COALESCE(SUM(CASE WHEN bucket = 'life20_lp' THEN tusdt_flow ELSE 0 END), 0), 6) AS life20_lp_tusdt_flow,
     ROUND(COALESCE(SUM(CASE WHEN bucket = 'grow20_lp' THEN tusdt_flow ELSE 0 END), 0), 6) AS grow20_lp_tusdt_flow,
     ROUND(COALESCE(SUM(CASE WHEN bucket = 'lively_lp' THEN tusdt_flow ELSE 0 END), 0), 6) AS lively_lp_tusdt_flow,
+    ROUND(COALESCE(SUM(CASE WHEN bucket = 'pretty_lp' THEN tusdt_flow ELSE 0 END), 0), 6) AS pretty_lp_tusdt_flow,
     ROUND(COALESCE(SUM(CASE WHEN flow_scope = 'crosschain' AND tusdt_flow > 0 THEN tusdt_flow ELSE 0 END), 0), 6) AS tusdt_crosschain_in_tusdt,
     ROUND(COALESCE(SUM(CASE WHEN flow_scope = 'crosschain' AND tusdt_flow < 0 THEN -tusdt_flow ELSE 0 END), 0), 6) AS tusdt_crosschain_out_tusdt,
     ROUND(COALESCE(SUM(CASE WHEN flow_scope = 'crosschain' THEN tusdt_flow ELSE 0 END), 0), 6) AS tusdt_crosschain_net_tusdt_flow

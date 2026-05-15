@@ -786,7 +786,7 @@
           <div class="panel-head">
             <div>
               <h2 class="panel-title">地址聚合明细</h2>
-              <p class="panel-note">按 LOVE20 / LIFE20 / GROW20 / LIVELY 的 TUSDT Swap 与 LP 聚合。排序只作用于这里，先选字段，再选方向。</p>
+              <p class="panel-note">按 LOVE20 / LIFE20 / GROW20 / LIVELY / PRETTY 的 TUSDT Swap 与 LP 聚合。排序只作用于这里，先选字段，再选方向。</p>
             </div>
             <div class="detail-tools">
               <div class="detail-sort">
@@ -827,10 +827,12 @@
                   <th>LIFE20 Swap</th>
                   <th>GROW20 Swap</th>
                   <th>LIVELY Swap</th>
+                  <th>PRETTY Swap</th>
                   <th>LOVE20 LP</th>
                   <th>LIFE20 LP</th>
                   <th>GROW20 LP</th>
                   <th>LIVELY LP</th>
+                  <th>PRETTY LP</th>
                   <th>跨链流入</th>
                   <th>跨链流出</th>
                   <th>跨链净流量</th>
@@ -1301,10 +1303,12 @@
                 <td class="${signedClass(row.life20_swap_tusdt_flow)}">${renderAmountHtml(row.life20_swap_tusdt_flow, { signed: true })}</td>
                 <td class="${signedClass(row.grow20_swap_tusdt_flow)}">${renderAmountHtml(row.grow20_swap_tusdt_flow, { signed: true })}</td>
                 <td class="${signedClass(row.lively_swap_tusdt_flow)}">${renderAmountHtml(row.lively_swap_tusdt_flow, { signed: true })}</td>
+                <td class="${signedClass(row.pretty_swap_tusdt_flow)}">${renderAmountHtml(row.pretty_swap_tusdt_flow, { signed: true })}</td>
                 <td class="${signedClass(row.love20_lp_tusdt_flow)}">${renderAmountHtml(row.love20_lp_tusdt_flow, { signed: true })}</td>
                 <td class="${signedClass(row.life20_lp_tusdt_flow)}">${renderAmountHtml(row.life20_lp_tusdt_flow, { signed: true })}</td>
                 <td class="${signedClass(row.grow20_lp_tusdt_flow)}">${renderAmountHtml(row.grow20_lp_tusdt_flow, { signed: true })}</td>
                 <td class="${signedClass(row.lively_lp_tusdt_flow)}">${renderAmountHtml(row.lively_lp_tusdt_flow, { signed: true })}</td>
+                <td class="${signedClass(row.pretty_lp_tusdt_flow)}">${renderAmountHtml(row.pretty_lp_tusdt_flow, { signed: true })}</td>
                 <td>${renderAmountHtml(row.tusdt_crosschain_in_tusdt)}</td>
                 <td>${renderAmountHtml(row.tusdt_crosschain_out_tusdt)}</td>
                 <td class="${signedClass(row.tusdt_crosschain_net_tusdt_flow)}">${renderAmountHtml(row.tusdt_crosschain_net_tusdt_flow, { signed: true })}</td>

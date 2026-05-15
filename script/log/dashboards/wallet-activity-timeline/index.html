@@ -1555,6 +1555,7 @@
         { key: "LIFE20", label: "LIFE20" },
         { key: "GROW20", label: "GROW20" },
         { key: "LIVELY", label: "LIVELY" },
+        { key: "PRETTY", label: "PRETTY" },
       ];
       const COMMUNITY_FILTER_KEYS = COMMUNITY_FILTER_OPTIONS.map((item) => item.key);
       const DEFAULT_ACTIVE_COMMUNITY_KEYS = COMMUNITY_FILTER_KEYS;
@@ -2206,6 +2207,9 @@
           }
           if (label.includes("LIVELY")) {
             keys.add("LIVELY");
+          }
+          if (label.includes("PRETTY")) {
+            keys.add("PRETTY");
           }
         }
         return keys;

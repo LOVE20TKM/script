@@ -7,6 +7,7 @@ import tusdt_flow_runtime
 
 GROW_USER = "0x1111111111111111111111111111111111111111"
 LIVELY_USER = "0x2222222222222222222222222222222222222222"
+PRETTY_USER = "0x4444444444444444444444444444444444444444"
 PAIR = "0x3333333333333333333333333333333333333333"
 E18 = 10**18
 
@@ -37,6 +38,9 @@ def make_conn() -> sqlite3.Connection:
         CREATE TABLE v_lively_tusdt_swap (
             log_round INTEGER, user TEXT, "to" TEXT, tusdt_in_amount REAL, tusdt_out_amount REAL
         );
+        CREATE TABLE v_pretty_tusdt_swap (
+            log_round INTEGER, user TEXT, "to" TEXT, tusdt_in_amount REAL, tusdt_out_amount REAL
+        );
 
         CREATE TABLE v_liquidity_tusdt_love20 (
             log_round INTEGER, user TEXT, amount_sign INTEGER, tusdt_amount REAL
@@ -50,6 +54,9 @@ def make_conn() -> sqlite3.Connection:
         CREATE TABLE v_liquidity_tusdt_lively (
             log_round INTEGER, user TEXT, amount_sign INTEGER, tusdt_amount REAL
         );
+        CREATE TABLE v_liquidity_tusdt_pretty (
+            log_round INTEGER, user TEXT, amount_sign INTEGER, tusdt_amount REAL
+        );
         CREATE TABLE v_tusdt_crosschain (
             log_round INTEGER, user TEXT, amount_sign INTEGER, tusdt_amount REAL
         );
@@ -59,6 +66,8 @@ def make_conn() -> sqlite3.Connection:
     insert_tx(conn, "0xgrow20lp", GROW_USER)
     insert_tx(conn, "0xlivelyswap", LIVELY_USER)
     insert_tx(conn, "0xlivelylp", LIVELY_USER)
+    insert_tx(conn, "0xprettyswap", PRETTY_USER)
+    insert_tx(conn, "0xprettylp", PRETTY_USER)
 
     insert_event(
         conn,
@@ -87,6 +96,20 @@ def make_conn() -> sqlite3.Connection:
         contract_name="livelyTusdtPair",
         event_name="Burn",
         payload={"amount0": 2 * E18, "amount1": 100 * E18},
+    )
+    insert_event(
+        conn,
+        tx_hash="0xprettyswap",
+        contract_name="prettyTusdtPair",
+        event_name="Swap",
+        payload={"amount0In": 0, "amount0Out": 9 * E18, "amount1In": 100 * E18, "amount1Out": 0, "to": PAIR},
+    )
+    insert_event(
+        conn,
+        tx_hash="0xprettylp",
+        contract_name="prettyTusdtPair",
+        event_name="Mint",
+        payload={"amount0": 4 * E18, "amount1": 100 * E18},
     )
     return conn
 
@@ -121,6 +144,14 @@ class TusdtFlowRuntimeTest(unittest.TestCase):
             "INSERT INTO v_liquidity_tusdt_lively(log_round, user, amount_sign, tusdt_amount) VALUES (10, ?, -1, 2)",
             (LIVELY_USER,),
         )
+        conn.execute(
+            "INSERT INTO v_pretty_tusdt_swap(log_round, user, tusdt_in_amount, tusdt_out_amount) VALUES (10, ?, 0, 9)",
+            (PRETTY_USER,),
+        )
+        conn.execute(
+            "INSERT INTO v_liquidity_tusdt_pretty(log_round, user, amount_sign, tusdt_amount) VALUES (10, ?, 1, 4)",
+            (PRETTY_USER,),
+        )
 
         data = tusdt_flow_runtime.query_tusdt_flow_data(
             conn,
@@ -135,15 +166,19 @@ class TusdtFlowRuntimeTest(unittest.TestCase):
         self.assertEqual(selected["grow20_lp_tusdt_flow"], 3)
         self.assertEqual(selected["lively_swap_tusdt_flow"], 7)
         self.assertEqual(selected["lively_lp_tusdt_flow"], -2)
-        self.assertEqual(selected["net_swap_tusdt_flow"], 2)
-        self.assertEqual(selected["net_lp_tusdt_flow"], 1)
-        self.assertEqual(selected["net_inflow_tusdt"], 3)
+        self.assertEqual(selected["pretty_swap_tusdt_flow"], -9)
+        self.assertEqual(selected["pretty_lp_tusdt_flow"], 4)
+        self.assertEqual(selected["net_swap_tusdt_flow"], -7)
+        self.assertEqual(selected["net_lp_tusdt_flow"], 5)
+        self.assertEqual(selected["net_inflow_tusdt"], -2)
 
         detail_by_address = {row["address"]: row for row in data["detail"]["rows"]}
         self.assertEqual(detail_by_address[GROW_USER]["grow20_swap_tusdt_flow"], -5)
         self.assertEqual(detail_by_address[GROW_USER]["grow20_lp_tusdt_flow"], 3)
         self.assertEqual(detail_by_address[LIVELY_USER]["lively_swap_tusdt_flow"], 7)
         self.assertEqual(detail_by_address[LIVELY_USER]["lively_lp_tusdt_flow"], -2)
+        self.assertEqual(detail_by_address[PRETTY_USER]["pretty_swap_tusdt_flow"], -9)
+        self.assertEqual(detail_by_address[PRETTY_USER]["pretty_lp_tusdt_flow"], 4)
 
 
 if __name__ == "__main__":

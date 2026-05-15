@@ -142,6 +142,13 @@ if is_nonzero_address "$life20Address"; then
   init_pair_address "$life20Address" "$tusdtAddress" "life20TusdtPairAddress" || return 1
 fi
 
+prettyAddress=$(resolve_optional_address_from_call "prettyAddress" "$launchAddress" "tokenAddressBySymbol(string)(address)" "PRETTY") || return 1
+if is_nonzero_address "$prettyAddress"; then
+  init_token_address_set "prettyAddress" "$prettyAddress" "pretty" || return 1
+  init_pair_address "$firstTokenAddress" "$prettyAddress" "love20PrettyPairAddress" || return 1
+  init_pair_address "$prettyAddress" "$tusdtAddress" "prettyTusdtPairAddress" || return 1
+fi
+
 export maxBlocksPerRequest=4096  # RPC rejects larger eth_getLogs windows during full rebuilds
 export maxRetries=5
 export maxConcurrentJobs=10  # Reduced concurrency to avoid RPC rate limiting

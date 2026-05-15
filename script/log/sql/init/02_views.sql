@@ -203,6 +203,61 @@ FROM events e
 LEFT JOIN transactions t ON e.tx_hash = t.tx_hash
 WHERE e.contract_name = 'life20TusdtPair' AND e.event_name IN ('Mint', 'Burn');
 
+-- PRETTY-TUSDT pair Swap (TUSDT=token0, PRETTY=token1)
+-- pretty_in/out: PRETTY flow (18 decimals); tusdt_in/out: TUSDT flow (18 decimals)
+DROP VIEW IF EXISTS v_pretty_tusdt_swap;
+CREATE VIEW v_pretty_tusdt_swap AS
+SELECT
+    e.id,
+    e.contract_name,
+    e.log_round,
+    e.round,
+    e.block_number,
+    e.tx_hash,
+    e.tx_index,
+    e.log_index,
+    e.address,
+    json_extract(e.decoded_data, '$.sender') AS sender,
+    json_extract(e.decoded_data, '$.to') AS "to",
+    t."from" AS user,
+    json_extract(e.decoded_data, '$.amount1In') AS pretty_in,
+    json_extract(e.decoded_data, '$.amount1Out') AS pretty_out,
+    json_extract(e.decoded_data, '$.amount0In') AS tusdt_in,
+    json_extract(e.decoded_data, '$.amount0Out') AS tusdt_out,
+    CAST(json_extract(e.decoded_data, '$.amount1In') AS REAL) / 1e18 AS pretty_in_amount,
+    CAST(json_extract(e.decoded_data, '$.amount1Out') AS REAL) / 1e18 AS pretty_out_amount,
+    CAST(json_extract(e.decoded_data, '$.amount0In') AS REAL) / 1e18 AS tusdt_in_amount,
+    CAST(json_extract(e.decoded_data, '$.amount0Out') AS REAL) / 1e18 AS tusdt_out_amount,
+    (CAST(json_extract(e.decoded_data, '$.amount1In') AS REAL) > 0) AS is_sell_pretty,
+    e.created_at
+FROM events e
+LEFT JOIN transactions t ON e.tx_hash = t.tx_hash
+WHERE e.contract_name = 'prettyTusdtPair' AND e.event_name = 'Swap';
+
+-- PRETTY-TUSDT pair Liquidity (Mint/Burn) view
+-- tusdt_amount: TUSDT amount (token0); pretty_amount: PRETTY amount (token1)
+DROP VIEW IF EXISTS v_liquidity_tusdt_pretty;
+CREATE VIEW v_liquidity_tusdt_pretty AS
+SELECT
+    e.id,
+    e.log_round,
+    e.block_number,
+    e.tx_hash,
+    e.tx_index,
+    e.log_index,
+    CASE
+        WHEN e.event_name = 'Mint' THEN 1
+        ELSE -1
+    END AS amount_sign,
+    t."from" AS user,
+    CASE WHEN e.event_name = 'Mint' THEN NULL ELSE json_extract(e.decoded_data, '$.to') END AS "to",
+    CAST(json_extract(e.decoded_data, '$.amount0') AS REAL) / 1e18 AS tusdt_amount,
+    CAST(json_extract(e.decoded_data, '$.amount1') AS REAL) / 1e18 AS pretty_amount,
+    e.created_at
+FROM events e
+LEFT JOIN transactions t ON e.tx_hash = t.tx_hash
+WHERE e.contract_name = 'prettyTusdtPair' AND e.event_name IN ('Mint', 'Burn');
+
 -- TUSDT cross-chain mint/burn view
 -- amount_sign: +1 = mint/cross-in from zero address; -1 = burn/cross-out to zero address
 DROP VIEW IF EXISTS v_tusdt_crosschain;
