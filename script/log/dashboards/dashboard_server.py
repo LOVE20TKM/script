@@ -24,8 +24,8 @@ MINT_DIR = DASHBOARDS_DIR / "mint-addresses-by-log-round"
 DEFAULT_NETWORK = "thinkium70001_public"
 DEFAULT_TIMELINE_LIMIT = 100
 MAX_TIMELINE_LIMIT = 500
-MINT_SOURCE_QUERY_SQL = (MINT_DIR / "source_query.sql").read_text(encoding="utf-8")
-MINT_SOURCE_SUMMARY_SQL = (MINT_DIR / "source_summary.sql").read_text(encoding="utf-8")
+MINT_SOURCE_QUERY_SQL_PATH = MINT_DIR / "source_query.sql"
+MINT_SOURCE_SUMMARY_SQL_PATH = MINT_DIR / "source_summary.sql"
 _ENSURED_DB_MTIMES: dict[str, float] = {}
 _ENSURE_LOCK = threading.Lock()
 
@@ -66,12 +66,14 @@ def ensure_events_db_indexes(db_path: Path) -> None:
 
 def mint_payload(network: str, db_path: Path) -> dict:
     db_mtime = db_path.stat().st_mtime
+    source_query_sql = MINT_SOURCE_QUERY_SQL_PATH.read_text(encoding="utf-8")
+    source_summary_sql = MINT_SOURCE_SUMMARY_SQL_PATH.read_text(encoding="utf-8")
 
     conn = sqlite3.connect(db_path, timeout=60.0)
     conn.row_factory = sqlite3.Row
     try:
-        rows = [dict(row) for row in conn.execute(MINT_SOURCE_QUERY_SQL).fetchall()]
-        summary_row = conn.execute(MINT_SOURCE_SUMMARY_SQL).fetchone()
+        rows = [dict(row) for row in conn.execute(source_query_sql).fetchall()]
+        summary_row = conn.execute(source_summary_sql).fetchone()
         history_summary = dict(summary_row) if summary_row else {
             "history_gov_unique_address_count": 0,
             "history_action_unique_address_count": 0,

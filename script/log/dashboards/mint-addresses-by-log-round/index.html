@@ -439,7 +439,7 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 720px;
+      min-width: 960px;
     }
 
     th,
@@ -535,7 +535,7 @@
           <h1>每一轮有多少地址铸币</h1>
           <p>
             页面直接通过本地看板服务查询活 <code>events.db</code>。服务端按 <code>log_round</code>
-            统计治理铸币地址、行动铸币地址，以及两者去重后的总铸币地址数，页面会自动轮询更新。
+            统计治理铸币地址、行动铸币地址、两者去重后的总铸币地址数，以及铸币相关交易的实际 gas TKM 消耗。
           </p>
         </div>
         <aside class="meta" id="meta"></aside>
@@ -602,6 +602,9 @@
               <th>行动铸币地址数</th>
               <th>平均每地址行动数</th>
               <th>重叠地址数</th>
+              <th>TKM 消耗（Gas）</th>
+              <th>Gas 交易数</th>
+              <th>Gas 缺失交易数</th>
             </tr>
           </thead>
           <tbody id="table-body"></tbody>
@@ -611,7 +614,7 @@
 
     <section class="footer">
       <div>页面直接查询活 <code>events.db</code>，源数据不再依赖预生成看板 SQLite。</div>
-      <div>适配层：<code>v_mint_gov_reward</code>、<code>v_mint_action_reward</code>、<code>v_claim_reward</code>。</div>
+      <div>适配层：<code>v_mint_gov_reward</code>、<code>v_mint_action_reward</code>、<code>v_claim_reward</code>、<code>transactions</code>。</div>
       <div>注意：<code>log_round</code> 是按区块推导出的协议轮次，不等于事件 payload 里的 <code>round</code>。</div>
       <div>默认数据源：<code>script/log/db/thinkium70001_public/events.db</code>。</div>
     </section>
@@ -624,6 +627,14 @@
     const STALE_TIME_MS = 30_000;
 
     const numberFormatter = new Intl.NumberFormat("zh-CN");
+    const tkmFormatter = new Intl.NumberFormat("zh-CN", {
+      maximumFractionDigits: 0
+    });
+    const GAS_FIELD_KEYS = [
+      "actual_gas_tkm_consumed",
+      "actual_gas_tx_count",
+      "actual_gas_missing_tx_count"
+    ];
     const localTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
       year: "numeric",
       month: "2-digit",
@@ -665,6 +676,14 @@
         return "-";
       }
       return String(value);
+    }
+
+    function fmtTkm(value) {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) {
+        return "-";
+      }
+      return `${tkmFormatter.format(numeric)} TKM`;
     }
 
     function escapeHtml(value) {
@@ -724,16 +743,35 @@
           gov_mint_address_count: Number(row.gov_mint_address_count),
           action_mint_address_count: Number(row.action_mint_address_count),
           avg_action_count_per_address: Number(row.avg_action_count_per_address),
-          overlap_mint_address_count: Number(row.overlap_mint_address_count)
+          overlap_mint_address_count: Number(row.overlap_mint_address_count),
+          actual_gas_tkm_consumed: Number(row.actual_gas_tkm_consumed || 0),
+          actual_gas_tx_count: Number(row.actual_gas_tx_count || 0),
+          actual_gas_missing_tx_count: Number(row.actual_gas_missing_tx_count || 0)
         }))
         .sort((left, right) => left.log_round - right.log_round);
+    }
+
+    function hasGasFields(rows) {
+      return rows.every((row) => GAS_FIELD_KEYS.every((key) => Object.prototype.hasOwnProperty.call(row, key)));
     }
 
     function normalizeHistorySummary(row) {
       return {
         history_gov_unique_address_count: Number(row.history_gov_unique_address_count || 0),
         history_action_unique_address_count: Number(row.history_action_unique_address_count || 0),
-        history_total_unique_address_count: Number(row.history_total_unique_address_count || 0)
+        history_total_unique_address_count: Number(row.history_total_unique_address_count || 0),
+        history_actual_gas_tkm_consumed: 0,
+        history_actual_gas_tx_count: 0,
+        history_actual_gas_missing_tx_count: 0
+      };
+    }
+
+    function addGasHistorySummary(historySummary, rows) {
+      return {
+        ...historySummary,
+        history_actual_gas_tkm_consumed: rows.reduce((sum, row) => sum + row.actual_gas_tkm_consumed, 0),
+        history_actual_gas_tx_count: rows.reduce((sum, row) => sum + row.actual_gas_tx_count, 0),
+        history_actual_gas_missing_tx_count: rows.reduce((sum, row) => sum + row.actual_gas_missing_tx_count, 0)
       };
     }
 
@@ -812,8 +850,8 @@
     function renderSourceNote() {
       const hidden = getHiddenInProgressRound();
       const note = hidden
-        ? `当前直接查询活库。默认隐藏第 ${fmt(hidden.log_round)} 轮，避免把进行中轮次误读成异常下跌。`
-        : "当前直接查询活库。页面首次进入自动加载，后续只在点击“立即刷新”时重拉。";
+        ? `当前直接查询活库。默认隐藏第 ${fmt(hidden.log_round)} 轮，避免把进行中轮次误读成异常下跌；TKM 消耗来自交易 receipt 的实际 gas。`
+        : "当前直接查询活库。页面首次进入自动加载，后续只在点击“立即刷新”时重拉；TKM 消耗来自交易 receipt 的实际 gas。";
       document.getElementById("source-note").textContent = note;
     }
 
@@ -881,6 +919,16 @@
           note: "按当轮所有有铸币地址平均，未参与行动按 0 计"
         },
         {
+          label: "最新 TKM 消耗",
+          value: fmtTkm(viewSummary.latest.actual_gas_tkm_consumed),
+          note: `按 ${fmt(viewSummary.latest.actual_gas_tx_count)} 笔铸币相关交易的实际 gas 计算`
+        },
+        {
+          label: "历史 TKM 消耗",
+          value: fmtTkm(history.history_actual_gas_tkm_consumed),
+          note: `按 ${fmt(history.history_actual_gas_tx_count)} 笔铸币相关交易的实际 gas 计算`
+        },
+        {
           label: "历史唯一总铸币地址",
           value: history.history_total_unique_address_count,
           note: `治理 ${fmt(history.history_gov_unique_address_count)} / 行动 ${fmt(history.history_action_unique_address_count)}`
@@ -938,6 +986,16 @@
           title: "最新平均参与行动数",
           value: viewSummary.latest.avg_action_count_per_address,
           note: "同一轮中，所有有铸币地址平均参与的 distinct actionId 数；未参与行动地址按 0 计"
+        },
+        {
+          title: "最新 TKM 消耗",
+          value: fmtTkm(viewSummary.latest.actual_gas_tkm_consumed),
+          note: "同一轮铸币相关 distinct tx_hash 的 gasUsed * COALESCE(effectiveGasPrice, gasPrice) 之和"
+        },
+        {
+          title: "Gas 数据完整性",
+          value: viewSummary.latest.actual_gas_missing_tx_count,
+          note: "缺少 transactions.gas_used 或 gas price 的铸币相关交易数；为 0 表示本轮可完整计算"
         },
         {
           title: hidden ? "进行中轮次" : "统计口径",
@@ -1014,6 +1072,9 @@
           <td>${fmt(row.action_mint_address_count)}</td>
           <td>${fmt(row.avg_action_count_per_address)}</td>
           <td>${fmt(row.overlap_mint_address_count)}</td>
+          <td>${fmtTkm(row.actual_gas_tkm_consumed)}</td>
+          <td>${fmt(row.actual_gas_tx_count)}</td>
+          <td>${fmt(row.actual_gas_missing_tx_count)}</td>
         </tr>
       `).join("");
     }
@@ -1190,7 +1251,7 @@
       `;
       document.getElementById("table-body").innerHTML = `
         <tr>
-          <td colspan="8" class="empty-cell">暂无数据</td>
+          <td colspan="11" class="empty-cell">暂无数据</td>
         </tr>
       `;
       document.getElementById("chart-subtitle").textContent = "加载数据后显示最近 48 轮趋势。";
@@ -1247,8 +1308,15 @@
           if (!response.ok) {
             throw new Error(parseErrorPayload(payload, `请求失败: HTTP ${response.status}`));
           }
-          const rows = normalizeRows(payload.data?.rows || []);
-          const historySummary = normalizeHistorySummary(payload.data?.history_summary || {});
+          const rawRows = payload.data?.rows || [];
+          if (rawRows.length && !hasGasFields(rawRows)) {
+            throw new Error("接口响应缺少 gas 字段，请重启 dashboard_server.py 后刷新页面。");
+          }
+          const rows = normalizeRows(rawRows);
+          const historySummary = addGasHistorySummary(
+            normalizeHistorySummary(payload.data?.history_summary || {}),
+            rows
+          );
           if (!rows.length) {
             throw new Error("活库查询没有返回任何轮次数据");
           }
@@ -1264,10 +1332,14 @@
 
           render();
           if (!silent) {
+            const missingGasCount = historySummary.history_actual_gas_missing_tx_count;
+            const gasNote = missingGasCount > 0
+              ? `；有 <strong>${fmt(missingGasCount)}</strong> 笔铸币相关交易缺少 gas receipt 数据`
+              : "";
             setBanner(
               "load-banner",
               "success",
-              `已刷新活库数据，共 <strong>${fmt(rows.length)}</strong> 个 log_round。`
+              `已刷新活库数据，共 <strong>${fmt(rows.length)}</strong> 个 log_round${gasNote}。`
             );
           }
           return rows;

@@ -8,10 +8,13 @@
 --    仅有治理铸币、没有行动铸币的地址按 0 计入分母
 -- 5. 治理铸币新增地址数：当轮发生治理铸币，且此前任意 log_round 从未发生治理铸币的地址数
 -- 6. 行动铸币新增地址数：当轮发生行动铸币，且此前任意 log_round 从未发生行动铸币的地址数
+-- 7. TKM 消耗：铸币相关 distinct tx_hash 的链上实际 gas 手续费；
+--    actual_gas_tkm_consumed = gas_used * COALESCE(effective_gas_price, gas_price) / 1e18
 
 WITH gov_mint AS (
     SELECT
         log_round,
+        tx_hash,
         LOWER(account) AS account
     FROM v_mint_gov_reward
     WHERE log_round IS NOT NULL
@@ -19,6 +22,7 @@ WITH gov_mint AS (
 action_mint AS (
     SELECT
         log_round,
+        tx_hash,
         LOWER(account) AS account
     FROM v_mint_action_reward
     WHERE log_round IS NOT NULL
@@ -27,6 +31,7 @@ action_mint AS (
 
     SELECT
         log_round,
+        tx_hash,
         LOWER(account) AS account
     FROM v_claim_reward
     WHERE log_round IS NOT NULL
@@ -136,6 +141,48 @@ action_participation_stats AS (
         ON a.log_round = m.log_round
        AND a.account = m.account
     GROUP BY m.log_round
+),
+mint_gas_txs AS (
+    SELECT DISTINCT
+        log_round,
+        tx_hash
+    FROM gov_mint
+
+    UNION
+
+    SELECT DISTINCT
+        log_round,
+        tx_hash
+    FROM action_mint
+),
+actual_gas_stats AS (
+    SELECT
+        m.log_round,
+        COUNT(*) AS actual_gas_tx_count,
+        SUM(
+            CASE
+                WHEN t.tx_hash IS NULL
+                  OR t.gas_used IS NULL
+                  OR COALESCE(t.effective_gas_price, t.gas_price) IS NULL
+                    THEN 1
+                ELSE 0
+            END
+        ) AS actual_gas_missing_tx_count,
+        ROUND(
+            SUM(
+                COALESCE(
+                    CAST(t.gas_used AS REAL)
+                    * CAST(COALESCE(t.effective_gas_price, t.gas_price) AS REAL)
+                    / 1e18,
+                    0
+                )
+            ),
+            6
+        ) AS actual_gas_tkm_consumed
+    FROM mint_gas_txs m
+    LEFT JOIN transactions t
+        ON t.tx_hash = m.tx_hash
+    GROUP BY m.log_round
 )
 SELECT
     r.log_round,
@@ -145,7 +192,10 @@ SELECT
     COALESCE(g.gov_mint_address_count, 0) AS gov_mint_address_count,
     COALESCE(a.action_mint_address_count, 0) AS action_mint_address_count,
     COALESCE(o.overlap_mint_address_count, 0) AS overlap_mint_address_count,
-    COALESCE(p.avg_action_count_per_address, 0) AS avg_action_count_per_address
+    COALESCE(p.avg_action_count_per_address, 0) AS avg_action_count_per_address,
+    COALESCE(ags.actual_gas_tkm_consumed, 0) AS actual_gas_tkm_consumed,
+    COALESCE(ags.actual_gas_tx_count, 0) AS actual_gas_tx_count,
+    COALESCE(ags.actual_gas_missing_tx_count, 0) AS actual_gas_missing_tx_count
 FROM rounds r
 LEFT JOIN total_counts t
     ON t.log_round = r.log_round
@@ -161,4 +211,6 @@ LEFT JOIN overlap_counts o
     ON o.log_round = r.log_round
 LEFT JOIN action_participation_stats p
     ON p.log_round = r.log_round
+LEFT JOIN actual_gas_stats ags
+    ON ags.log_round = r.log_round
 ORDER BY r.log_round ASC
