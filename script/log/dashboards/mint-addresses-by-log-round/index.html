@@ -683,7 +683,7 @@
       if (!Number.isFinite(numeric)) {
         return "-";
       }
-      return `${tkmFormatter.format(numeric)} TKM`;
+      return tkmFormatter.format(numeric);
     }
 
     function escapeHtml(value) {
