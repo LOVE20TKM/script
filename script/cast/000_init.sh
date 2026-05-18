@@ -604,6 +604,98 @@ resolve_life20_address() {
 }
 echo "resolve_life20_address() loaded"
 
+contracts_json_address_by_name() {
+    local name=$1
+    local contracts_file="$base_dir/contracts.json"
+
+    if [ -z "$name" ] || [ ! -f "$contracts_file" ]; then
+        echo "$ZERO_ADDRESS"
+        return 0
+    fi
+
+    local normalized_name row env_var literal_address resolved
+    normalized_name=$(echo "$name" | tr '[:lower:]' '[:upper:]')
+    row=$(jq -r --arg name "$normalized_name" '
+        .[]
+        | select((.name | ascii_upcase) == $name)
+        | [(.address_env_var // ""), (.address // "")]
+        | @tsv
+    ' "$contracts_file" 2>/dev/null | head -1)
+
+    if [ -z "$row" ]; then
+        echo "$ZERO_ADDRESS"
+        return 0
+    fi
+
+    env_var=$(echo "$row" | awk -F'\t' '{print $1}')
+    literal_address=$(echo "$row" | awk -F'\t' '{print $2}')
+
+    if [ -n "$env_var" ]; then
+        if [ -n "${ZSH_VERSION:-}" ]; then
+            resolved="${(P)env_var}"
+        else
+            resolved="${!env_var}"
+        fi
+    fi
+
+    if [ -z "$resolved" ]; then
+        resolved="$literal_address"
+    fi
+
+    if [ -n "$resolved" ] && ! is_zero_address "$resolved"; then
+        normalize_address "$resolved"
+    else
+        echo "$ZERO_ADDRESS"
+    fi
+}
+echo "contracts_json_address_by_name() loaded"
+
+token_address() {
+    local symbol=$1
+
+    if [ -z "$symbol" ]; then
+        echo "Usage: token_address SYMBOL"
+        return 1
+    fi
+
+    local normalized_symbol
+    normalized_symbol=$(echo "$symbol" | tr '[:lower:]' '[:upper:]')
+
+    local resolved
+    resolved=$(contracts_json_address_by_name "$symbol")
+    if ! is_zero_address "$resolved"; then
+        echo "$resolved"
+        return 0
+    fi
+
+    if [ "$normalized_symbol" = "TKM" ] || [ "$normalized_symbol" = "TKM20" ]; then
+        normalize_address "$rootParentTokenAddress"
+        return 0
+    fi
+
+    if [ "$normalized_symbol" = "TUSDT" ]; then
+        normalize_address "$tusdtAddress"
+        return 0
+    fi
+
+    if [ "$normalized_symbol" = "$(echo "$FIRST_TOKEN_SYMBOL" | tr '[:lower:]' '[:upper:]')" ]; then
+        normalize_address "$firstTokenAddress"
+        return 0
+    fi
+
+    if [ "$normalized_symbol" = "LIFE20" ]; then
+        resolve_life20_address
+        return 0
+    fi
+
+    resolved=$(safe_address_call ILOVE20Launch "$launchAddress" tokenAddressBySymbol "$symbol")
+    if is_zero_address "$resolved" && [ "$symbol" != "$normalized_symbol" ]; then
+        resolved=$(safe_address_call ILOVE20Launch "$launchAddress" tokenAddressBySymbol "$normalized_symbol")
+    fi
+    echo "$resolved"
+}
+echo "token_address() loaded"
+
 pair_address() {
     local token0=$1
     local token1=$2
@@ -1413,6 +1505,109 @@ gov_status(){
 }
 echo "gov_status() loaded"
 
+group_status(){
+    local token_address=$1
+    local account_address=$2
+    local group_id=$3
+
+    if [ -z "$token_address" ] || [ -z "$account_address" ] || [ -z "$group_id" ]; then
+        echo "Usage: group_status token_address account_address group_id"
+        return 1
+    fi
+
+    local verifyRound owner_address account_normalized owner_status
+    local action_count verified_count pending_count empty_count invalid_count
+
+    verifyRound=$(current_round "$verifyAddress" | awk 'NR==1 {print $1}')
+    owner_address=$(safe_address_call IERC721 "$groupAddress" ownerOf "$group_id")
+    account_normalized=$(normalize_address "$account_address")
+
+    owner_status="✅ "
+    if [ "$(echo "$owner_address" | tr '[:upper:]' '[:lower:]')" != "$(echo "$account_normalized" | tr '[:upper:]' '[:lower:]')" ]; then
+        owner_status="⚠️"
+    fi
+
+    action_count=$(call_first_word IGroupManager "$groupManagerAddress" actionIdsByGroupIdCount "$token_address" "$group_id" 2>/dev/null)
+    if ! [[ "$action_count" =~ ^[0-9]+$ ]]; then
+        echo "Error: failed to read actionIdsByGroupIdCount for token=$token_address groupId=$group_id"
+        return 1
+    fi
+    verified_count=0
+    pending_count=0
+    empty_count=0
+    invalid_count=0
+
+    echo "{"
+    echo "    token_address: $token_address"
+    echo "    account_address: $account_normalized"
+    echo "    groupId: $group_id"
+    echo "    verifyRound: $verifyRound"
+    echo "    ${owner_status}owner: $owner_address"
+    echo "    actions: $action_count"
+
+    if [ "$action_count" -gt 0 ]; then
+        echo "    actionStatus:"
+    fi
+
+    local i action_id extension accounts_count is_verified action_status
+    for ((i = 0; i < action_count; i++)); do
+        action_id=$(call_first_word IGroupManager "$groupManagerAddress" actionIdsByGroupIdAtIndex "$token_address" "$group_id" "$i" 2>/dev/null)
+        if ! [[ "$action_id" =~ ^[0-9]+$ ]]; then
+            invalid_count=$((invalid_count + 1))
+            pending_count=$((pending_count + 1))
+            echo "        ⚠️actionIndex: $i, actionId: unknown, extension: $ZERO_ADDRESS, accounts: unknown, isVerified: unknown"
+            continue
+        fi
+
+        extension=$(safe_address_call IExtensionCenter "$centerAddress" extension "$token_address" "$action_id")
+
+        if is_zero_address "$extension"; then
+            invalid_count=$((invalid_count + 1))
+            pending_count=$((pending_count + 1))
+            echo "        ⚠️actionId: $action_id, extension: $extension, accounts: 0, isVerified: false"
+            continue
+        fi
+
+        accounts_count=$(call_first_word IGroupJoin "$groupJoinAddress" accountsByGroupIdCount "$extension" "$verifyRound" "$group_id" 2>/dev/null)
+        is_verified=$(call_first_word IGroupVerify "$groupVerifyAddress" isVerified "$extension" "$verifyRound" "$group_id" 2>/dev/null)
+        if ! [[ "$accounts_count" =~ ^[0-9]+$ ]] || { [ "$is_verified" != "true" ] && [ "$is_verified" != "false" ]; }; then
+            invalid_count=$((invalid_count + 1))
+            pending_count=$((pending_count + 1))
+            [ -z "$accounts_count" ] && accounts_count="unknown"
+            [ -z "$is_verified" ] && is_verified="unknown"
+            echo "        ⚠️actionId: $action_id, extension: $extension, accounts: $accounts_count, isVerified: $is_verified"
+            continue
+        fi
+
+        if [ "$is_verified" = "true" ]; then
+            verified_count=$((verified_count + 1))
+            action_status="✅ "
+        elif [ "$accounts_count" = "0" ]; then
+            empty_count=$((empty_count + 1))
+            action_status="○ "
+        else
+            pending_count=$((pending_count + 1))
+            action_status="⚠️"
+        fi
+
+        echo "        ${action_status}actionId: $action_id, extension: $extension, accounts: $accounts_count, isVerified: $is_verified"
+    done
+
+    local required_count all_status
+    required_count=$((action_count - empty_count - invalid_count))
+    all_status="✅ "
+    [ "$pending_count" -gt 0 ] && all_status="⚠️"
+
+    echo "    verifiedActions: $verified_count"
+    echo "    emptyActions: $empty_count"
+    echo "    invalidActions: $invalid_count"
+    echo "    pendingActions: $pending_count"
+    echo "    requiredActions: $required_count"
+    echo "    ${all_status}allVerified: $([ "$pending_count" -eq 0 ] && echo true || echo false)"
+    echo "}"
+}
+echo "group_status() loaded"
+
 action_info(){
     local action_id=$1
     echo "action_id: $action_id"
@@ -2094,12 +2289,15 @@ help() {
     echo "  launch_info_by_index(index)                       - Get launch info by index"
     echo "  stake_status(token_address, account_address)       - Get stake status"
     echo "  gov_status(token_address, account_address)        - Get gov status"
+    echo "  group_status(token_address, account_address, group_id)"
+    echo "                                                     - Check group action verification status"
     echo "  action_info(action_id)                            - Get action information"
     echo "  action_info_by_field(action_id, field)            - Get specific action field"
     echo "  join_status(token_address, action_id)             - Get join status"
     echo "  account_status(token_address, account_address)     - Get account status"
     echo "  account_assets(account_or_keystore)                - Aggregate LOVE20 ecosystem assets by account"
     echo "  core_data()                                        - Get core data"
+    echo "  token_address(symbol)                              - Resolve token symbol to address"
     echo "  extension_address(token_address, action_id)        - Get extension address via center"
     echo "  extension_rewardByAccount(extension, round, account)"
     echo "                                                     - Get reward by account from extension"
