@@ -6,21 +6,39 @@
 
 
 
+# Resolve paths from this script file instead of the caller's current
+# working directory so sourced helpers remain stable across entrypoints.
+if [ -n "${BASH_SOURCE[0]:-}" ]; then
+    CAST_SCRIPT_SOURCE=${BASH_SOURCE[0]}
+elif [ -n "${ZSH_VERSION:-}" ]; then
+    eval 'CAST_SCRIPT_SOURCE=${(%):-%x}'
+else
+    CAST_SCRIPT_SOURCE=$0
+fi
+
+case "$CAST_SCRIPT_SOURCE" in
+    /*) ;;
+    *) CAST_SCRIPT_SOURCE="$PWD/$CAST_SCRIPT_SOURCE" ;;
+esac
+
+CAST_SCRIPT_DIR=$(cd "$(dirname "$CAST_SCRIPT_SOURCE")" && pwd)
+NETWORK_ROOT="$CAST_SCRIPT_DIR/../network"
+
 
 #  ------ set base_dir before run this script ------ 
 export network=$1
 # check network is set and network is a sub directory of network   
-if [ -z "$network" ] || [ ! -d "../network/$network" ]; then
+if [ -z "$network" ] || [ ! -d "$NETWORK_ROOT/$network" ]; then
     echo -e "\033[31mError:\033[0m Network parameter is required."
     echo -e "\nAvailable networks:"
-    for net in $(ls ../network); do
+    for net in $(ls "$NETWORK_ROOT"); do
         echo "  - $net"
     done
     return 1
 fi
 
 # --------------------------------------------------
-base_dir="../network/$network"
+base_dir="$NETWORK_ROOT/$network"
 
 source "$base_dir/.account"
 source "$base_dir/address.params"
@@ -91,8 +109,8 @@ cast_call() {
 }
 echo "cast_call() loaded"
 
-# abi dir relative to script/cast (run from script/cast)
-abi_dir="../../abi"
+# abi dir anchored to this script instead of the caller's cwd
+abi_dir="$CAST_SCRIPT_DIR/../../abi"
 abi_path_for_interface() {
   local iface=$1
   case "$iface" in
@@ -1512,6 +1530,12 @@ group_status(){
 
     if [ -z "$token_address" ] || [ -z "$account_address" ] || [ -z "$group_id" ]; then
         echo "Usage: group_status token_address account_address group_id"
+        return 1
+    fi
+
+    token_address=$(normalize_address "$token_address")
+    if is_zero_address "$token_address"; then
+        echo "Error: group_status requires a resolved token address, got ZERO_ADDRESS for groupId=$group_id"
         return 1
     fi
 
