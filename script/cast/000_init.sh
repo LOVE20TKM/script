@@ -53,7 +53,7 @@ source "$base_dir/address.group.params"
 # ------ user defined variables ------ 
 ZERO_ADDRESS="0x0000000000000000000000000000000000000000"
 tokenAddress=$firstTokenAddress 
-parentTokenAmountForContribute=$((FIRST_PARENT_TOKEN_FUNDRAISING_GOAL/2))  
+parentTokenAmountForContribute=$(echo "scale=0; $FIRST_PARENT_TOKEN_FUNDRAISING_GOAL / 2" | bc | awk -F. '{print $1}')
 verificationKey="default"
 promisedWaitingPhases=$PROMISED_WAITING_PHASES_MIN
 
@@ -2071,10 +2071,76 @@ send_eth_in_wei(){
 }
 echo "send_eth_in_wei() loaded"
 
+decimal_to_units() {
+    local amount=$1
+    local decimals=${2:-18}
+
+    if ! [[ "$decimals" =~ ^[0-9]+$ ]]; then
+        echo "decimal_to_units: decimals must be a non-negative integer: $decimals" >&2
+        return 1
+    fi
+
+    case "$amount" in
+        ""|*[^0-9.]*)
+            echo "decimal_to_units: amount must be a decimal number: $amount" >&2
+            return 1
+            ;;
+    esac
+
+    local whole
+    local fraction
+    case "$amount" in
+        *.*.*)
+            echo "decimal_to_units: amount has more than one decimal point: $amount" >&2
+            return 1
+            ;;
+        *.*)
+            whole=${amount%%.*}
+            fraction=${amount#*.}
+            ;;
+        *)
+            whole=$amount
+            fraction=""
+            ;;
+    esac
+
+    if [ -z "$whole" ]; then
+        whole=0
+    fi
+    if ! [[ "$whole" =~ ^[0-9]+$ ]]; then
+        echo "decimal_to_units: invalid integer part: $amount" >&2
+        return 1
+    fi
+    if [ -n "$fraction" ] && ! [[ "$fraction" =~ ^[0-9]+$ ]]; then
+        echo "decimal_to_units: invalid fractional part: $amount" >&2
+        return 1
+    fi
+
+    while [ ${#fraction} -gt "$decimals" ]; do
+        case "$fraction" in
+            *0) fraction=${fraction%0} ;;
+            *)
+                echo "decimal_to_units: amount has more than $decimals decimals: $amount" >&2
+                return 1
+                ;;
+        esac
+    done
+
+    while [ ${#fraction} -lt "$decimals" ]; do
+        fraction="${fraction}0"
+    done
+
+    local result="${whole}${fraction}"
+    result=$(printf "%s" "$result" | sed 's/^0*//')
+    printf "%s\n" "${result:-0}"
+}
+echo "decimal_to_units() loaded"
+
 send_eth(){
     local address=$1
     local amount_in_eth=$2
-    local amount_in_wei=$(echo "$amount_in_eth * 10^18" | bc)
+    local amount_in_wei
+    amount_in_wei=$(decimal_to_units "$amount_in_eth" 18) || return 1
     send_eth_in_wei $address $amount_in_wei
 }
 echo "send_eth() loaded"
@@ -2097,7 +2163,8 @@ send_token(){
     local token_address=$1
     local account_address=$2
     local amount_in_eth=$3
-    local amount_in_wei=$(echo "$amount_in_eth * 10^18" | bc)
+    local amount_in_wei
+    amount_in_wei=$(decimal_to_units "$amount_in_eth" 18) || return 1
     send_token_in_wei $token_address $account_address $amount_in_wei
 }
 
