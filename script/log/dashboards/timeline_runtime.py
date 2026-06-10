@@ -819,7 +819,7 @@ def build_row(account: str, summary: dict, tx_meta: dict, contract_map: dict[str
         amounts = collapse_amounts(
             [
                 {
-                    "token": item["token"],
+                    "token": "票数",
                     "raw": str(item["votes"]),
                     "decimals": 18,
                 }

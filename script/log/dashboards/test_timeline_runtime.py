@@ -284,7 +284,8 @@ class TimelineRuntimeTest(unittest.TestCase):
         self.assertEqual(row["action_group"], "governance")
         self.assertEqual(row["action"], "投票")
         self.assertEqual(row["action_id_text"], "9")
-        self.assertEqual(row["amounts"], [{"token": "LOVE20", "raw": "123", "decimals": 18}])
+        self.assertEqual(row["amounts"], [{"token": "票数", "raw": "123", "decimals": 18}])
+        self.assertEqual(row["communities"], [{"address": TOKEN, "label": "LOVE20"}])
 
     def test_verify_event_becomes_verify_row(self) -> None:
         conn = make_conn()
