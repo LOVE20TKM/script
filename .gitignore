@@ -12,6 +12,8 @@ docs/
 
 # Output
 script/log/output/
+outputs/
+tmp/
 
 # SQLite databases
 script/log/db/

@@ -122,6 +122,110 @@
     ]
   },
   {
+    "name": "groupDelegate",
+    "address": "0x07CEeB50E8333268Ffff196d3f107E8519cd5a09",
+    "from_block": 73948314,
+    "abi_files": [
+      "../../abi/GroupDelegate.sol/GroupDelegate.json"
+    ]
+  },
+  {
+    "name": "groupChat",
+    "address": "0xe96C5c5f43e72f74C6e19F30C2f96EDcE98C36ED",
+    "from_block": 73948358,
+    "abi_files": [
+      "../../abi/GroupChat.sol/GroupChat.json"
+    ]
+  },
+  {
+    "name": "groupChatAdmin",
+    "address": "0xD728b4a31bCC24864Ca52eef299333C45d492351",
+    "from_block": 73948358,
+    "abi_files": [
+      "../../abi/GroupAdmin.sol/GroupAdmin.json"
+    ]
+  },
+  {
+    "name": "groupChatBanList",
+    "address": "0x7af80D697c1DD34D83bA2745f3CAB5e75411aeaD",
+    "from_block": 73948358,
+    "abi_files": [
+      "../../abi/GroupBanList.sol/GroupBanList.json"
+    ]
+  },
+  {
+    "name": "groupChatAdminBanSource",
+    "address": "0xF5bf68C2dDC81eAEAf3de160810c07E334726d6c",
+    "from_block": 73948358,
+    "abi_files": [
+      "../../abi/AdminBanSource.sol/AdminBanSource.json"
+    ]
+  },
+  {
+    "name": "groupChatGovVotedBanSource",
+    "address": "0x384BAa4DB13BE8eF8Ebe6311eB663C0fC6eCABe8",
+    "from_block": 73948358,
+    "abi_files": [
+      "../../abi/GovVotedBanSource.sol/GovVotedBanSource.json"
+    ]
+  },
+  {
+    "name": "groupChatMember",
+    "address": "0xceB07c1629b6bf4eFf71DE308650009397F858E6",
+    "from_block": 73948358,
+    "abi_files": [
+      "../../abi/GroupMember.sol/GroupMember.json"
+    ]
+  },
+  {
+    "name": "groupChatMemberScope",
+    "address": "0x143e2e752b5D5FB704447F72b5F6467A7D89a373",
+    "from_block": 73948358,
+    "abi_files": [
+      "../../abi/GroupMemberScope.sol/GroupMemberScope.json"
+    ]
+  },
+  {
+    "name": "groupChatJoinScopeSource",
+    "address": "0x0Eb1f4F73B309845BACE3e0D892e2b23Ed14F213",
+    "from_block": 73948358,
+    "abi_files": [
+      "../../abi/GroupJoinScopeSource.sol/GroupJoinScopeSource.json"
+    ]
+  },
+  {
+    "name": "groupChatTokenMainManager",
+    "address": "0x23A8117b226EF5882B65549c25D96700CD6ac84E",
+    "from_block": 73948358,
+    "abi_files": [
+      "../../abi/TokenMainManager.sol/TokenMainManager.json"
+    ]
+  },
+  {
+    "name": "groupChatTokenGovManager",
+    "address": "0xcBDC241B167c3FC6FbD6077ddB830dbbcE547774",
+    "from_block": 73948358,
+    "abi_files": [
+      "../../abi/TokenGovManager.sol/TokenGovManager.json"
+    ]
+  },
+  {
+    "name": "groupChatTokenActionGovManager",
+    "address": "0x884A2A1eBF668336532518a1542796DD0803212F",
+    "from_block": 73948358,
+    "abi_files": [
+      "../../abi/TokenActionGovManager.sol/TokenActionGovManager.json"
+    ]
+  },
+  {
+    "name": "groupChatTokenActionMainManager",
+    "address": "0x4636E2a05d123BfA83bF8F13C5477037C9AEDFe1",
+    "from_block": 73948359,
+    "abi_files": [
+      "../../abi/TokenActionMainManager.sol/TokenActionMainManager.json"
+    ]
+  },
+  {
     "name": "groupManager",
     "address_env_var": "groupManagerAddress",
     "abi_files": [
@@ -229,6 +333,14 @@
   {
     "name": "uniswapV2Router02",
     "address_env_var": "uniswapV2Router02Address"
+  },
+  {
+    "name": "batchTransfer",
+    "address": "0xab2bd741c7cD7adF4c29BAcD0d1c1F555A62f9DC",
+    "from_block": 73945909,
+    "abi_files": [
+      "../../abi/BatchTransfer.sol/BatchTransfer.json"
+    ]
   },
   {
     "name": "LIFE20",
