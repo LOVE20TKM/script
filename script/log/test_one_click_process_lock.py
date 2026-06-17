@@ -80,6 +80,23 @@ class OneClickProcessLockTest(unittest.TestCase):
             self.assertEqual(first.returncode, 0, first.stderr or first.stdout)
             self.assertEqual(second.returncode, 0, second.stderr or second.stdout)
 
+    def test_stale_lock_is_reclaimed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            lock_dir = Path(temp_dir) / "thinkium70001_public.lock"
+            lock_dir.mkdir()
+            (lock_dir / "pid").write_text("999999\n", encoding="utf-8")
+
+            result = self.run_bash(
+                (
+                    f"source '{SCRIPT_PATH}'; "
+                    "acquire_sync_lock thinkium70001_public; "
+                    "release_sync_lock"
+                ),
+                env={"LOVE20_SYNC_LOCK_ROOT": temp_dir},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -46,6 +46,10 @@ cat > "${PLIST_DST}" <<EOF
     <string>${SYNC_NETWORK}</string>
     <key>LOVE20_SYNC_SCRIPT_LOG_DIR</key>
     <string>${REPO_LOG_DIR}</string>
+    <key>LOVE20_SYNC_SOURCE_LOG_DIR</key>
+    <string>${REPO_LOG_DIR}</string>
+    <key>LOVE20_SYNC_RUNTIME_DIR</key>
+    <string>${STAGED_DIR}</string>
     <key>LOVE20_LOG_NETWORK_ROOT</key>
     <string>${STAGED_NETWORK_ROOT}</string>
   </dict>

@@ -29,6 +29,29 @@ sync_lock_dir() {
   printf '%s/%s.lock\n' "$(sync_lock_root)" "$network_name"
 }
 
+sync_lock_pid_file() {
+  local lock_dir=$1
+  printf '%s/pid\n' "$lock_dir"
+}
+
+sync_lock_is_alive() {
+  local lock_dir=$1
+  local pid_file
+  pid_file="$(sync_lock_pid_file "$lock_dir")"
+
+  if [ ! -f "$pid_file" ]; then
+    return 1
+  fi
+
+  local pid
+  pid="$(cat "$pid_file" 2>/dev/null || true)"
+  if [[ ! "$pid" =~ ^[0-9]+$ ]]; then
+    return 1
+  fi
+
+  kill -0 "$pid" 2>/dev/null
+}
+
 acquire_sync_lock() {
   local network_name=$1
   local lock_root
@@ -38,10 +61,22 @@ acquire_sync_lock() {
 
   mkdir -p "$lock_root"
   if mkdir "$lock_dir" 2>/dev/null; then
+    printf '%s\n' "$$" >"$(sync_lock_pid_file "$lock_dir")"
     SYNC_LOCK_DIR="$lock_dir"
     SYNC_LOCK_ACQUIRED=1
     return 0
   fi
+
+  if ! sync_lock_is_alive "$lock_dir"; then
+    rm -rf "$lock_dir"
+    if mkdir "$lock_dir" 2>/dev/null; then
+      printf '%s\n' "$$" >"$(sync_lock_pid_file "$lock_dir")"
+      SYNC_LOCK_DIR="$lock_dir"
+      SYNC_LOCK_ACQUIRED=1
+      return 0
+    fi
+  fi
+
   return 1
 }
 
