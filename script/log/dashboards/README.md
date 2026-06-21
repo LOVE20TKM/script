@@ -30,6 +30,9 @@
   页面支持切到“累计”模式；累计口径只在当前查询窗口内累加，不追溯更早历史。
   点击某一轮后，右侧会按地址聚合展示 LOVE20 / LIFE20 / GROW20 / LIVELY / PRETTY 的 TUSDT Swap 与 LP 明细列，默认按链内净流量从流出到流入排序，也可切到跨链净流量排序。
 
+- `market-curve/`
+  市值曲线看板。支持选择 TKM20 和发射成功代币，按指定时间段查看相对 TUSDT 或其它计价代币的市值和价格曲线。
+
 使用说明：
 
 ```bash
@@ -48,6 +51,7 @@ python3 dashboard_server.py --host 127.0.0.1 --port 8000 --network thinkium70001
 - `http://127.0.0.1:8000/dashboards/mint-addresses-by-log-round/`
 - `http://127.0.0.1:8000/dashboards/wallet-activity-timeline/`
 - `http://127.0.0.1:8000/dashboards/tusdt-flow/`
+- `http://127.0.0.1:8000/dashboards/market-curve/`
 
 ## macOS 后台自启
 

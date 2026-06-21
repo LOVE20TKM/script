@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>市值曲线看板</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --text: #16202a;
+      --muted: #667085;
+      --line: #e5e7eb;
+      --accent: #1d5b89;
+      --green: #17803d;
+      --red: #c73535;
+      --shadow: 0 18px 54px rgba(15, 23, 42, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      font-family: "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      padding: 22px 16px 52px;
+    }
+    .shell { width: 100%; max-width: 1280px; margin: 0 auto; display: grid; gap: 16px; }
+    .hero, .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+    }
+    .hero { padding: 24px; display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+    .eyebrow { margin: 0 0 8px; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+    h1 { margin: 0; font-size: clamp(30px, 4vw, 48px); line-height: 1.05; }
+    .hero p { margin: 10px 0 0; color: var(--muted); line-height: 1.7; }
+    .meta { min-width: 260px; display: grid; gap: 8px; color: var(--muted); font-size: 13px; }
+    .panel { padding: 18px; }
+    .controls { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+    .field { display: grid; gap: 6px; }
+    .field-label { font-size: 12px; color: var(--muted); }
+    select, input, button {
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: #fff;
+      color: var(--text);
+      padding: 8px 10px;
+      font: inherit;
+    }
+    button {
+      cursor: pointer;
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+    }
+    .status { margin-top: 12px; color: var(--muted); font-size: 13px; }
+    .series { display: grid; gap: 14px; }
+    .chart-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+    .title { font-weight: 800; font-size: 18px; }
+    .subtle { color: var(--muted); font-size: 13px; }
+    .chart-wrap { overflow-x: hidden; }
+    svg { display: block; width: 100%; height: 280px; }
+    .guide-hit { cursor: crosshair; }
+    .guide-line { stroke: #1d5b89; stroke-width: 1; stroke-dasharray: 4 4; opacity: .72; }
+    .empty { min-height: 180px; display: grid; place-items: center; color: var(--muted); }
+    @media (max-width: 860px) {
+      .controls { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">LOVE20 Dashboards</p>
+        <h1>市值曲线看板</h1>
+        <p>从本地 events.db 的 PairCreated、Sync、TokenMint 和 TokenBurn 事件生成市值与价格曲线，默认以 TUSDT 计价。</p>
+      </div>
+      <div class="meta">
+        <div>网络：<span id="networkValue">-</span></div>
+        <div>DB 更新时间：<span id="dbMtimeValue">-</span></div>
+        <div>数据窗口：<span id="windowValue">-</span></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="controls">
+        <label class="field">
+          <span class="field-label">代币</span>
+          <select id="tokenSelect"></select>
+        </label>
+        <label class="field">
+          <span class="field-label">计价代币</span>
+          <select id="quoteSelect"></select>
+        </label>
+        <label class="field">
+          <span class="field-label">时间范围</span>
+          <input id="daysInput" type="number" min="1" max="180" step="1" value="30" />
+        </label>
+        <label class="field">
+          <span class="field-label">聚合周期</span>
+          <select id="intervalSelect">
+            <option value="1h">1小时</option>
+            <option value="4h">4小时</option>
+            <option value="1d" selected>1天</option>
+          </select>
+        </label>
+        <button id="refreshButton" type="button">查询</button>
+      </div>
+      <div class="status" id="statusValue"></div>
+    </section>
+
+    <section class="series" id="seriesRoot"></section>
+  </div>
+
+  <script>
+    const API_URL = "/api/dashboards/market-curve";
+    const params = new URLSearchParams(window.location.search);
+    const state = {
+      network: params.get("network") || "thinkium70001_public",
+      tokens: params.has("tokens") ? params.get("tokens").split(",").filter(Boolean) : [],
+      quote: params.get("quote") || "TUSDT",
+      days: params.get("days") || "30",
+      interval: params.get("interval") || "1d",
+      payload: null,
+    };
+
+    const tokenSelect = document.getElementById("tokenSelect");
+    const quoteSelect = document.getElementById("quoteSelect");
+    const daysInput = document.getElementById("daysInput");
+    const intervalSelect = document.getElementById("intervalSelect");
+    const refreshButton = document.getElementById("refreshButton");
+    const statusValue = document.getElementById("statusValue");
+    const seriesRoot = document.getElementById("seriesRoot");
+    const networkValue = document.getElementById("networkValue");
+    const dbMtimeValue = document.getElementById("dbMtimeValue");
+    const windowValue = document.getElementById("windowValue");
+
+    function formatMetric(value) {
+      if (!Number.isFinite(value) || value <= 0) return "-";
+      if (value >= 1000) return value.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
+      if (value >= 1) return value.toLocaleString("zh-CN", { maximumFractionDigits: 4 });
+      return value.toLocaleString("zh-CN", { maximumSignificantDigits: 4 });
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "\"": "&quot;",
+        "'": "&#39;",
+      }[char]));
+    }
+
+    function syncUrl() {
+      const next = new URLSearchParams();
+      next.set("network", state.network);
+      next.set("quote", state.quote);
+      next.set("days", state.days);
+      next.set("interval", state.interval);
+      if (state.tokens.length) next.set("tokens", state.tokens.join(","));
+      history.replaceState(null, "", `${location.pathname}?${next.toString()}`);
+    }
+
+    async function fetchData(metaOnly = false) {
+      statusValue.textContent = metaOnly ? "加载参数中..." : "查询中...";
+      refreshButton.disabled = true;
+      const api = new URL(API_URL, location.origin);
+      api.searchParams.set("network", state.network);
+      api.searchParams.set("quote", state.quote);
+      api.searchParams.set("days", state.days);
+      api.searchParams.set("interval", state.interval);
+      if (!metaOnly && state.tokens.length) api.searchParams.set("tokens", state.tokens.join(","));
+      if (metaOnly) api.searchParams.set("meta", "1");
+
+      try {
+        const response = await fetch(api.toString(), { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "读取失败");
+        state.payload = payload;
+        render(metaOnly);
+        statusValue.textContent = metaOnly ? "请选择参数后查询" : "已更新";
+      } catch (error) {
+        statusValue.textContent = error.message || "读取失败";
+      } finally {
+        refreshButton.disabled = false;
+      }
+    }
+
+    function render(metaOnly = false) {
+      const payload = state.payload;
+      if (!payload) return;
+      const data = payload.data;
+      networkValue.textContent = payload.network || "-";
+      dbMtimeValue.textContent = payload.db_mtime || "-";
+      windowValue.textContent = metaOnly ? "待查询" : `${data.from_time || "-"} ~ ${data.to_time || "-"}`;
+
+      renderSelects(data.tokens || []);
+      if (metaOnly) {
+        seriesRoot.innerHTML = `<section class="panel empty">请选择参数后点击查询</section>`;
+      } else {
+        renderSeries(data.series || [], data.quote);
+      }
+      syncUrl();
+    }
+
+    function renderSelects(tokens) {
+      const selectedSymbol = state.tokens[0] || tokens.find((token) => token.symbol === "LOVE20")?.symbol || tokens[0]?.symbol || "";
+      state.tokens = selectedSymbol ? [selectedSymbol] : [];
+      tokenSelect.innerHTML = tokens.map((token) => (
+        `<option value="${escapeHtml(token.symbol)}" ${token.symbol === selectedSymbol ? "selected" : ""}>${escapeHtml(token.symbol)}</option>`
+      )).join("");
+
+      quoteSelect.innerHTML = tokens.map((token) => (
+        `<option value="${escapeHtml(token.symbol)}" ${token.symbol === state.quote ? "selected" : ""}>${escapeHtml(token.symbol)}</option>`
+      )).join("");
+    }
+
+    function renderSeries(series, quote) {
+      if (!series.length) {
+        seriesRoot.innerHTML = `<section class="panel empty">暂无可展示数据</section>`;
+        return;
+      }
+
+      seriesRoot.innerHTML = series.map((item) => {
+        const latest = item.candles[item.candles.length - 1];
+        const tokenSymbol = escapeHtml(item.token.symbol);
+        const quoteSymbol = escapeHtml(quote.symbol);
+        const pairText = item.pair ? `${escapeHtml(item.pair.pair_name)} · ${escapeHtml(item.pair.pair)}` : "-";
+        const body = item.message
+          ? `<div class="empty">${escapeHtml(item.message)}</div>`
+          : `<div class="chart-wrap">${lineChartSvg(item.candles, "market_cap", "市值", quote.symbol)}${lineChartSvg(item.candles, "close", "价格", quote.symbol)}</div>`;
+        return `
+          <section class="panel">
+            <div class="chart-head">
+              <div>
+                <div class="title">${tokenSymbol}/${quoteSymbol}</div>
+                <div class="subtle">${pairText}</div>
+              </div>
+              <div class="subtle">
+                最新市值：${latest ? formatMetric(latest.market_cap) : "-"} ${quoteSymbol}
+                · 最新价格：${latest ? formatMetric(latest.close) : "-"} ${quoteSymbol}
+              </div>
+            </div>
+            ${body}
+          </section>
+        `;
+      }).join("");
+      wireChartGuides();
+    }
+
+    function lineChartSvg(candles, valueKey, title, unit) {
+      if (!candles.length) return `<div class="empty">时间段内没有 Sync 事件</div>`;
+      const safeUnit = escapeHtml(unit);
+      const width = 900;
+      const height = 280;
+      const margin = { top: 18, right: 72, bottom: 30, left: 16 };
+      const chartWidth = width - margin.left - margin.right;
+      const chartHeight = height - margin.top - margin.bottom;
+      const values = candles.map((c) => c[valueKey]).filter((value) => Number.isFinite(value) && value >= 0);
+      if (!values.length) return `<div class="empty">${title}暂无数据</div>`;
+      const maxValue = Math.max(...values);
+      const minValue = Math.min(...values);
+      const pad = maxValue === minValue ? (maxValue * 0.05 || 1) : 0;
+      const top = maxValue + pad;
+      const bottom = Math.max(0, minValue - pad);
+      const range = top - bottom || 1;
+      const step = candles.length > 1 ? chartWidth / (candles.length - 1) : chartWidth;
+      const x = (index) => margin.left + index * step;
+      const y = (value) => margin.top + ((top - value) / range) * chartHeight;
+
+      const grid = [top, (top + bottom) / 2, bottom].map((price) => {
+        const yy = y(price);
+        return `<g><line x1="${margin.left}" y1="${yy}" x2="${width - margin.right}" y2="${yy}" stroke="#edf0f3"/><text x="${width - margin.right + 8}" y="${yy + 4}" fill="#667085" font-size="11">${formatMetric(price)}</text></g>`;
+      }).join("");
+
+      const points = candles.map((candle, index) => `${x(index)},${y(candle[valueKey])}`).join(" ");
+      const dots = candles.map((candle, index) => {
+        const xx = x(index);
+        const yy = y(candle[valueKey]);
+        return `<circle cx="${xx}" cy="${yy}" r="2.6" fill="#1d5b89"><title>${new Date(candle.time * 1000).toLocaleDateString("zh-CN")} ${title}: ${formatMetric(candle[valueKey])} ${safeUnit}</title></circle>`;
+      }).join("");
+      const guidePoints = encodeURIComponent(JSON.stringify(candles.map((candle, index) => ({
+        x: x(index),
+        y: y(candle[valueKey]),
+        time: new Date(candle.time * 1000).toLocaleDateString("zh-CN"),
+        value: `${formatMetric(candle[valueKey])} ${unit}`,
+      }))));
+
+      return `<svg class="line-chart" data-guide-points="${guidePoints}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${title}曲线图">
+        <text x="${margin.left}" y="13" fill="#16202a" font-size="13" font-weight="700">${title}（${safeUnit}）</text>
+        <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="#e5e7eb"/>
+        <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#e5e7eb"/>
+        ${grid}<polyline points="${points}" fill="none" stroke="#1d5b89" stroke-width="2.2"/>${dots}
+        <text x="${margin.left}" y="${height - 8}" fill="#667085" font-size="11">${new Date(candles[0].time * 1000).toLocaleDateString("zh-CN")}</text>
+        <text x="${width - margin.right - 90}" y="${height - 8}" fill="#667085" font-size="11">${new Date(candles[candles.length - 1].time * 1000).toLocaleDateString("zh-CN")}</text>
+        <g class="guide" opacity="0" pointer-events="none">
+          <line class="guide-v guide-line" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}"/>
+          <line class="guide-h guide-line" x1="${margin.left}" y1="${margin.top}" x2="${width - margin.right}" y2="${margin.top}"/>
+          <circle class="guide-dot" cx="${margin.left}" cy="${margin.top}" r="4" fill="#fff" stroke="#1d5b89" stroke-width="2"/>
+          <rect class="guide-x-bg" rx="4" fill="#16202a" opacity=".9"/>
+          <text class="guide-x-text" y="${height - 8}" fill="#fff" font-size="11" text-anchor="middle"></text>
+          <rect class="guide-y-bg" rx="4" fill="#16202a" opacity=".9"/>
+          <text class="guide-y-text" x="${width - margin.right - 6}" fill="#fff" font-size="11" text-anchor="end"></text>
+        </g>
+        <rect class="guide-hit" x="${margin.left}" y="${margin.top}" width="${chartWidth}" height="${chartHeight}" fill="transparent" pointer-events="all"/>
+      </svg>`;
+    }
+
+    function wireChartGuides() {
+      document.querySelectorAll(".line-chart").forEach((svg) => {
+        const guide = svg.querySelector(".guide");
+        const guideV = svg.querySelector(".guide-v");
+        const guideH = svg.querySelector(".guide-h");
+        const hit = svg.querySelector(".guide-hit");
+        const guideDot = svg.querySelector(".guide-dot");
+        const xText = svg.querySelector(".guide-x-text");
+        const xBg = svg.querySelector(".guide-x-bg");
+        const yText = svg.querySelector(".guide-y-text");
+        const yBg = svg.querySelector(".guide-y-bg");
+        if (!guide || !guideV || !guideH || !hit) return;
+        const points = JSON.parse(decodeURIComponent(svg.dataset.guidePoints || "[]"));
+        const chartLeft = Number(hit.getAttribute("x"));
+        const chartRight = chartLeft + Number(hit.getAttribute("width"));
+        const chartTop = Number(hit.getAttribute("y"));
+        const chartBottom = chartTop + Number(hit.getAttribute("height"));
+
+        hit.addEventListener("pointermove", (event) => {
+          const point = svg.createSVGPoint();
+          point.x = event.clientX;
+          point.y = event.clientY;
+          const cursor = point.matrixTransform(svg.getScreenCTM().inverse());
+          const nearest = points.reduce((best, item) => (
+            Math.abs(item.x - cursor.x) < Math.abs(best.x - cursor.x) ? item : best
+          ), points[0]);
+          if (!nearest) return;
+
+          guide.setAttribute("opacity", "1");
+          guideV.setAttribute("x1", nearest.x);
+          guideV.setAttribute("x2", nearest.x);
+          guideH.setAttribute("y1", nearest.y);
+          guideH.setAttribute("y2", nearest.y);
+          guideDot?.setAttribute("cx", nearest.x);
+          guideDot?.setAttribute("cy", nearest.y);
+
+          if (xText && xBg) {
+            xText.textContent = nearest.time;
+            xText.setAttribute("x", Math.min(Math.max(nearest.x, chartLeft + 44), chartRight - 44));
+            fitSvgLabel(xText, xBg);
+          }
+          if (yText && yBg) {
+            yText.textContent = nearest.value;
+            yText.setAttribute("y", Math.min(Math.max(nearest.y + 4, chartTop + 12), chartBottom - 4));
+            fitSvgLabel(yText, yBg);
+          }
+        });
+        hit.addEventListener("pointerleave", () => guide.setAttribute("opacity", "0"));
+      });
+    }
+
+    function fitSvgLabel(text, background) {
+      const box = text.getBBox();
+      background.setAttribute("x", box.x - 5);
+      background.setAttribute("y", box.y - 3);
+      background.setAttribute("width", box.width + 10);
+      background.setAttribute("height", box.height + 6);
+    }
+
+    refreshButton.addEventListener("click", () => {
+      state.tokens = tokenSelect.value ? [tokenSelect.value] : [];
+      state.quote = quoteSelect.value;
+      state.days = daysInput.value || "30";
+      state.interval = intervalSelect.value;
+      if (!state.tokens.length) {
+        statusValue.textContent = "请先选择至少一个代币";
+        return;
+      }
+      fetchData();
+    });
+
+    quoteSelect.addEventListener("change", () => { state.quote = quoteSelect.value; });
+    daysInput.value = state.days;
+    intervalSelect.value = state.interval;
+    fetchData(true);
+  </script>
+</body>
+</html>

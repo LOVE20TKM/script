@@ -16,6 +16,13 @@ from tusdt_flow_runtime import (
     parse_tusdt_flow_sort_by,
     query_tusdt_flow_data,
 )
+from price_curve_runtime import (
+    parse_days,
+    parse_interval,
+    parse_token_symbols,
+    query_price_curve_meta,
+    query_price_curve_data,
+)
 
 
 DASHBOARDS_DIR = Path(__file__).resolve().parent
@@ -26,6 +33,16 @@ DEFAULT_TIMELINE_LIMIT = 100
 MAX_TIMELINE_LIMIT = 500
 MINT_SOURCE_QUERY_SQL_PATH = MINT_DIR / "source_query.sql"
 MINT_SOURCE_SUMMARY_SQL_PATH = MINT_DIR / "source_summary.sql"
+MARKET_CURVE_INDEX_DEFINITIONS = [
+    (
+        "idx_events_contract_event_block_id",
+        "CREATE INDEX IF NOT EXISTS idx_events_contract_event_block_id ON events(contract_name, event_name, block_number, id)",
+    ),
+    (
+        "idx_events_event_address_block_log",
+        "CREATE INDEX IF NOT EXISTS idx_events_event_address_block_log ON events(event_name, lower(address), block_number, log_index)",
+    ),
+]
 _ENSURED_DB_MTIMES: dict[str, float] = {}
 _ENSURE_LOCK = threading.Lock()
 
@@ -55,7 +72,7 @@ def ensure_events_db_indexes(db_path: Path) -> None:
 
         conn = sqlite3.connect(resolved, timeout=60.0)
         try:
-            for _, sql in TIMELINE_INDEX_DEFINITIONS:
+            for _, sql in [*TIMELINE_INDEX_DEFINITIONS, *MARKET_CURVE_INDEX_DEFINITIONS]:
                 conn.execute(sql)
             conn.commit()
         finally:
@@ -164,6 +181,43 @@ def tusdt_flow_payload(
     return payload
 
 
+def price_curve_payload(
+    network: str,
+    db_path: Path,
+    *,
+    token_symbols: list[str],
+    quote_symbol: str,
+    interval: str,
+    days: int,
+    meta_only: bool = False,
+) -> dict:
+    db_mtime = db_path.stat().st_mtime
+
+    conn = sqlite3.connect(db_path, timeout=60.0)
+    conn.row_factory = sqlite3.Row
+    try:
+        if meta_only:
+            data = query_price_curve_meta(conn, quote_symbol=quote_symbol, interval=interval, days=days)
+        else:
+            data = query_price_curve_data(
+                conn,
+                token_symbols=token_symbols,
+                quote_symbol=quote_symbol,
+                interval=interval,
+                days=days,
+            )
+    finally:
+        conn.close()
+
+    return {
+        "network": network,
+        "source_db": str(db_path),
+        "db_mtime": iso_from_timestamp(db_mtime),
+        "updated_at": now_iso(),
+        "data": data,
+    }
+
+
 class DashboardRequestHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, directory: str | None = None, **kwargs):
         super().__init__(*args, directory=directory or str(LOG_DIR), **kwargs)
@@ -210,6 +264,19 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     mode=mode,
                     selected_round=selected_round,
                     sort_by=sort_by,
+                )
+                self.respond_json(200, payload)
+                return
+
+            if parsed.path in {"/api/dashboards/market-curve", "/api/dashboards/price-curve"}:
+                payload = price_curve_payload(
+                    network,
+                    db_path,
+                    token_symbols=parse_token_symbols(params.get("tokens", [""])[0]),
+                    quote_symbol=params.get("quote", ["TUSDT"])[0].strip().upper(),
+                    interval=parse_interval(params.get("interval", [""])[0]),
+                    days=parse_days(params.get("days", [""])[0]),
+                    meta_only=params.get("meta", [""])[0] == "1",
                 )
                 self.respond_json(200, payload)
                 return

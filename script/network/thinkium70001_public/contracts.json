@@ -507,6 +507,80 @@
     ]
   },
   {
+    "name": "LUCKY6",
+    "address": "0x726c90912bd57EE9134988bD9Ad9b2Aa8aF5B81b",
+    "from_block": 73306516,
+    "abi_files": [
+      "../../abi/ILOVE20Token.sol/ILOVE20Token.json"
+    ],
+    "contract_type": "launch_token"
+  },
+  {
+    "name": "lucky6SlToken",
+    "address": "0xEf90F920f703Ff2f7C9d99Aa787097A37508f187",
+    "from_block": 73306516,
+    "abi_files": [
+      "../../abi/ILOVE20SLToken.sol/ILOVE20SLToken.json"
+    ]
+  },
+  {
+    "name": "lucky6StToken",
+    "address": "0x79d424a64Eaa535d780269A735dD223075a3f4E5",
+    "from_block": 73306516,
+    "abi_files": [
+      "../../abi/ILOVE20STToken.sol/ILOVE20STToken.json"
+    ]
+  },
+  {
+    "name": "love20Lucky6Pair",
+    "address": "0xFdFA56bb8189Cb65291cfAebF34B22d22a32C71c",
+    "from_block": 73306516,
+    "abi_files": [
+      "../../abi/IUniswapV2Pair.sol/IUniswapV2Pair.0.5.16.json"
+    ]
+  },
+  {
+    "name": "FRIEND",
+    "address": "0x2d921842Cd5341221B9F0A2557645c52Cf77C938",
+    "from_block": 73452201,
+    "abi_files": [
+      "../../abi/ILOVE20Token.sol/ILOVE20Token.json"
+    ],
+    "contract_type": "launch_token"
+  },
+  {
+    "name": "friendSlToken",
+    "address": "0x89B12A4e4b056ed80254d700E79e51e7952bC607",
+    "from_block": 73452201,
+    "abi_files": [
+      "../../abi/ILOVE20SLToken.sol/ILOVE20SLToken.json"
+    ]
+  },
+  {
+    "name": "friendStToken",
+    "address": "0x1b809391170587E4196F8ff7c132B7EC199d753c",
+    "from_block": 73452201,
+    "abi_files": [
+      "../../abi/ILOVE20STToken.sol/ILOVE20STToken.json"
+    ]
+  },
+  {
+    "name": "love20FriendPair",
+    "address": "0x8eb4D0A13bD7f16A7412146139589175693c73B6",
+    "from_block": 73452201,
+    "abi_files": [
+      "../../abi/IUniswapV2Pair.sol/IUniswapV2Pair.0.5.16.json"
+    ]
+  },
+  {
+    "name": "friendTusdtPair",
+    "address": "0x1C2aC8F3e05C0e0A5ADB028d531d4CEd02cB9Bce",
+    "from_block": 73549335,
+    "abi_files": [
+      "../../abi/IUniswapV2Pair.sol/IUniswapV2Pair.0.5.16.json"
+    ]
+  },
+  {
     "name": "ext24",
     "address": "0xd9228e0378049bfda65807c7d0473e7bfc699d29",
     "from_block": 70369237,

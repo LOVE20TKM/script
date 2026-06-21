@@ -360,12 +360,13 @@
         <a class="btn btn-primary" href="./mint-addresses-by-log-round/" target="_blank" rel="noreferrer">先看铸币地址轮次</a>
         <a class="btn" href="./wallet-activity-timeline/" target="_blank" rel="noreferrer">再看钱包时间线</a>
         <a class="btn" href="./tusdt-flow/" target="_blank" rel="noreferrer">也看 TUSDT 流入流出</a>
+        <a class="btn" href="./market-curve/" target="_blank" rel="noreferrer">查看市值曲线</a>
       </div>
       <div class="stats">
         <article class="stat">
           <div class="stat-label">当前看板数</div>
-          <div class="stat-value">3</div>
-          <div class="stat-note">现有三个单页看板，均由本地 `dashboard_server.py` 提供。</div>
+          <div class="stat-value">4</div>
+          <div class="stat-note">三个事件 DB 看板，加一个市值曲线看板。</div>
         </article>
         <article class="stat">
           <div class="stat-label">服务地址</div>
@@ -451,6 +452,28 @@
           <div class="card-actions">
             <a class="btn btn-primary" href="./tusdt-flow/" target="_blank" rel="noreferrer">新开查看</a>
             <a class="btn" href="./tusdt-flow/">当前页打开</a>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="badge">Market / Price</span>
+            <h2>市值曲线看板</h2>
+            <p>选择一个或多个代币，按指定时间段查看相对 TUSDT 或其它计价代币的市值和价格曲线。</p>
+          </div>
+          <div class="detail-list">
+            <div class="detail">
+              <span class="detail-label">入口路径</span>
+              <div class="detail-value"><code>/dashboards/market-curve/</code></div>
+            </div>
+            <div class="detail">
+              <span class="detail-label">适合用途</span>
+              <div class="detail-value">观察 TKM20 和发射成功代币在所选计价代币下的市值与价格变化。</div>
+            </div>
+          </div>
+          <div class="card-actions">
+            <a class="btn btn-primary" href="./market-curve/" target="_blank" rel="noreferrer">新开查看</a>
+            <a class="btn" href="./market-curve/">当前页打开</a>
           </div>
         </article>
       </div>
