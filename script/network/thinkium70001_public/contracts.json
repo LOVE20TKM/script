@@ -295,6 +295,7 @@
   {
     "name": "lpFactoryV2",
     "address": "0xaDaB42ca2a237D752606A0Ddee4461FDd9963c24",
+    "from_block": 71875164,
     "abi_files": [
       "../../abi/IExtensionFactory.sol/IExtensionFactory.json"
     ],
@@ -328,11 +329,27 @@
   },
   {
     "name": "hub",
-    "address_env_var": "hubAddress"
+    "address_env_var": "hubAddress",
+    "from_block": 65699591,
+    "abi_files": [
+      "../../abi/LOVE20Hub.sol/LOVE20Hub.json"
+    ]
   },
   {
     "name": "uniswapV2Router02",
-    "address_env_var": "uniswapV2Router02Address"
+    "address_env_var": "uniswapV2Router02Address",
+    "from_block": 65699591,
+    "abi_files": [
+      "../../abi/UniswapV2Router02.sol/UniswapV2Router02.json"
+    ]
+  },
+  {
+    "name": "uniswapV2Zap",
+    "address_env_var": "uniswapV2ZapAddress",
+    "from_block": 74295094,
+    "abi_files": [
+      "../../abi/UniswapV2Zap.sol/UniswapV2Zap.json"
+    ]
   },
   {
     "name": "batchTransfer",

@@ -49,6 +49,7 @@ source "$base_dir/address.extension.center.params"
 source "$base_dir/address.extension.group.params"
 source "$base_dir/address.extension.lp.params"
 source "$base_dir/address.group.params"
+[ -f "$base_dir/address.else.params" ] && source "$base_dir/address.else.params"
 
 # ------ user defined variables ------ 
 ZERO_ADDRESS="0x0000000000000000000000000000000000000000"

@@ -17,7 +17,7 @@ source "$NETWORK_DIR/address.extension.center.params" || return 1
 source "$NETWORK_DIR/address.extension.group.params" || return 1
 source "$NETWORK_DIR/address.extension.lp.params" || return 1
 source "$NETWORK_DIR/address.group.params" || return 1
-source "$NETWORK_DIR/address.else.params" || return 1
+[ -f "$NETWORK_DIR/address.else.params" ] && source "$NETWORK_DIR/address.else.params"
 set +a
 
 export from_block=$originBlocks
