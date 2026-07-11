@@ -12,8 +12,6 @@
       --muted: #667085;
       --line: #e5e7eb;
       --accent: #1d5b89;
-      --green: #17803d;
-      --red: #c73535;
       --shadow: 0 18px 54px rgba(15, 23, 42, 0.08);
     }
 
@@ -39,8 +37,8 @@
     .hero p { margin: 10px 0 0; color: var(--muted); line-height: 1.7; }
     .meta { min-width: 260px; display: grid; gap: 8px; color: var(--muted); font-size: 13px; }
     .panel { padding: 18px; }
-    .controls { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto; gap: 12px; align-items: end; }
-    .field { display: grid; gap: 6px; }
+    .controls { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+    .field { display: grid; gap: 6px; min-width: 0; }
     .field-label { font-size: 12px; color: var(--muted); }
     select, input, button {
       min-height: 40px;
@@ -51,25 +49,45 @@
       padding: 8px 10px;
       font: inherit;
     }
-    button {
-      cursor: pointer;
-      border-color: var(--accent);
-      background: var(--accent);
-      color: #fff;
-      font-weight: 700;
-    }
+    button { cursor: pointer; font-weight: 700; }
+    #refreshButton { border-color: var(--accent); background: var(--accent); color: #fff; }
+    .metric-toggle { display: flex; min-width: 0; }
+    .metric-toggle button { flex: 1 1 0; border-radius: 0; white-space: nowrap; }
+    .metric-toggle button:first-child { border-radius: 9px 0 0 9px; }
+    .metric-toggle button:last-child { border-radius: 0 9px 9px 0; }
+    .metric-toggle button + button { margin-left: -1px; }
+    .metric-toggle button.active { position: relative; z-index: 1; border-color: var(--accent); background: var(--accent); color: #fff; }
     .status { margin-top: 12px; color: var(--muted); font-size: 13px; }
     .series { display: grid; gap: 14px; }
-    .chart-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+    .chart-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
     .title { font-weight: 800; font-size: 18px; }
     .subtle { color: var(--muted); font-size: 13px; }
-    .chart-wrap { overflow-x: hidden; }
-    svg { display: block; width: 100%; height: 280px; }
+    .chart-wrap { min-width: 0; overflow: hidden; }
+    svg { display: block; width: 100%; height: auto; aspect-ratio: 900 / 320; }
     .guide-hit { cursor: crosshair; }
-    .guide-line { stroke: #1d5b89; stroke-width: 1; stroke-dasharray: 4 4; opacity: .72; }
+    .guide-line { stroke: #364152; stroke-width: 1; stroke-dasharray: 4 4; opacity: .72; }
     .empty { min-height: 180px; display: grid; place-items: center; color: var(--muted); }
+    .chart-legend { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; margin: 0 0 12px; }
+    .legend-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+      max-width: 100%;
+      padding: 7px 9px;
+      border-color: var(--line);
+      background: #fff;
+      text-align: left;
+      overflow-wrap: anywhere;
+    }
+    .legend-button.active { border-color: var(--accent); }
+    .legend-button:disabled { cursor: not-allowed; opacity: .58; }
+    .legend-swatch { width: 10px; height: 10px; flex: 0 0 auto; border-radius: 50%; }
+    .legend-label { min-width: 0; }
+    .legend-value { color: var(--muted); font-size: 12px; font-weight: 400; }
     @media (max-width: 860px) {
       .controls { grid-template-columns: 1fr; }
+      .metric-toggle { width: 100%; }
     }
   </style>
 </head>
@@ -91,10 +109,6 @@
     <section class="panel">
       <div class="controls">
         <label class="field">
-          <span class="field-label">代币</span>
-          <select id="tokenSelect"></select>
-        </label>
-        <label class="field">
           <span class="field-label">计价代币</span>
           <select id="quoteSelect"></select>
         </label>
@@ -110,6 +124,13 @@
             <option value="1d" selected>1天</option>
           </select>
         </label>
+        <div class="field">
+          <span class="field-label">指标</span>
+          <div class="metric-toggle" id="metricToggle" role="group" aria-label="曲线指标">
+            <button type="button" data-metric="market_cap" class="active">市值</button>
+            <button type="button" data-metric="close">币价</button>
+          </div>
+        </div>
         <button id="refreshButton" type="button">查询</button>
       </div>
       <div class="status" id="statusValue"></div>
@@ -120,20 +141,27 @@
 
   <script>
     const API_URL = "/api/dashboards/market-curve";
+    const COLORS = ["#1d5b89", "#c46b2d", "#2d7d62", "#b2395b", "#6d4c91", "#7a6b2c", "#3e6fa3", "#9a4f8a"];
+    const METRICS = {
+      market_cap: { label: "市值", title: "市值曲线" },
+      close: { label: "币价", title: "币价曲线" },
+    };
     const params = new URLSearchParams(window.location.search);
     const state = {
       network: params.get("network") || "thinkium70001_public",
-      tokens: params.has("tokens") ? params.get("tokens").split(",").filter(Boolean) : [],
       quote: params.get("quote") || "TUSDT",
       days: params.get("days") || "30",
       interval: params.get("interval") || "1d",
+      metric: "market_cap",
+      series: [],
       payload: null,
     };
+    let visibleTokens = new Set();
 
-    const tokenSelect = document.getElementById("tokenSelect");
     const quoteSelect = document.getElementById("quoteSelect");
     const daysInput = document.getElementById("daysInput");
     const intervalSelect = document.getElementById("intervalSelect");
+    const metricToggle = document.getElementById("metricToggle");
     const refreshButton = document.getElementById("refreshButton");
     const statusValue = document.getElementById("statusValue");
     const seriesRoot = document.getElementById("seriesRoot");
@@ -142,10 +170,11 @@
     const windowValue = document.getElementById("windowValue");
 
     function formatMetric(value) {
-      if (!Number.isFinite(value) || value <= 0) return "-";
-      if (value >= 1000) return value.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
-      if (value >= 1) return value.toLocaleString("zh-CN", { maximumFractionDigits: 4 });
-      return value.toLocaleString("zh-CN", { maximumSignificantDigits: 4 });
+      const number = Number(value);
+      if (!Number.isFinite(number) || number < 0) return "-";
+      if (number >= 1000) return number.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
+      if (number >= 1) return number.toLocaleString("zh-CN", { maximumFractionDigits: 4 });
+      return number.toLocaleString("zh-CN", { maximumSignificantDigits: 4 });
     }
 
     function escapeHtml(value) {
@@ -164,7 +193,6 @@
       next.set("quote", state.quote);
       next.set("days", state.days);
       next.set("interval", state.interval);
-      if (state.tokens.length) next.set("tokens", state.tokens.join(","));
       history.replaceState(null, "", `${location.pathname}?${next.toString()}`);
     }
 
@@ -176,7 +204,6 @@
       api.searchParams.set("quote", state.quote);
       api.searchParams.set("days", state.days);
       api.searchParams.set("interval", state.interval);
-      if (!metaOnly && state.tokens.length) api.searchParams.set("tokens", state.tokens.join(","));
       if (metaOnly) api.searchParams.set("meta", "1");
 
       try {
@@ -184,8 +211,12 @@
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "读取失败");
         state.payload = payload;
-        render(metaOnly);
-        statusValue.textContent = metaOnly ? "请选择参数后查询" : "已更新";
+        render(payload, metaOnly);
+        if (metaOnly) {
+          await fetchData();
+        } else {
+          statusValue.textContent = "已更新";
+        }
       } catch (error) {
         statusValue.textContent = error.message || "读取失败";
       } finally {
@@ -193,119 +224,142 @@
       }
     }
 
-    function render(metaOnly = false) {
-      const payload = state.payload;
-      if (!payload) return;
-      const data = payload.data;
+    function render(payload, metaOnly = false) {
+      const data = payload.data || {};
       networkValue.textContent = payload.network || "-";
       dbMtimeValue.textContent = payload.db_mtime || "-";
-      windowValue.textContent = metaOnly ? "待查询" : `${data.from_time || "-"} ~ ${data.to_time || "-"}`;
-
-      renderSelects(data.tokens || []);
+      windowValue.textContent = metaOnly ? "加载中" : `${data.from_time || "-"} ~ ${data.to_time || "-"}`;
+      renderQuoteSelect(data.tokens || []);
       if (metaOnly) {
-        seriesRoot.innerHTML = `<section class="panel empty">请选择参数后点击查询</section>`;
-      } else {
-        renderSeries(data.series || [], data.quote);
-      }
-      syncUrl();
-    }
-
-    function renderSelects(tokens) {
-      const selectedSymbol = state.tokens[0] || tokens.find((token) => token.symbol === "LOVE20")?.symbol || tokens[0]?.symbol || "";
-      state.tokens = selectedSymbol ? [selectedSymbol] : [];
-      tokenSelect.innerHTML = tokens.map((token) => (
-        `<option value="${escapeHtml(token.symbol)}" ${token.symbol === selectedSymbol ? "selected" : ""}>${escapeHtml(token.symbol)}</option>`
-      )).join("");
-
-      quoteSelect.innerHTML = tokens.map((token) => (
-        `<option value="${escapeHtml(token.symbol)}" ${token.symbol === state.quote ? "selected" : ""}>${escapeHtml(token.symbol)}</option>`
-      )).join("");
-    }
-
-    function renderSeries(series, quote) {
-      if (!series.length) {
-        seriesRoot.innerHTML = `<section class="panel empty">暂无可展示数据</section>`;
+        syncUrl();
         return;
       }
 
-      seriesRoot.innerHTML = series.map((item) => {
-        const latest = item.candles[item.candles.length - 1];
-        const tokenSymbol = escapeHtml(item.token.symbol);
-        const quoteSymbol = escapeHtml(quote.symbol);
-        const pairText = item.pair ? `${escapeHtml(item.pair.pair_name)} · ${escapeHtml(item.pair.pair)}` : "-";
-        const body = item.message
-          ? `<div class="empty">${escapeHtml(item.message)}</div>`
-          : `<div class="chart-wrap">${lineChartSvg(item.candles, "market_cap", "市值", quote.symbol)}${lineChartSvg(item.candles, "close", "价格", quote.symbol)}</div>`;
-        return `
-          <section class="panel">
-            <div class="chart-head">
-              <div>
-                <div class="title">${tokenSymbol}/${quoteSymbol}</div>
-                <div class="subtle">${pairText}</div>
-              </div>
-              <div class="subtle">
-                最新市值：${latest ? formatMetric(latest.market_cap) : "-"} ${quoteSymbol}
-                · 最新价格：${latest ? formatMetric(latest.close) : "-"} ${quoteSymbol}
-              </div>
-            </div>
-            ${body}
-          </section>
-        `;
+      state.series = Array.isArray(data.series) ? data.series : [];
+      state.quote = data.quote?.symbol || state.quote;
+      syncUrl();
+      renderCombinedChart(state.series, data.quote || { symbol: state.quote }, true);
+    }
+
+    function renderQuoteSelect(tokens) {
+      quoteSelect.innerHTML = tokens.map((token) => {
+        const symbol = String(token.symbol ?? "");
+        return `<option value="${escapeHtml(symbol)}" ${symbol === state.quote ? "selected" : ""}>${escapeHtml(symbol)}</option>`;
       }).join("");
+      if (tokens.some((token) => token.symbol === state.quote)) return;
+      if (tokens[0]?.symbol) {
+        state.quote = tokens[0].symbol;
+        quoteSelect.value = state.quote;
+      }
+    }
+
+    function tokenKey(item) {
+      return String(item?.token?.symbol || item?.token?.address || "");
+    }
+
+    function isDrawable(item) {
+      return !item?.message && Array.isArray(item?.candles) && item.candles.length > 0;
+    }
+
+    function latestMetric(item) {
+      if (!Array.isArray(item?.candles)) return null;
+      return [...item.candles].reverse().find((candle) => {
+        const value = Number(candle[state.metric]);
+        return Number.isFinite(value) && value >= 0;
+      });
+    }
+
+    function renderCombinedChart(series, quote, resetVisibility = false) {
+      const items = Array.isArray(series) ? series : [];
+      const quoteSymbol = String(quote?.symbol || state.quote || "");
+      const metric = METRICS[state.metric];
+      if (resetVisibility) {
+        visibleTokens = new Set(items.filter(isDrawable).map(tokenKey));
+      }
+
+      const legend = items.map((item, index) => {
+        const key = tokenKey(item);
+        const drawable = isDrawable(item);
+        const latest = latestMetric(item);
+        const message = item.message || (drawable ? "" : "暂无可绘制数据");
+        const valueText = latest ? `${formatMetric(latest[state.metric])} ${quoteSymbol}` : message;
+        return `<button type="button" class="legend-button ${visibleTokens.has(key) ? "active" : ""}" data-token="${escapeHtml(key)}" ${drawable ? "" : "disabled"} title="${escapeHtml(message || key)}">
+          <span class="legend-swatch" data-token="${escapeHtml(key)}" style="background:${COLORS[index % COLORS.length]}"></span>
+          <span class="legend-label">${escapeHtml(key)} <span class="legend-value">${escapeHtml(valueText)}</span></span>
+        </button>`;
+      }).join("");
+      const visibleItems = items.filter((item) => isDrawable(item) && visibleTokens.has(tokenKey(item)));
+      const chart = visibleItems.length
+        ? combinedChartSvg(visibleItems, quoteSymbol, metric)
+        : `<div class="empty">${items.length ? "请选择至少一个图例" : "暂无可展示数据"}</div>`;
+
+      seriesRoot.innerHTML = `<section class="panel">
+        <div class="chart-head">
+          <div>
+            <div class="title">${escapeHtml(metric.title)} · ${escapeHtml(quoteSymbol)}</div>
+            <div class="subtle">横轴：时间　纵轴：${escapeHtml(metric.label)}（${escapeHtml(quoteSymbol)}）</div>
+          </div>
+          <div class="subtle">图例中的最新值随指标切换更新</div>
+        </div>
+        <div class="chart-legend" id="chartLegend">${legend}</div>
+        <div class="chart-wrap">${chart}</div>
+      </section>`;
       wireChartGuides();
     }
 
-    function lineChartSvg(candles, valueKey, title, unit) {
-      if (!candles.length) return `<div class="empty">时间段内没有 Sync 事件</div>`;
-      const safeUnit = escapeHtml(unit);
+    function combinedChartSvg(items, quoteSymbol, metric) {
       const width = 900;
-      const height = 280;
-      const margin = { top: 18, right: 72, bottom: 30, left: 16 };
+      const height = 320;
+      const margin = { top: 24, right: 92, bottom: 34, left: 16 };
       const chartWidth = width - margin.left - margin.right;
       const chartHeight = height - margin.top - margin.bottom;
-      const values = candles.map((c) => c[valueKey]).filter((value) => Number.isFinite(value) && value >= 0);
-      if (!values.length) return `<div class="empty">${title}暂无数据</div>`;
+      const valueKey = state.metric;
+      const times = [...new Set(items.flatMap((item) => item.candles.map((candle) => Number(candle.time))).filter((time) => Number.isFinite(time)))].sort((a, b) => a - b);
+      const values = items.flatMap((item) => item.candles.map((candle) => Number(candle[valueKey]))).filter((value) => Number.isFinite(value) && value >= 0);
+      if (!times.length || !values.length) return `<div class="empty">${escapeHtml(metric.label)}暂无数据</div>`;
+
       const maxValue = Math.max(...values);
       const minValue = Math.min(...values);
       const pad = maxValue === minValue ? (maxValue * 0.05 || 1) : 0;
       const top = maxValue + pad;
       const bottom = Math.max(0, minValue - pad);
       const range = top - bottom || 1;
-      const step = candles.length > 1 ? chartWidth / (candles.length - 1) : chartWidth;
-      const x = (index) => margin.left + index * step;
+      const x = (time) => margin.left + (times.length > 1 ? (times.indexOf(time) / (times.length - 1)) * chartWidth : chartWidth / 2);
       const y = (value) => margin.top + ((top - value) / range) * chartHeight;
-
-      const grid = [top, (top + bottom) / 2, bottom].map((price) => {
-        const yy = y(price);
-        return `<g><line x1="${margin.left}" y1="${yy}" x2="${width - margin.right}" y2="${yy}" stroke="#edf0f3"/><text x="${width - margin.right + 8}" y="${yy + 4}" fill="#667085" font-size="11">${formatMetric(price)}</text></g>`;
+      const dateText = (time) => new Date(time * 1000).toLocaleDateString("zh-CN");
+      const grid = [top, (top + bottom) / 2, bottom].map((value) => {
+        const yy = y(value);
+        return `<g><line x1="${margin.left}" y1="${yy}" x2="${width - margin.right}" y2="${yy}" stroke="#edf0f3"/><text x="${width - margin.right + 8}" y="${yy + 4}" fill="#667085" font-size="11">${formatMetric(value)}</text></g>`;
       }).join("");
-
-      const points = candles.map((candle, index) => `${x(index)},${y(candle[valueKey])}`).join(" ");
-      const dots = candles.map((candle, index) => {
-        const xx = x(index);
-        const yy = y(candle[valueKey]);
-        return `<circle cx="${xx}" cy="${yy}" r="2.6" fill="#1d5b89"><title>${new Date(candle.time * 1000).toLocaleDateString("zh-CN")} ${title}: ${formatMetric(candle[valueKey])} ${safeUnit}</title></circle>`;
+      const guidePoints = [];
+      const layers = items.map((item, index) => {
+        const key = tokenKey(item);
+        const colorIndex = state.series.indexOf(item);
+        const color = COLORS[(colorIndex < 0 ? index : colorIndex) % COLORS.length];
+        const points = item.candles.map((candle) => {
+          const value = Number(candle[valueKey]);
+          if (!Number.isFinite(value) || value < 0 || !Number.isFinite(Number(candle.time))) return null;
+          const point = { x: x(Number(candle.time)), y: y(value) };
+          guidePoints.push({ token: key, time: dateText(Number(candle.time)), value, x: point.x, y: point.y });
+          return `${point.x},${point.y}`;
+        }).filter(Boolean).join(" ");
+        return `<g class="series-layer" data-token="${escapeHtml(key)}"><polyline class="series-line" points="${points}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/></g>`;
       }).join("");
-      const guidePoints = encodeURIComponent(JSON.stringify(candles.map((candle, index) => ({
-        x: x(index),
-        y: y(candle[valueKey]),
-        time: new Date(candle.time * 1000).toLocaleDateString("zh-CN"),
-        value: `${formatMetric(candle[valueKey])} ${unit}`,
-      }))));
+      const guidePayload = escapeHtml(encodeURIComponent(JSON.stringify(guidePoints)));
 
-      return `<svg class="line-chart" data-guide-points="${guidePoints}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${title}曲线图">
-        <text x="${margin.left}" y="13" fill="#16202a" font-size="13" font-weight="700">${title}（${safeUnit}）</text>
+      return `<svg class="line-chart" data-guide-points="${guidePayload}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(metric.title)}曲线图">
+        <text x="${margin.left}" y="14" fill="#16202a" font-size="13" font-weight="700">${escapeHtml(metric.label)}（${escapeHtml(quoteSymbol)}）</text>
         <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="#e5e7eb"/>
         <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#e5e7eb"/>
-        ${grid}<polyline points="${points}" fill="none" stroke="#1d5b89" stroke-width="2.2"/>${dots}
-        <text x="${margin.left}" y="${height - 8}" fill="#667085" font-size="11">${new Date(candles[0].time * 1000).toLocaleDateString("zh-CN")}</text>
-        <text x="${width - margin.right - 90}" y="${height - 8}" fill="#667085" font-size="11">${new Date(candles[candles.length - 1].time * 1000).toLocaleDateString("zh-CN")}</text>
+        ${grid}${layers}
+        <text x="${margin.left}" y="${height - 9}" fill="#667085" font-size="11">${dateText(times[0])}</text>
+        <text x="${width - margin.right - 90}" y="${height - 9}" fill="#667085" font-size="11">${dateText(times[times.length - 1])}</text>
         <g class="guide" opacity="0" pointer-events="none">
           <line class="guide-v guide-line" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}"/>
           <line class="guide-h guide-line" x1="${margin.left}" y1="${margin.top}" x2="${width - margin.right}" y2="${margin.top}"/>
-          <circle class="guide-dot" cx="${margin.left}" cy="${margin.top}" r="4" fill="#fff" stroke="#1d5b89" stroke-width="2"/>
+          <circle class="guide-dot" cx="${margin.left}" cy="${margin.top}" r="4" fill="#fff" stroke="#364152" stroke-width="2"/>
           <rect class="guide-x-bg" rx="4" fill="#16202a" opacity=".9"/>
-          <text class="guide-x-text" y="${height - 8}" fill="#fff" font-size="11" text-anchor="middle"></text>
+          <text class="guide-x-text" y="${height - 9}" fill="#fff" font-size="11" text-anchor="middle"></text>
           <rect class="guide-y-bg" rx="4" fill="#16202a" opacity=".9"/>
           <text class="guide-y-text" x="${width - margin.right - 6}" fill="#fff" font-size="11" text-anchor="end"></text>
         </g>
@@ -355,7 +409,7 @@
             fitSvgLabel(xText, xBg);
           }
           if (yText && yBg) {
-            yText.textContent = nearest.value;
+            yText.textContent = `${nearest.token} · ${nearest.time} · ${formatMetric(nearest.value)} ${state.quote}`;
             yText.setAttribute("y", Math.min(Math.max(nearest.y + 4, chartTop + 12), chartBottom - 4));
             fitSvgLabel(yText, yBg);
           }
@@ -372,18 +426,29 @@
       background.setAttribute("height", box.height + 6);
     }
 
+    metricToggle.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-metric]");
+      if (!button || !METRICS[button.dataset.metric]) return;
+      state.metric = button.dataset.metric;
+      metricToggle.querySelectorAll("button[data-metric]").forEach((item) => item.classList.toggle("active", item === button));
+      if (state.payload) renderCombinedChart(state.series, state.payload.data?.quote || { symbol: state.quote });
+    });
+
+    document.getElementById("seriesRoot").addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-token]");
+      if (!button || button.disabled) return;
+      const token = button.dataset.token;
+      if (visibleTokens.has(token)) visibleTokens.delete(token);
+      else visibleTokens.add(token);
+      renderCombinedChart(state.series, state.payload.data?.quote || { symbol: state.quote });
+    });
+
     refreshButton.addEventListener("click", () => {
-      state.tokens = tokenSelect.value ? [tokenSelect.value] : [];
       state.quote = quoteSelect.value;
       state.days = daysInput.value || "30";
       state.interval = intervalSelect.value;
-      if (!state.tokens.length) {
-        statusValue.textContent = "请先选择至少一个代币";
-        return;
-      }
       fetchData();
     });
-
     quoteSelect.addEventListener("change", () => { state.quote = quoteSelect.value; });
     daysInput.value = state.days;
     intervalSelect.value = state.interval;
