@@ -1,6 +1,7 @@
 # Compiler files
 cache/
 out/
+.worktrees/
 
 # Ignores development broadcast logs
 !/broadcast
