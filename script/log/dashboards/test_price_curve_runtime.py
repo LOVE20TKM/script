@@ -6,6 +6,18 @@ import price_curve_runtime
 
 
 class PriceCurveRuntimeTest(unittest.TestCase):
+    def test_default_selected_tokens_returns_all_non_quote_tokens(self) -> None:
+        tokens = [
+            {"symbol": "TKM20", "address": "0xtkm20", "decimals": 18},
+            {"symbol": "TUSDT", "address": "0xtusdt", "decimals": 18},
+            {"symbol": "LOVE20", "address": "0xlove20", "decimals": 18},
+        ]
+        quote = tokens[1]
+
+        selected = price_curve_runtime.default_selected_tokens(tokens, quote)
+
+        self.assertEqual(selected, [tokens[0], tokens[2]])
+
     def test_token_symbols_fall_back_to_event_contract_name(self) -> None:
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row

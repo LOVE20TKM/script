@@ -56,7 +56,7 @@ def query_price_curve_data(
         if token:
             selected.append(token)
     if not selected:
-        selected = default_selected_tokens(conn, tokens, quote)
+        selected = default_selected_tokens(tokens, quote)
 
     interval_seconds = PRICE_CURVE_INTERVALS[interval]
     latest_timestamp = conn.execute("SELECT max(timestamp) FROM blocks WHERE timestamp > 0").fetchone()[0]
@@ -200,18 +200,8 @@ def query_block_range(conn: sqlite3.Connection, from_timestamp: int, to_timestam
     return (row["from_block"], row["to_block"]) if row else (None, None)
 
 
-def default_selected_tokens(conn: sqlite3.Connection, tokens: list[dict], quote: dict) -> list[dict]:
-    love20 = next((token for token in tokens if token["symbol"].upper() == "LOVE20"), None)
-    if love20 and love20["symbol"].upper() != quote["symbol"].upper() and find_pair(conn, love20["address"], quote["address"]):
-        return [love20]
-
-    direct = [
-        token for token in tokens
-        if token["symbol"].upper() != quote["symbol"].upper() and find_pair(conn, token["address"], quote["address"])
-    ]
-    if direct:
-        return direct[:3]
-    return [token for token in tokens if token["symbol"].upper() != quote["symbol"].upper()][:3]
+def default_selected_tokens(tokens: list[dict], quote: dict) -> list[dict]:
+    return [token for token in tokens if token["symbol"].upper() != quote["symbol"].upper()]
 
 
 def find_pair(conn: sqlite3.Connection, token_address: str, quote_address: str) -> dict | None:
