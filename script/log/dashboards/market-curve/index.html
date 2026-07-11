@@ -35,7 +35,7 @@
     .eyebrow { margin: 0 0 8px; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
     h1 { margin: 0; font-size: clamp(30px, 4vw, 48px); line-height: 1.05; }
     .hero p { margin: 10px 0 0; color: var(--muted); line-height: 1.7; }
-    .meta { min-width: 260px; display: grid; gap: 8px; color: var(--muted); font-size: 13px; }
+    .meta { min-width: 0; max-width: 100%; width: min(260px, 100%); display: grid; gap: 8px; color: var(--muted); font-size: 13px; }
     .panel { padding: 18px; }
     .controls { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto; gap: 12px; align-items: end; }
     .field { display: grid; gap: 6px; min-width: 0; }
@@ -198,6 +198,9 @@
 
     async function fetchData(metaOnly = false) {
       statusValue.textContent = metaOnly ? "加载参数中..." : "查询中...";
+      quoteSelect.disabled = true;
+      daysInput.disabled = true;
+      intervalSelect.disabled = true;
       refreshButton.disabled = true;
       const api = new URL(API_URL, location.origin);
       api.searchParams.set("network", state.network);
@@ -220,6 +223,9 @@
       } catch (error) {
         statusValue.textContent = error.message || "读取失败";
       } finally {
+        quoteSelect.disabled = false;
+        daysInput.disabled = false;
+        intervalSelect.disabled = false;
         refreshButton.disabled = false;
       }
     }

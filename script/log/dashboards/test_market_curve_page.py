@@ -61,6 +61,30 @@ class MarketCurvePageTest(unittest.TestCase):
         self.assertIn('refreshButton.addEventListener("click"', HTML)
         self.assertEqual(HTML.count("if (!refreshButton.disabled) fetchData();"), 3)
 
+    def test_fetch_disables_and_restores_all_query_controls(self) -> None:
+        fetch_start = HTML.index("async function fetchData(metaOnly = false)")
+        render_start = HTML.index("function render(", fetch_start)
+        fetch_body = HTML[fetch_start:render_start]
+        self.assertIn("quoteSelect.disabled = true;", fetch_body)
+        disable_start = fetch_body.index("quoteSelect.disabled = true;")
+        self.assertIn("quoteSelect.disabled = false;", fetch_body)
+        restore_start = fetch_body.index("quoteSelect.disabled = false;")
+
+        for control in ("quoteSelect", "daysInput", "intervalSelect", "refreshButton"):
+            self.assertIn(f"{control}.disabled = true;", fetch_body)
+            self.assertIn(f"{control}.disabled = false;", fetch_body)
+        self.assertLess(disable_start, fetch_body.index("try {"))
+        self.assertLess(fetch_body.index("finally {"), restore_start)
+
+    def test_meta_width_can_shrink_on_narrow_viewports(self) -> None:
+        self.assertRegex(
+            HTML,
+            re.compile(
+                r"\.meta \{[^}]*min-width: 0;[^}]*max-width: 100%;"
+                r"[^}]*width: min\(260px, 100%\);"
+            ),
+        )
+
     def test_guide_uses_two_dimensional_nearest_point_and_polyline_token(self) -> None:
         self.assertRegex(
             HTML,
