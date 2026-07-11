@@ -58,7 +58,6 @@ def query_price_curve_data(
     if not selected:
         selected = default_selected_tokens(tokens, quote)
 
-    interval_seconds = PRICE_CURVE_INTERVALS[interval]
     latest_timestamp = conn.execute("SELECT max(timestamp) FROM blocks WHERE timestamp > 0").fetchone()[0]
     if not latest_timestamp:
         return {
@@ -68,10 +67,39 @@ def query_price_curve_data(
             "series": [],
         }
 
+    interval_seconds = PRICE_CURVE_INTERVALS[interval]
     from_timestamp = int(latest_timestamp) - days * 86400
     from_block, to_block = query_block_range(conn, from_timestamp, int(latest_timestamp))
+    love20 = next((token for token in tokens if token["symbol"].upper() == "LOVE20"), None)
+    quote_bridge_pair = None
+    quote_bridge_candles = None
+    if love20 and quote["symbol"].upper() != "LOVE20":
+        quote_bridge_pair = find_pair(conn, love20["address"], quote["address"])
+        if quote_bridge_pair:
+            quote_bridge_candles = query_pair_candles(
+                conn,
+                quote_bridge_pair,
+                love20,
+                quote,
+                from_block,
+                to_block,
+                interval_seconds,
+            )
+
     series = [
-        query_token_series(conn, token, quote, from_timestamp, int(latest_timestamp), from_block, to_block, interval_seconds)
+        query_token_series(
+            conn,
+            token,
+            quote,
+            from_timestamp,
+            int(latest_timestamp),
+            from_block,
+            to_block,
+            interval_seconds,
+            love20=love20,
+            quote_bridge_pair=quote_bridge_pair,
+            quote_bridge_candles=quote_bridge_candles,
+        )
         for token in selected
     ]
 
@@ -170,6 +198,53 @@ def query_price_curve_tokens(conn: sqlite3.Connection) -> list[dict]:
     return tokens
 
 
+def query_pair_candles(
+    conn: sqlite3.Connection,
+    pair: dict,
+    target: dict,
+    quote: dict,
+    from_block: int | None,
+    to_block: int | None,
+    interval_seconds: int,
+) -> list[dict]:
+    if pair["pair_contract_name"]:
+        rows = query_sync_rows_by_contract(conn, pair["pair_contract_name"], from_block, to_block)
+    else:
+        rows = query_sync_rows_by_address(conn, pair["pair"], from_block, to_block)
+    return build_candles(rows, pair, target, quote, interval_seconds)
+
+
+def build_indirect_candles(target_candles: list[dict], bridge_candles: list[dict]) -> list[dict]:
+    times = sorted({candle["time"] for candle in target_candles} | {candle["time"] for candle in bridge_candles})
+    target_index = bridge_index = 0
+    target_current = bridge_current = None
+    candles = []
+    for timestamp in times:
+        while target_index < len(target_candles) and target_candles[target_index]["time"] <= timestamp:
+            target_current = target_candles[target_index]
+            target_index += 1
+        while bridge_index < len(bridge_candles) and bridge_candles[bridge_index]["time"] <= timestamp:
+            bridge_current = bridge_candles[bridge_index]
+            bridge_index += 1
+        if not target_current or not bridge_current:
+            continue
+
+        price = target_current["close"] * bridge_current["close"]
+        candles.append(
+            {
+                "time": timestamp,
+                "time_label": iso_from_timestamp(timestamp),
+                "close_block": max(target_current["close_block"], bridge_current["close_block"]),
+                "open": price,
+                "high": price,
+                "low": price,
+                "close": price,
+                "count": target_current.get("count", 1) + bridge_current.get("count", 1),
+            }
+        )
+    return candles
+
+
 def query_token_series(
     conn: sqlite3.Connection,
     token: dict,
@@ -179,20 +254,57 @@ def query_token_series(
     from_block: int | None,
     to_block: int | None,
     interval_seconds: int,
+    *,
+    love20: dict | None = None,
+    quote_bridge_pair: dict | None = None,
+    quote_bridge_candles: list[dict] | None = None,
 ) -> dict:
     if token["symbol"].upper() == quote["symbol"].upper():
         return {"token": token, "pair": None, "candles": [], "message": "不能和计价代币相同"}
 
-    pair = find_pair(conn, token["address"], quote["address"])
-    if not pair:
-        return {"token": token, "pair": None, "candles": [], "message": "交易对不存在"}
-
-    if pair["pair_contract_name"]:
-        rows = query_sync_rows_by_contract(conn, pair["pair_contract_name"], from_block, to_block)
+    if token["symbol"].upper() == "LOVE20":
+        pair = quote_bridge_pair or find_pair(conn, token["address"], quote["address"])
+        if not pair:
+            return {"token": token, "pair": None, "candles": [], "message": "LOVE20/计价代币交易对不存在"}
+        candles = quote_bridge_candles
+        if candles is None:
+            candles = query_pair_candles(conn, pair, token, quote, from_block, to_block, interval_seconds)
+    elif quote["symbol"].upper() == "LOVE20":
+        pair = find_pair(conn, token["address"], quote["address"])
+        if not pair:
+            return {"token": token, "pair": None, "candles": [], "message": "交易对不存在"}
+        candles = query_pair_candles(conn, pair, token, quote, from_block, to_block, interval_seconds)
     else:
-        rows = query_sync_rows_by_address(conn, pair["pair"], from_block, to_block)
+        if not love20:
+            return {"token": token, "pair": None, "candles": [], "message": "LOVE20代币不存在"}
+        if quote_bridge_pair is None:
+            quote_bridge_pair = find_pair(conn, love20["address"], quote["address"])
+        if not quote_bridge_pair:
+            return {"token": token, "pair": None, "candles": [], "message": "LOVE20/计价代币交易对不存在"}
+        if quote_bridge_candles is None:
+            quote_bridge_candles = query_pair_candles(
+                conn,
+                quote_bridge_pair,
+                love20,
+                quote,
+                from_block,
+                to_block,
+                interval_seconds,
+            )
+        pair = find_pair(conn, token["address"], love20["address"])
+        if not pair:
+            return {"token": token, "pair": None, "candles": [], "message": "交易对不存在"}
+        target_candles = query_pair_candles(
+            conn,
+            pair,
+            token,
+            love20,
+            from_block,
+            to_block,
+            interval_seconds,
+        )
+        candles = build_indirect_candles(target_candles, quote_bridge_candles)
 
-    candles = build_candles(rows, pair, token, quote, interval_seconds)
     add_market_caps(conn, token, candles)
     return {"token": token, "pair": pair, "candles": candles}
 

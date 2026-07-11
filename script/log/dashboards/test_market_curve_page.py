@@ -7,6 +7,11 @@ HTML = (Path(__file__).parent / "market-curve" / "index.html").read_text(encodin
 
 
 class MarketCurvePageTest(unittest.TestCase):
+    def test_initial_load_requests_full_data_without_meta_round_trip(self) -> None:
+        self.assertNotIn("meta=1", HTML)
+        self.assertNotIn("fetchData(true)", HTML)
+        self.assertIn("fetchData();", HTML)
+
     def test_combined_chart_controls_and_render_contract_exist(self) -> None:
         self.assertNotIn('id="tokenSelect"', HTML)
         self.assertIn('id="metricToggle"', HTML)
@@ -62,7 +67,7 @@ class MarketCurvePageTest(unittest.TestCase):
         self.assertEqual(HTML.count("if (!refreshButton.disabled) fetchData();"), 3)
 
     def test_fetch_disables_and_restores_all_query_controls(self) -> None:
-        fetch_start = HTML.index("async function fetchData(metaOnly = false)")
+        fetch_start = HTML.index("async function fetchData()")
         render_start = HTML.index("function render(", fetch_start)
         fetch_body = HTML[fetch_start:render_start]
         self.assertIn("quoteSelect.disabled = true;", fetch_body)

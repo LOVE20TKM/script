@@ -196,8 +196,8 @@
       history.replaceState(null, "", `${location.pathname}?${next.toString()}`);
     }
 
-    async function fetchData(metaOnly = false) {
-      statusValue.textContent = metaOnly ? "加载参数中..." : "查询中...";
+    async function fetchData() {
+      statusValue.textContent = "查询中...";
       quoteSelect.disabled = true;
       daysInput.disabled = true;
       intervalSelect.disabled = true;
@@ -207,19 +207,14 @@
       api.searchParams.set("quote", state.quote);
       api.searchParams.set("days", state.days);
       api.searchParams.set("interval", state.interval);
-      if (metaOnly) api.searchParams.set("meta", "1");
 
       try {
         const response = await fetch(api.toString(), { cache: "no-store" });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "读取失败");
         state.payload = payload;
-        render(payload, metaOnly);
-        if (metaOnly) {
-          await fetchData();
-        } else {
-          statusValue.textContent = "已更新";
-        }
+        render(payload);
+        statusValue.textContent = "已更新";
       } catch (error) {
         statusValue.textContent = error.message || "读取失败";
       } finally {
@@ -230,16 +225,12 @@
       }
     }
 
-    function render(payload, metaOnly = false) {
+    function render(payload) {
       const data = payload.data || {};
       networkValue.textContent = payload.network || "-";
       dbMtimeValue.textContent = payload.db_mtime || "-";
-      windowValue.textContent = metaOnly ? "加载中" : `${data.from_time || "-"} ~ ${data.to_time || "-"}`;
+      windowValue.textContent = `${data.from_time || "-"} ~ ${data.to_time || "-"}`;
       renderQuoteSelect(data.tokens || []);
-      if (metaOnly) {
-        syncUrl();
-        return;
-      }
 
       state.series = Array.isArray(data.series) ? data.series : [];
       state.quote = data.quote?.symbol || state.quote;
@@ -471,7 +462,7 @@
     });
     daysInput.value = state.days;
     intervalSelect.value = state.interval;
-    fetchData(true);
+    fetchData();
   </script>
 </body>
 </html>
