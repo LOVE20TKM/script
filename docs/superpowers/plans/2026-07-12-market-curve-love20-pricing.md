@@ -66,7 +66,7 @@ Add an in-memory SQLite fixture with `blocks`, `events`, `v_contract`, and `v_pa
         insert_event(conn, "", "Sync", 10, direct_pair, {"reserve0": 99900, "reserve1": 100})
 ```
 
-Call `query_token_series` with ALPHA and TUSDT, then assert the first close is `300.0` and the returned pair is `target_pair`, proving the direct 999 TUSDT price is ignored. Call the same fixture with quote LOVE20 and assert the first close is `10.0`, proving quote LOVE20 uses the direct target/LOVE20 path.
+Call `query_token_series` with ALPHA and TUSDT, then assert the first close is `30.0` and the returned pair is `target_pair`, proving the direct 999 TUSDT price is ignored. Call the same fixture with quote LOVE20 and assert the first close is `10.0`, proving quote LOVE20 uses the direct target/LOVE20 path.
 
 - [ ] **Step 3: Test bridge candle reuse**
 
