@@ -35,9 +35,15 @@ class PriceCurveRuntimeTest(unittest.TestCase):
                 ("0xtusdt", "TUSDT"),
             ],
         )
-        token_address = "0xabc0000000000000000000000000000000000000"
-        insert_event(conn, "launch", "LaunchEnd", 1, "0xlaunch", {"tokenAddress": token_address})
-        insert_event(conn, "ALPHA", "Transfer", 2, token_address, {"value": 1})
+        launched_tokens = {
+            "ALPHA": "0xabc0000000000000000000000000000000000000",
+            "BETA": "0xdef0000000000000000000000000000000000000",
+            "GAMMA": "0x1230000000000000000000000000000000000000",
+        }
+        for block_number, (symbol, token_address) in enumerate(launched_tokens.items(), start=1):
+            insert_event(conn, "launch", "LaunchEnd", block_number, "0xlaunch", {"tokenAddress": token_address})
+            insert_event(conn, symbol, "Transfer", block_number, token_address, {"value": 1})
+        conn.execute("INSERT INTO blocks(block_number, timestamp) VALUES (?, ?)", (10, 1000))
 
         data = price_curve_runtime.query_price_curve_data(
             conn,
@@ -47,7 +53,10 @@ class PriceCurveRuntimeTest(unittest.TestCase):
             days=30,
         )
 
-        self.assertEqual(data["selected_tokens"], ["TKM20", "ALPHA"])
+        self.assertEqual(data["selected_tokens"], ["TKM20", "ALPHA", "BETA", "GAMMA"])
+        self.assertEqual([item["token"]["symbol"] for item in data["series"]], data["selected_tokens"])
+        self.assertEqual(data["from_timestamp"], 1000 - 30 * 86400)
+        self.assertEqual(data["to_timestamp"], 1000)
 
     def test_default_selected_tokens_returns_all_non_quote_tokens(self) -> None:
         tokens = [
