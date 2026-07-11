@@ -38,7 +38,6 @@ class PriceCurveRuntimeTest(unittest.TestCase):
         token_address = "0xabc0000000000000000000000000000000000000"
         insert_event(conn, "launch", "LaunchEnd", 1, "0xlaunch", {"tokenAddress": token_address})
         insert_event(conn, "ALPHA", "Transfer", 2, token_address, {"value": 1})
-        conn.execute("INSERT INTO blocks(block_number, timestamp) VALUES (?, ?)", (2, 1000))
 
         data = price_curve_runtime.query_price_curve_data(
             conn,

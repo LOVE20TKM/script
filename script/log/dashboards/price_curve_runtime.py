@@ -61,7 +61,12 @@ def query_price_curve_data(
     interval_seconds = PRICE_CURVE_INTERVALS[interval]
     latest_timestamp = conn.execute("SELECT max(timestamp) FROM blocks WHERE timestamp > 0").fetchone()[0]
     if not latest_timestamp:
-        return {"tokens": tokens, "quote": quote, "series": []}
+        return {
+            "tokens": tokens,
+            "quote": quote,
+            "selected_tokens": [token["symbol"] for token in selected],
+            "series": [],
+        }
 
     from_timestamp = int(latest_timestamp) - days * 86400
     from_block, to_block = query_block_range(conn, from_timestamp, int(latest_timestamp))
