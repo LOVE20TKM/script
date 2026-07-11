@@ -6,6 +6,50 @@ import price_curve_runtime
 
 
 class PriceCurveRuntimeTest(unittest.TestCase):
+    def test_query_price_curve_data_defaults_to_all_non_quote_tokens(self) -> None:
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.executescript(
+            """
+            CREATE TABLE blocks (block_number INTEGER, timestamp INTEGER);
+            CREATE TABLE events (
+                contract_name TEXT,
+                event_name TEXT,
+                block_number INTEGER,
+                address TEXT,
+                decoded_data TEXT
+            );
+            CREATE TABLE v_contract (address TEXT, contract_name TEXT);
+            CREATE TABLE v_pair_created (
+                pair TEXT,
+                token0 TEXT,
+                token1 TEXT,
+                block_number INTEGER
+            );
+            """
+        )
+        conn.executemany(
+            "INSERT INTO v_contract(address, contract_name) VALUES (?, ?)",
+            [
+                ("0xtkm20", "TKM20"),
+                ("0xtusdt", "TUSDT"),
+            ],
+        )
+        token_address = "0xabc0000000000000000000000000000000000000"
+        insert_event(conn, "launch", "LaunchEnd", 1, "0xlaunch", {"tokenAddress": token_address})
+        insert_event(conn, "ALPHA", "Transfer", 2, token_address, {"value": 1})
+        conn.execute("INSERT INTO blocks(block_number, timestamp) VALUES (?, ?)", (2, 1000))
+
+        data = price_curve_runtime.query_price_curve_data(
+            conn,
+            token_symbols=[],
+            quote_symbol="TUSDT",
+            interval="1d",
+            days=30,
+        )
+
+        self.assertEqual(data["selected_tokens"], ["TKM20", "ALPHA"])
+
     def test_default_selected_tokens_returns_all_non_quote_tokens(self) -> None:
         tokens = [
             {"symbol": "TKM20", "address": "0xtkm20", "decimals": 18},
