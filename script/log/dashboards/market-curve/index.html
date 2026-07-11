@@ -288,10 +288,11 @@
           <span class="legend-label">${escapeHtml(key)} <span class="legend-value">${escapeHtml(valueText)}</span></span>
         </button>`;
       }).join("");
+      const drawableItems = items.filter(isDrawable);
       const visibleItems = items.filter((item) => isDrawable(item) && visibleTokens.has(tokenKey(item)));
       const chart = visibleItems.length
         ? combinedChartSvg(visibleItems, quoteSymbol, metric)
-        : `<div class="empty">${items.length ? "请选择至少一个图例" : "暂无可展示数据"}</div>`;
+        : `<div class="empty">${drawableItems.length ? "请选择至少一个图例" : "暂无可展示数据"}</div>`;
 
       seriesRoot.innerHTML = `<section class="panel">
         <div class="chart-head">

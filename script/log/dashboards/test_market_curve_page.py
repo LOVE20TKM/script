@@ -28,6 +28,10 @@ class MarketCurvePageTest(unittest.TestCase):
         self.assertIn("close", HTML)
         self.assertRegex(HTML, re.compile(r"Number\.isFinite\(value\) \|\| value < 0"))
 
+    def test_empty_state_distinguishes_drawable_series_from_hidden_series(self) -> None:
+        self.assertIn("const drawableItems = items.filter(isDrawable);", HTML)
+        self.assertIn('drawableItems.length ? "请选择至少一个图例" : "暂无可展示数据"', HTML)
+
 
 if __name__ == "__main__":
     unittest.main()
