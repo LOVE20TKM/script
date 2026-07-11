@@ -241,6 +241,36 @@ class PriceCurveRuntimeTest(unittest.TestCase):
         self.assertEqual(candles[0]["supply"], 1000)
         self.assertEqual(candles[0]["market_cap"], 2000)
 
+    def test_market_cap_uses_weth_deposit_and_withdrawal_supply_events(self) -> None:
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """
+            CREATE TABLE events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contract_name TEXT,
+                event_name TEXT,
+                block_number INTEGER,
+                address TEXT,
+                decoded_data TEXT
+            )
+            """
+        )
+        token_address = "0xabc0000000000000000000000000000000000000"
+        insert_event(conn, "TKM20", "Deposit", 10, token_address, {"wad": 1000 * 10**18})
+        insert_event(conn, "TKM20", "Withdrawal", 20, token_address, {"wad": 100 * 10**18})
+
+        candles = [
+            {"close_block": 15, "close": 2.0},
+            {"close_block": 25, "close": 3.0},
+        ]
+        price_curve_runtime.add_market_caps(conn, {"symbol": "TKM20", "address": token_address}, candles)
+
+        self.assertEqual(candles[0]["supply"], 1000)
+        self.assertEqual(candles[0]["market_cap"], 2000)
+        self.assertEqual(candles[1]["supply"], 900)
+        self.assertEqual(candles[1]["market_cap"], 2700)
+
 
 def insert_event(
     conn: sqlite3.Connection,

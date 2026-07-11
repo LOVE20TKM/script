@@ -452,35 +452,38 @@ def add_market_caps(conn: sqlite3.Connection, token: dict, candles: list[dict]) 
         return
 
     max_block = max(candle["close_block"] for candle in candles)
+    is_weth_supply = token["symbol"].upper() == "TKM20"
+    supply_events = ("Deposit", "Withdrawal") if is_weth_supply else ("TokenMint", "TokenBurn")
+    amount_field = "wad" if is_weth_supply else "amount"
     if token["symbol"].startswith("0x"):
         rows = conn.execute(
-            """
+            f"""
             SELECT
               block_number,
               event_name,
-              CAST(json_extract(decoded_data, '$.amount') AS REAL) AS amount
+              CAST(json_extract(decoded_data, '$.{amount_field}') AS REAL) AS amount
             FROM events
             WHERE lower(address) = lower(?)
-              AND event_name IN ('TokenMint', 'TokenBurn')
+              AND event_name IN (?, ?)
               AND block_number <= ?
             ORDER BY block_number, id
             """,
-            (token["address"], max_block),
+            (token["address"], *supply_events, max_block),
         ).fetchall()
     else:
         rows = conn.execute(
-            """
+            f"""
             SELECT
               block_number,
               event_name,
-              CAST(json_extract(decoded_data, '$.amount') AS REAL) AS amount
+              CAST(json_extract(decoded_data, '$.{amount_field}') AS REAL) AS amount
             FROM events
             WHERE contract_name = ?
-              AND event_name IN ('TokenMint', 'TokenBurn')
+              AND event_name IN (?, ?)
               AND block_number <= ?
             ORDER BY block_number, id
             """,
-            (token["symbol"], max_block),
+            (token["symbol"], *supply_events, max_block),
         ).fetchall()
 
     supply = 0.0
@@ -488,7 +491,7 @@ def add_market_caps(conn: sqlite3.Connection, token: dict, candles: list[dict]) 
     for candle in candles:
         while row_index < len(rows) and int(rows[row_index]["block_number"]) <= candle["close_block"]:
             amount = float(rows[row_index]["amount"] or 0) / 1e18
-            if rows[row_index]["event_name"] == "TokenMint":
+            if rows[row_index]["event_name"] in ("TokenMint", "Deposit"):
                 supply += amount
             else:
                 supply -= amount
