@@ -254,7 +254,7 @@
     }
 
     function tokenKey(item) {
-      return String(item?.token?.symbol || item?.token?.address || "");
+      return String(item?.token?.address || item?.token?.symbol || "");
     }
 
     function isDrawable(item) {
@@ -279,13 +279,14 @@
 
       const legend = items.map((item, index) => {
         const key = tokenKey(item);
+        const symbol = String(item?.token?.symbol || item?.token?.address || "");
         const drawable = isDrawable(item);
         const latest = latestMetric(item);
         const message = item.message || (drawable ? "" : "暂无可绘制数据");
         const valueText = latest ? `${formatMetric(latest[state.metric])} ${quoteSymbol}` : message;
         return `<button type="button" class="legend-button ${visibleTokens.has(key) ? "active" : ""}" data-token="${escapeHtml(key)}" ${drawable ? "" : "disabled"} title="${escapeHtml(message || key)}">
           <span class="legend-swatch" data-token="${escapeHtml(key)}" style="background:${COLORS[index % COLORS.length]}"></span>
-          <span class="legend-label">${escapeHtml(key)} <span class="legend-value">${escapeHtml(valueText)}</span></span>
+          <span class="legend-label">${escapeHtml(symbol)} <span class="legend-value">${escapeHtml(valueText)}</span></span>
         </button>`;
       }).join("");
       const drawableItems = items.filter(isDrawable);
@@ -344,7 +345,7 @@
           guidePoints.push({ token: key, time: dateText(Number(candle.time)), value, x: point.x, y: point.y });
           return `${point.x},${point.y}`;
         }).filter(Boolean).join(" ");
-        return `<g class="series-layer" data-token="${escapeHtml(key)}"><polyline class="series-line" points="${points}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/></g>`;
+        return `<g class="series-layer" data-token="${escapeHtml(key)}"><polyline class="series-line" data-token="${escapeHtml(key)}" points="${points}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/></g>`;
       }).join("");
       const guidePayload = escapeHtml(encodeURIComponent(JSON.stringify(guidePoints)));
 
@@ -392,7 +393,7 @@
           point.y = event.clientY;
           const cursor = point.matrixTransform(svg.getScreenCTM().inverse());
           const nearest = points.reduce((best, item) => (
-            Math.abs(item.x - cursor.x) < Math.abs(best.x - cursor.x) ? item : best
+            Math.hypot(item.x - cursor.x, item.y - cursor.y) < Math.hypot(best.x - cursor.x, best.y - cursor.y) ? item : best
           ), points[0]);
           if (!nearest) return;
 
@@ -450,7 +451,18 @@
       state.interval = intervalSelect.value;
       fetchData();
     });
-    quoteSelect.addEventListener("change", () => { state.quote = quoteSelect.value; });
+    quoteSelect.addEventListener("change", () => {
+      state.quote = quoteSelect.value;
+      if (!refreshButton.disabled) fetchData();
+    });
+    daysInput.addEventListener("change", () => {
+      state.days = daysInput.value || "30";
+      if (!refreshButton.disabled) fetchData();
+    });
+    intervalSelect.addEventListener("change", () => {
+      state.interval = intervalSelect.value;
+      if (!refreshButton.disabled) fetchData();
+    });
     daysInput.value = state.days;
     intervalSelect.value = state.interval;
     fetchData(true);

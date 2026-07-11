@@ -32,6 +32,48 @@ class MarketCurvePageTest(unittest.TestCase):
         self.assertIn("const drawableItems = items.filter(isDrawable);", HTML)
         self.assertIn('drawableItems.length ? "请选择至少一个图例" : "暂无可展示数据"', HTML)
 
+    def test_tokens_use_unique_address_keys_and_symbol_labels(self) -> None:
+        self.assertRegex(
+            HTML,
+            re.compile(
+                r'function tokenKey\(item\) \{\s+'
+                r'return String\(item\?\.token\?\.address \|\| item\?\.token\?\.symbol \|\| ""\);\s+'
+                r'\}'
+            ),
+        )
+        self.assertIn('const symbol = String(item?.token?.symbol || item?.token?.address || "");', HTML)
+        self.assertIn("guidePoints.push({ token: key", HTML)
+
+    def test_controls_fetch_on_change_without_duplicate_while_loading(self) -> None:
+        for control, assignment in (
+            ("quoteSelect", "state.quote = quoteSelect.value;"),
+            ("daysInput", 'state.days = daysInput.value || "30";'),
+            ("intervalSelect", "state.interval = intervalSelect.value;"),
+        ):
+            self.assertRegex(
+                HTML,
+                re.compile(
+                    rf'{control}\.addEventListener\("change", \(\) => \{{\s*'
+                    rf'{re.escape(assignment)}\s*'
+                    r'if \(!refreshButton\.disabled\) fetchData\(\);\s*\}\);'
+                ),
+            )
+        self.assertIn('refreshButton.addEventListener("click"', HTML)
+        self.assertEqual(HTML.count("if (!refreshButton.disabled) fetchData();"), 3)
+
+    def test_guide_uses_two_dimensional_nearest_point_and_polyline_token(self) -> None:
+        self.assertRegex(
+            HTML,
+            re.compile(
+                r'Math\.hypot\(item\.x - cursor\.x, item\.y - cursor\.y\)'
+                r' < Math\.hypot\(best\.x - cursor\.x, best\.y - cursor\.y\)'
+            ),
+        )
+        self.assertRegex(
+            HTML,
+            re.compile(r'<polyline[^>]*data-token="\$\{escapeHtml\(key\)\}"'),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
