@@ -333,13 +333,14 @@
       const guidePoints = [];
       const layers = items.map((item, index) => {
         const key = tokenKey(item);
+        const symbol = String(item?.token?.symbol || key);
         const colorIndex = state.series.indexOf(item);
         const color = COLORS[(colorIndex < 0 ? index : colorIndex) % COLORS.length];
         const points = item.candles.map((candle) => {
           const value = Number(candle[valueKey]);
           if (!Number.isFinite(value) || value < 0 || !Number.isFinite(Number(candle.time))) return null;
           const point = { x: x(Number(candle.time)), y: y(value) };
-          guidePoints.push({ token: key, time: dateText(Number(candle.time)), value, x: point.x, y: point.y });
+          guidePoints.push({ token: key, symbol, time: dateText(Number(candle.time)), value, x: point.x, y: point.y });
           return `${point.x},${point.y}`;
         }).filter(Boolean).join(" ");
         return `<g class="series-layer" data-token="${escapeHtml(key)}"><polyline class="series-line" data-token="${escapeHtml(key)}" points="${points}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/></g>`;
@@ -408,7 +409,7 @@
             fitSvgLabel(xText, xBg);
           }
           if (yText && yBg) {
-            yText.textContent = `${nearest.token} · ${nearest.time} · ${formatMetric(nearest.value)} ${state.quote}`;
+            yText.textContent = `${nearest.symbol} · ${nearest.time} · ${formatMetric(nearest.value)} ${state.quote}`;
             yText.setAttribute("y", Math.min(Math.max(nearest.y + 4, chartTop + 12), chartBottom - 4));
             fitSvgLabel(yText, yBg);
           }

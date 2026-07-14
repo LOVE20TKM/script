@@ -47,7 +47,12 @@ class MarketCurvePageTest(unittest.TestCase):
             ),
         )
         self.assertIn('const symbol = String(item?.token?.symbol || item?.token?.address || "");', HTML)
-        self.assertIn("guidePoints.push({ token: key", HTML)
+        self.assertIn('const symbol = String(item?.token?.symbol || key);', HTML)
+        self.assertIn("guidePoints.push({ token: key, symbol,", HTML)
+        self.assertIn(
+            "yText.textContent = `${nearest.symbol} · ${nearest.time} · ${formatMetric(nearest.value)} ${state.quote}`;",
+            HTML,
+        )
 
     def test_controls_fetch_on_change_without_duplicate_while_loading(self) -> None:
         for control, assignment in (
