@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 
 DEFAULT_PRICE_CURVE_DAYS = 30
-MAX_PRICE_CURVE_DAYS = 180
+MAX_PRICE_CURVE_DAYS = 365
 PRICE_CURVE_INTERVALS = {
     "1h": 3600,
     "4h": 14400,

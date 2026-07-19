@@ -7,6 +7,9 @@ import price_curve_runtime
 
 
 class PriceCurveRuntimeTest(unittest.TestCase):
+    def test_parse_days_supports_one_year(self) -> None:
+        self.assertEqual(price_curve_runtime.parse_days("365"), 365)
+
     def test_indirect_candles_use_latest_values_at_each_timestamp(self) -> None:
         target_candles = [
             {"time": 100, "close_block": 10, "close": 2.0, "count": 1},

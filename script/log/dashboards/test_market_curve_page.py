@@ -7,6 +7,9 @@ HTML = (Path(__file__).parent / "market-curve" / "index.html").read_text(encodin
 
 
 class MarketCurvePageTest(unittest.TestCase):
+    def test_time_range_supports_one_year(self) -> None:
+        self.assertIn('id="daysInput" type="number" min="1" max="365"', HTML)
+
     def test_initial_load_requests_full_data_without_meta_round_trip(self) -> None:
         self.assertNotIn("meta=1", HTML)
         self.assertNotIn("fetchData(true)", HTML)
