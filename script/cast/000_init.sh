@@ -313,7 +313,7 @@ echo "reset_KEYSTORE_PASSWORD() loaded"
 load_keystore(){
     export KEYSTORE_ACCOUNT=$1
     ensure_keystore_password
-    export ACCOUNT_ADDRESS=$(cast wallet address $(cast wallet decrypt-keystore --unsafe-password $KEYSTORE_PASSWORD $KEYSTORE_ACCOUNT | grep -o '0x[a-fA-F0-9]\{64\}'))
+    export ACCOUNT_ADDRESS=$(cast wallet address --account "$KEYSTORE_ACCOUNT" --password "$KEYSTORE_PASSWORD" 2>/dev/null | grep -o '0x[a-fA-F0-9]\{40\}')
     echo "$ACCOUNT_ADDRESS"
 }
 echo "load_keystore() loaded"
