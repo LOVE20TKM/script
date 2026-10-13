@@ -1173,6 +1173,21 @@ json_array_items() {
 }
 echo "json_array_items() loaded"
 
+# Normalize cast --json output for a single tuple/struct return value into a
+# flat list (one field per line).
+# cast >= 1.8 serializes tuples as nested arrays ([[a, b, c]]), while older
+# versions returned a single formatted string (["(a, b, c)"]). Handle both.
+cast_tuple_json_fields() {
+    jq -r '
+        (.[0] // empty)
+        | if type == "array" then .[]
+          elif type == "string" then (gsub("[() ]"; "") | split(",") | .[])
+          else empty
+          end
+    '
+}
+echo "cast_tuple_json_fields() loaded"
+
 base_action_ids_by_account() {
     local token_address=$1
     local account_address=$2
@@ -1364,7 +1379,7 @@ stake_status_fields() {
     local raw
 
     raw=$(call ILOVE20Stake "$stakeAddress" accountStakeStatus "$token_address" "$account_address" --json 2>/dev/null \
-        | jq -r '.[0] // empty')
+        | cast_tuple_json_fields)
 
     if [ -z "$raw" ]; then
         printf "0\n0\n0\n0\n0\n"
@@ -1372,9 +1387,6 @@ stake_status_fields() {
     fi
 
     echo "$raw" \
-        | sed 's/^[(]//' \
-        | sed 's/[)]$//' \
-        | tr ',' '\n' \
         | sed 's/^ *//' \
         | sed 's/ *$//'
 }
@@ -1451,18 +1463,20 @@ echo "current_round() loaded"
 launch_info(){
     local token_address=$1
     echo "token_address: $token_address"
-    call ILOVE20Launch $launchAddress launchInfo $token_address --json | jq -r '.[0] | gsub("[() ]";"") | split(",") | {
-        parentTokenAddress: .[0],
-        parentTokenFundraisingGoal: .[1],
-        secondHalfMinBlocks: .[2],
-        launchAmount: .[3],
-        startBlock: .[4],
-        secondHalfStartBlock: .[5],
-        endBlock: .[6],
-        hasEnded: .[7],
-        participantCount: .[8],
-        totalContributed: .[9],
-        totalExtraRefunded: .[10]
+    call ILOVE20Launch $launchAddress launchInfo $token_address --json | jq -r '
+        (if (.[0] | type) == "array" then .[0] else (.[0] | gsub("[() ]";"") | split(",")) end) as $f
+        | {
+        parentTokenAddress: $f[0],
+        parentTokenFundraisingGoal: $f[1],
+        secondHalfMinBlocks: $f[2],
+        launchAmount: $f[3],
+        startBlock: $f[4],
+        secondHalfStartBlock: $f[5],
+        endBlock: $f[6],
+        hasEnded: $f[7],
+        participantCount: $f[8],
+        totalContributed: $f[9],
+        totalExtraRefunded: $f[10]
     }' | jq
 }
 launch_info_by_index(){
